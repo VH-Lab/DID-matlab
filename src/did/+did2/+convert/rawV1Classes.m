@@ -98,9 +98,9 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     epochfiles_ingested                   superclasses `base` (+ `epochid`,
 %     syncrule_mapping                      + daqreader_epochdata_ingested for
 %     daqmetadatareader_epochdata_ingested  the mfdaq cache), no `app` block,
-%                         no superclass migrator. Pass 1: the mfdaq cache
-%                         de-encodes to daqreader_epochdata_ingested; the
-%                         manifest passes through; the mapping and the stimulus
+%                         no superclass migrator. Pass 1: the mfdaq cache is
+%                         handed on as v1 to resolveEpochProbemap ([retired
+%                         classes leave V2]); the manifest passes through; the mapping and the stimulus
 %                         file are carried (carry-036, carry-046) for
 %                         epochMint and NDI's second pass. Written by
 %                         +daq/+reader/mfdaq.m, +file/navigator.m,
@@ -199,8 +199,8 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         validates against the same V_eta class. No superclass
 %                         migrator (none exists for `epochid` or
 %                         `daqreader_epochdata_ingested`). The mfdaq migrator
-%                         still delegates to daqreader_epochdata_ingested, which
-%                         skips the raw read for it. The two vm classes have no
+%                         no longer delegates to daqreader_epochdata_ingested:
+%                         it hands its document on as v1. The two vm classes have no
 %                         writer at the locked main and no corpus document (the
 %                         template alone fixes their shape). Written by
 %                         +ndi/+daq/reader.m and +daq/+reader/image.m. Round
@@ -212,17 +212,23 @@ function [names, migrators] = rawV1Classes(v1Name)
 %     spatialGeneExpressionCells    class name, under which V_eta keeps no
 %     spatialGeneExpressionPyramid  class (counted, not validated), as a raw
 %     spatialGeneExpressionTiles    imageStack passthrough is; NDI's last step
+%     spatialGeneExpressionROI
 %                         stores the v1 source on both paths. No DID batch
 %                         pass or NDI second-pass step reads them. The table
 %                         below joins each v1 name to its snake_case migrator.
 %                         geneExpression (only a superclass block in NDI's
 %                         writers) and geneListMapping have no writer at the
-%                         locked main; no corpus holds any of the seven.
+%                         locked main; no corpus holds any of the eight.
 %                         geneList CONVERTS (a `term` and its opaque_body,
 %                         [gene list as a term, file kept], Jess Haley,
 %                         2026-11-01); the other six pass through.
+%                         spatialGeneExpressionROI (NDI-matlab `main` from
+%                         2026-11-02, in the lock from 73f46d19; makeROI.m)
+%                         passes through too, until its decided target
+%                         ([spatial ROI is an outline]) is built; before it
+%                         was listed here it quarantined (no route).
 %                         Written by +ndi/+fun/+doc/+gene/makeCellTypeLabels.m,
-%                         makeGeneList.m, makeCells.m, makePyramid.m. Round
+%                         makeGeneList.m, makeCells.m, makePyramid.m, makeROI.m. Round
 %                         trips: testRawV1RoundTripGene.
 %     measurement         the measurement family: superclass `base` (+
 %     subjectmeasurement  `epochid` for stimulus_parameter), no `app` block, no
@@ -466,7 +472,9 @@ function [names, migrators] = rawV1Classes(v1Name)
 %                         trips: testRawV1RoundTripOpenminds.
 %     openminds_element   superclasses `base` + `openminds`, no `app` block, no
 %                         superclass migrator; one term assertion about the
-%                         element, as before, or carried (carry-128, carry-146).
+%                         element, its description in the notes and its
+%                         openminds_id not stored ([openMINDS element
+%                         description in notes]), or carried (carry-146).
 %                         What the migrator does not read carries the document
 %                         (private/jRawAccount, carry-100), an `openminds_<n>`
 %                         edge naming a child among it (the assertion keeps
@@ -543,6 +551,7 @@ names = {'subject', 'subject_group', 'treatment', 'treatment_drug', ...
     'spatialGeneExpressionCells', ...
     'spatialGeneExpressionPyramid', ...
     'spatialGeneExpressionTiles', ...
+    'spatialGeneExpressionROI', ...
     'measurement', ...
     'subjectmeasurement', ...
     'stimulus_parameter', ...
@@ -599,6 +608,7 @@ TABLE = { ...
     'spatialGeneExpressionCells',   'spatial_gene_expression_cells'; ...
     'spatialGeneExpressionPyramid', 'spatial_gene_expression_pyramid'; ...
     'spatialGeneExpressionTiles',   'spatial_gene_expression_tiles'; ...
+    'spatialGeneExpressionROI',     'spatial_gene_expression_roi'; ...
     'demoNDI',                  'demo_ndi'; ...
     'demoNDIMock',              'demo_ndi_mock'; ...
     'ontologyImage',            'ontology_image'; ...

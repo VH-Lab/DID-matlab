@@ -447,6 +447,17 @@ try
         wb.sources_stored_as_v1, ...
         wb.failures_total, wb.sources_changed_by_batch_pass, ...
         wb.sources_no_inverse, wb.unattributed_documents);
+    % DEFERRED TO THE SECOND PASS: values NDI-matlab's second pass writes,
+    % not lost at this stage ([archive segment lengths measured after the
+    % second pass], Jess Haley, 2026-11-12), by class and field
+    dp = wb.deferred_to_second_pass;
+    fprintf(['[%s] DEFERRED TO THE SECOND PASS: of %d compared source(s), %d ' ...
+        'with deferred value(s) (%d of them clean at the DID stage); %d value(s)\n'], ...
+        corpusName, dp.sources_compared, dp.sources, dp.sources_ok, dp.values);
+    for k = 1:numel(dp.fields)
+        fprintf('[%s]   deferred %s %s: %d source(s)\n', corpusName, ...
+            dp.fields(k).class_name, dp.fields(k).path, dp.fields(k).sources);
+    end
     % ACCEPTED LOSSES: recorded exceptions to the lossless rule, by name, and
     % the check an accepted id loss needs first (did2.convert.roundtrip.wholeBatch)
     ic = wb.accepted_id_check;
@@ -639,7 +650,8 @@ result.reference_integrity = ...
     did2.unittest.helpers.referenceIntegrityBlock(refRep, refErrMsg);
 
 printUnregisteredTerms(corpusName);
-printClassBlocksPadding(corpusName, result);
+printUnregisteredTermsInFinal(corpusName, result);
+printV1NameCheck(corpusName, result);
 
 % ENTITY-TYPE `requires` CENSUS -- REPORT-ONLY (Jess Haley, 2026-10-21, "b").
 % Per entity type and required field (binding_registry_meta.json
@@ -774,6 +786,7 @@ fprintf('\n=== Corpus %s discovery summary (target %s) ===\n', ...
 fprintf('total:            %d\n', result.summary.total);
 fprintf('migrated_count:   %d\n', result.summary.migrated_count);
 fprintf('quarantine_count: %d\n', result.summary.quarantine_count);
+printMigrationReportCounts(result);
 fprintf('report:           %s\n', reportPath);
 printUnconvertedCensus(result);
 printFragmentCensus(result);
@@ -812,22 +825,35 @@ end
 end
 
 
-function printClassBlocksPadding(corpusName, result)
-% [early migration pieces fixed] (2) (Jess Haley, 2026-10-26): the converted
-% bodies did2.convert.ensureClassBlocks changed, by v1 class, denominator
-% first. Printed unconditionally; "not measured" when pass 1 did not report it.
-fprintf('\n--- CLASS-BLOCK PADDING (%s) ---\n', corpusName);
-if ~isfield(result, 'summary') || ~isfield(result.summary, 'class_blocks_padding')
-    fprintf('  not measured (pass 1 wrote no class_blocks_padding)\n');
+function printV1NameCheck(corpusName, result)
+% [v1 name goes to the class's own name field] (Jess Haley, 2026-10-27): of the
+% converted sources pass 1's name check read (the denominator), those with a
+% non-empty v1 name, those carried as statements (carry-106), and those whose
+% name no emitted document keeps (`v1_name_not_kept`), by class. Printed
+% unconditionally; "not measured" when pass 1 did not report it.
+fprintf('\n--- v1 NAME CHECK (%s) ---\n', corpusName);
+if ~isfield(result, 'summary') || ~isfield(result.summary, 'v1_name')
+    fprintf('  not measured (pass 1 wrote no v1_name summary)\n');
     return;
 end
-P = result.summary.class_blocks_padding;
-fprintf('  %d converted body(ies) padded; %d changed by the padding\n', ...
-    P.bodies_inspected, P.bodies_changed);
-t = P.changed_by_class;
+V = result.summary.v1_name;
+fprintf(['  %d converted source(s) checked; %d with a non-empty v1 name; ' ...
+    '%d carried as a statement (carry-106); %d v1_name_not_kept\n'], ...
+    V.sources_inspected, V.with_v1_name, V.statement_carried, V.not_kept);
+t = V.not_kept_by_class;
 if isstruct(t)
     for f = fieldnames(t)'
         fprintf('  %7d  %s\n', t.(f{1}), f{1});
+    end
+end
+if isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'v1_name_not_kept') ...
+        && isfield(result.summary.migration_notes.v1_name_not_kept, 'distinct_details')
+    n = result.summary.migration_notes.v1_name_not_kept;
+    fprintf('  %d distinct name(s) not kept; the first %d:\n', ...
+        numel(n.distinct_details), min(20, numel(n.distinct_details)));
+    for k = 1:min(20, numel(n.distinct_details))
+        fprintf('      %6d  %s\n', n.distinct_detail_counts(k), n.distinct_details{k});
     end
 end
 end
@@ -843,6 +869,34 @@ if isempty(rows); return; end
 for k = order
     fprintf('  %7d  %-40s %-18s %s\n', rows(k).count, ...
         ['"' rows(k).name '"'], rows(k).node, rows(k).field);
+end
+end
+
+function printUnregisteredTermsInFinal(corpusName, result)
+% The same rows, counted in the FINAL documents. The list above is what
+% did2.build was given, when each document was built, so it counts documents a
+% batch pass later drops (the `element type` statements resolveEpochProbemap
+% drops for recorded probes, [recording mode terms]). This says which of them a
+% final document still holds. REPORT ONLY; best-effort, and a failure is
+% printed as NOT MEASURED, never as 0.
+rows = did2.build.unregisteredTerms();
+try
+    rep = did2.unittest.helpers.unregisteredTermsInFinal(result.migrated, rows);
+catch err
+    fprintf('--- UNREGISTERED TERMS IN FINAL DOCUMENTS (%s): NOT MEASURED (%s) ---\n', ...
+        corpusName, err.message);
+    return;
+end
+fprintf(['--- UNREGISTERED TERMS IN FINAL DOCUMENTS (%s): %d final document(s) walked ' ...
+    '(%d unreadable), %d term(s) read; %d of %d row(s) above are in a final document ---\n'], ...
+    corpusName, rep.docs_walked, rep.docs_unread, rep.terms_read, rep.rows_in_final, numel(rows));
+if isempty(rep.rows); return; end
+[~, order] = sort([rep.rows.count], 'descend');
+fprintf('  %7s %7s %7s  %-40s %-18s %s\n', 'built', 'final', 'f.docs', 'name', 'node', 'field');
+for k = order
+    r = rep.rows(k);
+    fprintf('  %7d %7d %7d  %-40s %-18s %s\n', r.count, r.final_count, r.final_docs, ...
+        ['"' r.name '"'], r.node, r.field);
 end
 end
 
@@ -1374,6 +1428,15 @@ for k = 1:size(expected, 1)
                 numGet(rep, 'instrument_omitted'), ...
                 numGet(rep, 'epoch_anchors_minted'), ...
                 numGet(rep, 'fold_quarantined'));
+            % [stimulator manipulation dropped]: rows_stimulator is the
+            % denominator of these four
+            fprintf(['      stimulator rows: %d with no manipulation (wiring and ' ...
+                     'element hold them); manipulation kept for %d with no wiring, ' ...
+                     '%d naming another subject, %d of another type\n'], ...
+                numGet(rep, 'stimulator_manipulations_not_written'), ...
+                numGet(rep, 'stimulator_manipulations_kept_no_wiring'), ...
+                numGet(rep, 'stimulator_manipulations_kept_other_subject'), ...
+                numGet(rep, 'stimulator_manipulations_kept_other_type'));
             % THE #30 REPLACEMENT, on its own line. A retirement happens only
             % where EXACTLY ONE #30 obs names the probe AND a replacement
             % survived validation; `retire_skipped_ambiguous` is the patch/sharp
@@ -1796,5 +1859,33 @@ end
 for k = 1:numel(t)
     fprintf('        %-16s %4d distinct  %6d doc(s)\n', ...
         t(k).prefix, t(k).n_distinct, t(k).n_docs);
+end
+end
+
+function printMigrationReportCounts(result)
+% the counts of v1_to_v2's migration report (did2.convert.migrationReport
+% 'collect' over the documents pass 1 wrote), denominator first; a list the
+% report does not hold reads "not measured", never 0
+if ~isfield(result, 'migration_report') || ~isfield(result.migration_report, 'counts')
+    fprintf('migration report: not measured (v1_to_v2 returned none)\n');
+    return;
+end
+c = result.migration_report.counts;
+fprintf('migration report: %d document(s) (pass 1); %s gap(s); %s carried as v1; %s known v1 defect(s)\n', ...
+    c.documents, countOr(c, 'gaps'), countOr(c, 'carried_as_v1'), countOr(c, 'known_v1_defects'));
+if isfield(result.migration_report, 'known_v1_defects') && ~isempty(result.migration_report.known_v1_defects)
+    d = result.migration_report.known_v1_defects;
+    [u, ~, j] = unique({d.class});
+    for k = 1:numel(u)
+        fprintf('  known v1 defects of %s: %d\n', u{k}, nnz(j == k));
+    end
+end
+end
+
+function t = countOr(c, name)
+if isfield(c, name)
+    t = sprintf('%d', c.(name));
+else
+    t = 'not measured';
 end
 end

@@ -77,8 +77,8 @@ for k = 1:numel(list)
     parts = strsplit(char(e.variable.name), '.');
     parts = cellfun(@(x) matlab.lang.makeValidName(strrep(strtrim(x), ' ', '_')), ...
         parts, 'UniformOutput', false);
-    if isfield(e, 'quantity') && ~isempty(e.quantity)
-        v = e.quantity.value;
+    if isfield(e, 'numeric') && ~isempty(e.numeric)   % the new numeric shape
+        v = e.numeric;
     elseif isfield(e, 'text') && ~isempty(e.text)
         v = e.text;
     elseif isfield(e, 'term') && ~isempty(e.term)
@@ -148,7 +148,7 @@ end
 % the blank stand-in the caller would otherwise dereference.
 assertFail(testCase, sprintf('no parameter entry for variable "%s"', variableName));
 e = struct('variable', struct('node', '', 'name', ''), 'source_unit', '', ...
-    'quantity', struct('value', NaN, 'source_value', ''));
+    'numeric', NaN, 'source_numeric', '');
 end
 
 function names = paramVariables(doc)
@@ -330,8 +330,8 @@ dVm = onlyClass(testCase, runJ(vmspikeBody('vm_3', 'sess_A', 'elem_1', 't00001',
     'method');
 a = paramEntry(testCase, dExtract, 'refractory period');
 b = paramEntry(testCase, dVm, 'refractory period');
-verifyEqual(testCase, a.quantity.value, 0.001, 'AbsTol', 1e-12);
-verifyEqual(testCase, b.quantity.value, 0.0025, 'AbsTol', 1e-12);
+verifyEqual(testCase, a.numeric, 0.001, 'AbsTol', 1e-12);
+verifyEqual(testCase, b.numeric, 0.0025, 'AbsTol', 1e-12);
 verifyEqual(testCase, a.variable.name, b.variable.name);
 end
 
@@ -340,13 +340,15 @@ d = onlyClass(testCase, runJ(extractionBody('sep_4', 'default', 'sess_A')), ...
     'method');
 st = paramEntry(testCase, d, 'waveform window start');
 du = paramEntry(testCase, d, 'waveform window duration');
-verifyEqual(testCase, st.quantity.value, -0.00045, 'AbsTol', 1e-12);
-verifyEqual(testCase, du.quantity.value, 0.00145, 'AbsTol', 1e-12);
-verifyEqual(testCase, st.quantity.value + du.quantity.value, 0.001, 'AbsTol', 1e-12);
+verifyEqual(testCase, st.numeric, -0.00045, 'AbsTol', 1e-12);
+verifyEqual(testCase, du.numeric, 0.00145, 'AbsTol', 1e-12);
+verifyEqual(testCase, st.numeric + du.numeric, 0.001, 'AbsTol', 1e-12);
 verifyFalse(testCase, any(strcmp(paramVariables(d), 'waveform window end')));
-verifyEqual(testCase, st.quantity.source_value, '-0.00045');
-% the duration is COMPUTED (end - start), so it has no source text
-verifyTrue(testCase, ~isfield(du.quantity, 'source_value') || isempty(du.quantity.source_value));
+% v1 stored a number: the source's number, as a number ([numeric shape
+% details] (1), Jess Haley, 2026-11-17)
+verifyEqual(testCase, st.source_numeric, -0.00045);
+% the duration is COMPUTED (end - start), so it has no source number
+verifyTrue(testCase, ~isfield(du, 'source_numeric') || isempty(du.source_numeric));
 end
 
 
@@ -368,8 +370,8 @@ function testExtractionThresholdSplitsByMethodStandardDeviation(testCase)
 d = onlyClass(testCase, runJ(extractionBody('sep_6', 'default', 'sess_A')), ...
     'method');
 e = paramEntry(testCase, d, 'standard-deviation threshold');
-verifyEqual(testCase, e.quantity.value, -4, 'AbsTol', 1e-12);
-verifyEqual(testCase, e.quantity.source_value, '-4');
+verifyEqual(testCase, e.numeric, -4, 'AbsTol', 1e-12);
+verifyEqual(testCase, e.source_numeric, -4, 'v1 stored a number ([numeric shape details] (1))');
 % consumed into the variable, so it must NOT also sit in the bag
 b = bag(d);
 verifyFalse(testCase, isfield(b, 'threshold_method'));
@@ -385,7 +387,7 @@ v1.spike_extraction_parameters.threshold_method = 'absolute';
 v1.spike_extraction_parameters.threshold_parameter = -0.05;
 d = onlyClass(testCase, runJ(v1), 'method');
 e = paramEntry(testCase, d, 'absolute voltage threshold');
-verifyEqual(testCase, e.quantity.value, -0.05, 'AbsTol', 1e-12);
+verifyEqual(testCase, e.numeric, -0.05, 'AbsTol', 1e-12);
 verifyFalse(testCase, any(strcmp(paramVariables(d), 'standard-deviation threshold')));
 end
 
@@ -607,8 +609,8 @@ function testVmspikeThresholdKeepsItsVerbatimStringAndBecomesANumber(testCase)
 d = onlyClass(testCase, runJ(vmspikeBody('vm_2', 'sess_A', 'elem_1', 't00001', '')), ...
     'method');
 e = paramEntry(testCase, d, 'absolute voltage threshold');
-verifyEqual(testCase, e.quantity.value, 0.030, 'AbsTol', 1e-12);
-verifyEqual(testCase, e.quantity.source_value, '0.030');
+verifyEqual(testCase, e.numeric, 0.030, 'AbsTol', 1e-12);
+verifyEqual(testCase, e.source_numeric, '0.030', 'v1 stored text: kept as text');
 verifyTrue(testCase, ~isfield(e, 'source_unit') || isempty(e.source_unit));
 end
 

@@ -1,5 +1,5 @@
 function out = migrationReport(action, varargin)
-%MIGRATIONREPORT The migration run's report: every gap and every carry, by document.
+%MIGRATIONREPORT The migration run's report: every gap, carry and known v1 defect, by document.
 %
 %   Decided by Jess Haley, 2026-11-01 (did-schema
 %   docs/plans/did_v2_go_forward_class_audit.md):
@@ -17,6 +17,59 @@ function out = migrationReport(action, varargin)
 %                          holding `gaps` (document_id, class, field, reason),
 %                          `carried_as_v1` (document_id, class, carry, reason)
 %                          and `counts`; each gap's reason is text.
+%     [known v1 defects list]  (Jess Haley, 2026-11-12) a third list,
+%                          `known_v1_defects` (document_id, class, field,
+%                          reason), one entry per migrated document that
+%                          carries a known defect of its v1 source, with its
+%                          count in `counts`. It is separate from the gaps (a
+%                          gap is a fact the source never stated; a defect is
+%                          about a value the document DOES give, so a defect
+%                          entry must name a field the document gives) and
+%                          from the carries (the document is migrated, not
+%                          carried). The validator reads only the gaps. First
+%                          use: a contrastsensitivity_calc whose spatial
+%                          frequencies are all one value
+%                          (jRepeatedSpatialFrequency).
+%     [orphaned response settings are an accepted loss]  (Jess Haley,
+%                          2026-11-12) a v1 document the migration does NOT
+%                          migrate by that decision is "listed in the run
+%                          report's known_v1_defects" with its id, class and
+%                          reason: an entry of `known_v1_defects` whose field
+%                          is '' (the document is not migrated, so there is
+%                          no field it gives), added by 'notMigrated'. First
+%                          use: an orphaned
+%                          stimulus_response_scalar_parameters_basic with an
+%                          identical used twin
+%                          (did2.convert.resolveResponseParameters).
+%     [response computed from the spike times]  (Jess Haley, 2026-11-12) "a
+%                          response with no matching observation: list it in
+%                          the migration report (a named, counted entry), not
+%                          guessed": a fourth list, `inputs_not_found`
+%                          (document_id, class, input, reason), one entry per
+%                          migrated document an input it is computed from could
+%                          not be found for, with its count in `counts`. First
+%                          use: a stimulus response with no spike-times
+%                          observation of its unit for its epoch
+%                          (did2.convert.resolveResponseParameters).
+%     [one-field carry in the migration report]  (Jess Haley, 2026-11-19,
+%                          did-schema docs/plans/did_v2_standing_wiring_plan.md)
+%                          a fifth list, `carried_fields` (document_id, class,
+%                          field, value, carry, reason): one v1 field of a
+%                          document that CONVERTS, held here because the v2
+%                          document has no home for it yet, its VALUE kept as
+%                          the value itself (any JSON value, not text), CARRY
+%                          the field-scoped carry register row(s) it cites
+%                          (kind needs_mapping), with its count in `counts`.
+%                          Unlike a `carried_as_v1` entry it is collected for
+%                          a document that is a v2 document in the end. First
+%                          use: the v1 subject of a migrated stimulator no
+%                          statement names ([stimulator subject carried as
+%                          needing information]) or of a recording probe
+%                          with no recording observation ([recording probe
+%                          subject carried the same way]), carry-172, written
+%                          by NDI-matlab's second pass through
+%                          did2.convert.carryElementSubject and read back by
+%                          did2.convert.carriedElementSubject.
 %
 %   This function holds the report of the run in progress. The validator
 %   (did2.schema.reportedGaps) reads the gaps of a document from it, so a
@@ -54,6 +107,50 @@ function out = migrationReport(action, varargin)
 %   G = did2.convert.migrationReport('gaps', DOCID)
 %       the gaps listed for DOCID, a struct array {field, reason} (0x0 when
 %       none, or when no run is held).
+%   did2.convert.migrationReport('defect', DOC, FIELD, REASON)
+%       list one known v1 defect of the migrated document DOC (a document
+%       struct or did2.document): its value at FIELD (a path as a gap names
+%       one) is migrated as the source wrote it, and REASON says what is
+%       wrong with it. DOC must give FIELD (did2.schema.givesField), else
+%       did2:convert:badKnownDefect. Listed once per document and field (the
+%       latest). Never a gap: 'gaps' and the validator do not read it. With
+%       no run held it begins one first, as 'gap' does.
+%   did2.convert.migrationReport('notMigrated', DOCID, CLASSNAME, REASON)
+%       list one v1 document (DOCID, of class CLASSNAME) that a decision
+%       says is not migrated, with REASON ([orphaned response settings are
+%       an accepted loss]). It is an entry of `known_v1_defects` with field
+%       '', collected whether or not DOCS holds the document (it does not:
+%       it was not migrated; a document of that id that DOCS does hold
+%       after all is not listed). Listed once per document (the latest).
+%       With no run held it begins one first, as 'gap' does.
+%   D = did2.convert.migrationReport('defects', DOCID)
+%       the known v1 defects listed for DOCID, a struct array {field, reason}
+%       (0x0 when none, or when no run is held); a document listed as not
+%       migrated has one with field ''.
+%   did2.convert.migrationReport('inputNotFound', DOCID, CLASSNAME, INPUT, REASON)
+%       list one input of the migrated document DOCID (of class CLASSNAME)
+%       that the migration looked for and did not find: INPUT names it
+%       ('spike times'), REASON says why ([response computed from the spike
+%       times]). Listed once per document and input (the latest). With no
+%       run held it begins one first, as 'gap' does.
+%   N = did2.convert.migrationReport('inputsNotFound', DOCID)
+%       the inputs not found listed for DOCID, a struct array {input, reason}
+%       (0x0 when none, or when no run is held).
+%   did2.convert.migrationReport('carriedField', DOCID, CLASSNAME, FIELD, VALUE, CARRY, REASON)
+%       list one carried field ([one-field carry in the migration report]):
+%       the document DOCID converts, and its v1 source's FIELD (as the carry
+%       register row names it: 'depends_on subject_id'), of the v1 class
+%       CLASSNAME, had VALUE, which the v2 document does not hold. VALUE is
+%       kept as given (a char, a number, a struct: whatever jsonencode
+%       writes), never turned into text. CARRY is text citing the carry
+%       register row(s) that cover it ('carry-172' or '[carry-172]'), stored
+%       as the distinct rows, sorted, ', '-joined; REASON says why the field
+%       has no v2 home. DOCID, FIELD, REASON and a row in CARRY are required,
+%       else did2:convert:badCarriedField. Listed once per document and field
+%       (the latest). With no run held it begins one first, as 'gap' does.
+%   F = did2.convert.migrationReport('carriedFields', DOCID)
+%       the carried fields listed for DOCID, a struct array {field, value,
+%       carry, reason} (0x0 when none, or when no run is held).
 %   did2.convert.migrationReport('carried', DOCID, CLASSNAME, CARRY, REASON)
 %       a document carried whole as v1: CARRY the carry register row(s) it
 %       cites ('carry-064', '' when none), REASON what could not be placed.
@@ -72,8 +169,25 @@ function out = migrationReport(action, varargin)
 %                           and was recorded as carried, and every document
 %                           stamped 'did_v1' (the reason of one with no
 %                           recorded carry says so)
+%         R.known_v1_defects  struct array {document_id, class, field,
+%                           reason}, in the order of DOCS: only defects of a
+%                           document in DOCS that still gives the field (a
+%                           document carried as v1 in the end does not);
+%                           then every document listed 'notMigrated' that
+%                           DOCS does not hold (field ''), by id
+%         R.inputs_not_found  struct array {document_id, class, input,
+%                           reason}, in the order of DOCS: only entries of a
+%                           document in DOCS that is a v2 document in the end
+%         R.carried_fields  struct array {document_id, class, field, value,
+%                           carry, reason}, in the order of DOCS: only
+%                           entries of a document in DOCS that is a v2
+%                           document in the end (a document carried whole as
+%                           v1 holds the field itself)
 %         R.counts          documents (numel(DOCS), the denominator of what
-%                           follows), gaps, documents_with_gaps,
+%                           follows), documents_converted (the documents of
+%                           DOCS that are v2 documents: the denominator of
+%                           inputs_not_found and carried_fields), gaps,
+%                           documents_with_gaps,
 %                           gaps_by_class {class, count}, carried_as_v1 (the
 %                           denominator of the two lines after it),
 %                           carried_by_register_row {row, count} (a carry
@@ -81,14 +195,22 @@ function out = migrationReport(action, varargin)
 %                           carried_citing_a_row, carried_citing_no_row
 %                           (practice (d) of [migration reliability
 %                           practices], Jess Haley, 2026-10-26: carry counts by
-%                           register row, with the denominator).
+%                           register row, with the denominator),
+%                           known_v1_defects (entries listed),
+%                           inputs_not_found (entries listed),
+%                           carried_fields (entries listed),
+%                           documents_with_carried_fields,
+%                           carried_fields_by_register_row {row, count}.
 %   did2.convert.migrationReport('load', R)
-%       begin a run holding R's gaps and carries (R a 'collect' result, or
+%       begin a run holding R's gaps, carries, known v1 defects, inputs
+%       not found and carried fields (R a
+%       'collect' result, or
 %       the attached file's JSON decoded), so documents migrated by that run
 %       can be validated again.
 %
 %   See also did2.convert.migrationRecord, did2.schema.reportedGaps,
-%            did2.build.document, did2.convert.reportNote.
+%            did2.build.document, did2.convert.reportNote,
+%            did2.convert.carryElementSubject, did2.convert.carriedElementSubject.
 
 persistent st
 if isempty(st)
@@ -135,6 +257,145 @@ switch char(action)
             end
         else
             m(docId) = e; %#ok<NASGU> handle
+        end
+    case 'defect'
+        if ~st.active
+            st = emptyState(true);
+        end
+        s = varargin{1};
+        if isa(s, 'did2.document')
+            s = s.toStruct();
+        end
+        [field, reason] = deal(text(varargin{2}), text(varargin{3}));
+        id = idOf(s);   % (docId is a variable of this function: the 'gap' case)
+        if isempty(id) || isempty(field) || isempty(reason)
+            error('did2:convert:badKnownDefect', ...
+                'A known v1 defect needs a document with an id, a field and a reason (got "%s", "%s", "%s").', ...
+                id, field, reason);
+        end
+        if ~did2.schema.givesField(s, field)
+            error('did2:convert:badKnownDefect', ...
+                ['A known v1 defect is about a value the document gives, and %s ' ...
+                 'gives none at "%s".'], id, field);
+        end
+        e = struct('class', classOf(s), 'field', field, 'reason', reason);
+        m = st.defects;
+        if isKey(m, id)
+            prev = m(id);
+            hit = find(strcmp({prev.field}, field), 1);
+            if isempty(hit)
+                m(id) = [prev, e]; %#ok<NASGU> handle
+            else
+                prev(hit) = e;   % listed once per document and field: the latest
+                m(id) = prev; %#ok<NASGU> handle
+            end
+        else
+            m(id) = e; %#ok<NASGU> handle
+        end
+    case 'notMigrated'
+        if ~st.active
+            st = emptyState(true);
+        end
+        [docId, cls, reason] = deal(text(varargin{1}), text(varargin{2}), ...
+            text(varargin{3}));
+        if isempty(docId) || isempty(reason)
+            error('did2:convert:badKnownDefect', ...
+                'A document not migrated needs an id and a reason (got "%s", "%s").', ...
+                docId, reason);
+        end
+        m = st.notMigrated;
+        m(docId) = struct('class', cls, 'reason', reason); %#ok<NASGU> handle
+    case 'inputNotFound'
+        if ~st.active
+            st = emptyState(true);
+        end
+        [docId, cls, input, reason] = deal(text(varargin{1}), text(varargin{2}), ...
+            text(varargin{3}), text(varargin{4}));
+        if isempty(docId) || isempty(input) || isempty(reason)
+            error('did2:convert:badInputNotFound', ...
+                'An input not found needs a document id, an input and a reason (got "%s", "%s", "%s").', ...
+                docId, input, reason);
+        end
+        e = struct('class', cls, 'input', input, 'reason', reason);
+        m = st.inputs;
+        if isKey(m, docId)
+            prev = m(docId);
+            hit = find(strcmp({prev.input}, input), 1);
+            if isempty(hit)
+                m(docId) = [prev, e]; %#ok<NASGU> handle
+            else
+                prev(hit) = e;   % listed once per document and input: the latest
+                m(docId) = prev; %#ok<NASGU> handle
+            end
+        else
+            m(docId) = e; %#ok<NASGU> handle
+        end
+    case 'carriedField'
+        if ~st.active
+            st = emptyState(true);
+        end
+        if numel(varargin) < 6
+            error('did2:convert:badCarriedField', ...
+                ['A carried field needs a document id, a class, a field, a value, ' ...
+                 'a carry register row and a reason (got %d argument(s)).'], numel(varargin));
+        end
+        [docId, cls, field, carry, reason] = deal(text(varargin{1}), text(varargin{2}), ...
+            text(varargin{3}), joinRows('', text(varargin{5})), text(varargin{6}));
+        if isempty(docId) || isempty(field) || isempty(carry) || isempty(reason)
+            error('did2:convert:badCarriedField', ...
+                ['A carried field needs a document id, a field, a carry register row ' ...
+                 'and a reason (got "%s", "%s", "%s", "%s").'], ...
+                docId, field, text(varargin{5}), reason);
+        end
+        e = struct('class', cls, 'field', field, 'value', {varargin{4}}, ...
+            'carry', carry, 'reason', reason);
+        m = st.carriedFields;
+        if isKey(m, docId)
+            prev = m(docId);
+            hit = find(strcmp({prev.field}, field), 1);
+            if isempty(hit)
+                m(docId) = [prev, e]; %#ok<NASGU> handle
+            else
+                prev(hit) = e;   % listed once per document and field: the latest
+                m(docId) = prev; %#ok<NASGU> handle
+            end
+        else
+            m(docId) = e; %#ok<NASGU> handle
+        end
+    case 'carriedFields'
+        out = struct('field', {}, 'value', {}, 'carry', {}, 'reason', {});
+        if ~st.active || st.carriedFields.Count == 0
+            return;
+        end
+        docId = text(varargin{1});
+        if ~isempty(docId) && isKey(st.carriedFields, docId)
+            g = st.carriedFields(docId);
+            out = struct('field', {g.field}, 'value', {g.value}, ...
+                'carry', {g.carry}, 'reason', {g.reason});
+        end
+    case 'inputsNotFound'
+        out = struct('input', {}, 'reason', {});
+        if ~st.active || st.inputs.Count == 0
+            return;
+        end
+        docId = text(varargin{1});
+        if ~isempty(docId) && isKey(st.inputs, docId)
+            g = st.inputs(docId);
+            out = struct('input', {g.input}, 'reason', {g.reason});
+        end
+    case 'defects'
+        out = struct('field', {}, 'reason', {});
+        if ~st.active
+            return;
+        end
+        id = text(varargin{1});
+        if ~isempty(id) && st.defects.Count > 0 && isKey(st.defects, id)
+            g = st.defects(id);
+            out = struct('field', {g.field}, 'reason', {g.reason});
+        end
+        if ~isempty(id) && st.notMigrated.Count > 0 && isKey(st.notMigrated, id)
+            g = st.notMigrated(id);
+            out(end+1) = struct('field', '', 'reason', g.reason);
         end
     case 'gaps'
         out = struct('field', {}, 'reason', {});
@@ -188,6 +449,24 @@ switch char(action)
                 migrationReportAdd(st, 'carried', c(k));
             end
         end
+        if isfield(r, 'known_v1_defects')
+            d = asStructs(r.known_v1_defects);
+            for k = 1:numel(d)
+                migrationReportAdd(st, 'defect', d(k));
+            end
+        end
+        if isfield(r, 'inputs_not_found')
+            d = asStructs(r.inputs_not_found);
+            for k = 1:numel(d)
+                migrationReportAdd(st, 'input', d(k));
+            end
+        end
+        if isfield(r, 'carried_fields')
+            d = asStructs(r.carried_fields);
+            for k = 1:numel(d)
+                migrationReportAdd(st, 'carriedField', d(k));
+            end
+        end
     otherwise
         error('did2:convert:badArgument', ...
             'migrationReport: unknown action "%s".', char(action));
@@ -199,7 +478,11 @@ end
 function st = emptyState(active)
 st = struct('active', active, 'own', false, 'depth', 0, ...
     'gaps', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
-    'carried', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+    'carried', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'defects', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'notMigrated', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'inputs', containers.Map('KeyType', 'char', 'ValueType', 'any'), ...
+    'carriedFields', containers.Map('KeyType', 'char', 'ValueType', 'any'));
 end
 
 function migrationReportAdd(st, kind, e)
@@ -211,6 +494,42 @@ switch kind
         x = struct('class', text(fieldOr(e, 'class')), 'field', ...
             text(fieldOr(e, 'field')), 'reason', text(fieldOr(e, 'reason')));
         m = st.gaps;
+        if isKey(m, docId)
+            m(docId) = [m(docId), x]; %#ok<NASGU> handle
+        else
+            m(docId) = x; %#ok<NASGU> handle
+        end
+    case 'defect'
+        if isempty(text(fieldOr(e, 'field')))
+            % a document not migrated ('notMigrated')
+            m = st.notMigrated;
+            m(docId) = struct('class', text(fieldOr(e, 'class')), ...
+                'reason', text(fieldOr(e, 'reason'))); %#ok<NASGU> handle
+            return;
+        end
+        x = struct('class', text(fieldOr(e, 'class')), 'field', ...
+            text(fieldOr(e, 'field')), 'reason', text(fieldOr(e, 'reason')));
+        m = st.defects;
+        if isKey(m, docId)
+            m(docId) = [m(docId), x]; %#ok<NASGU> handle
+        else
+            m(docId) = x; %#ok<NASGU> handle
+        end
+    case 'input'
+        x = struct('class', text(fieldOr(e, 'class')), 'input', ...
+            text(fieldOr(e, 'input')), 'reason', text(fieldOr(e, 'reason')));
+        m = st.inputs;
+        if isKey(m, docId)
+            m(docId) = [m(docId), x]; %#ok<NASGU> handle
+        else
+            m(docId) = x; %#ok<NASGU> handle
+        end
+    case 'carriedField'
+        x = struct('class', text(fieldOr(e, 'class')), 'field', ...
+            text(fieldOr(e, 'field')), 'value', {fieldOr(e, 'value')}, ...
+            'carry', joinRows('', text(fieldOr(e, 'carry'))), ...
+            'reason', text(fieldOr(e, 'reason')));
+        m = st.carriedFields;
         if isKey(m, docId)
             m(docId) = [m(docId), x]; %#ok<NASGU> handle
         else
@@ -229,7 +548,14 @@ if ~iscell(docs)
 end
 gaps = struct('document_id', {}, 'class', {}, 'field', {}, 'reason', {});
 carried = struct('document_id', {}, 'class', {}, 'carry', {}, 'reason', {});
+defects = struct('document_id', {}, 'class', {}, 'field', {}, 'reason', {});
+inputs = struct('document_id', {}, 'class', {}, 'input', {}, 'reason', {});
+cfields = struct('document_id', {}, 'class', {}, 'field', {}, 'value', {}, ...
+    'carry', {}, 'reason', {});
 withGaps = 0;
+withFields = 0;
+nConverted = 0;
+held = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:numel(docs)
     s = docs{k};
     if isa(s, 'did2.document')
@@ -239,6 +565,7 @@ for k = 1:numel(docs)
     if isempty(id)
         continue;
     end
+    held(id) = true;
     cls = className(s);
     if st.gaps.Count > 0 && isKey(st.gaps, id)
         g = st.gaps(id);
@@ -250,8 +577,44 @@ for k = 1:numel(docs)
                 'field', g(j).field, 'reason', g(j).reason); %#ok<AGROW>
         end
     end
+    if st.defects.Count > 0 && isKey(st.defects, id)
+        d = st.defects(id);
+        for j = 1:numel(d)
+            if ~did2.schema.givesField(s, d(j).field)
+                continue;   % the document written does not hold that value
+            end
+            c = d(j).class;
+            if isempty(c); c = cls; end
+            defects(end+1) = struct('document_id', id, 'class', c, ...
+                'field', d(j).field, 'reason', d(j).reason); %#ok<AGROW>
+        end
+    end
     stamp = did2.schema.stampOf(s);
     if did2.schema.isV2Stamp(stamp)
+        nConverted = nConverted + 1;
+        % [one-field carry in the migration report]: a carried field is of a
+        % document that converts, so it is kept here (not dropped as a
+        % whole-document carry of a converted document is, below)
+        if st.carriedFields.Count > 0 && isKey(st.carriedFields, id)
+            g = st.carriedFields(id);
+            withFields = withFields + 1;
+            for j = 1:numel(g)
+                c = g(j).class;
+                if isempty(c); c = cls; end
+                cfields(end+1) = struct('document_id', id, 'class', c, ...
+                    'field', g(j).field, 'value', {g(j).value}, ...
+                    'carry', g(j).carry, 'reason', g(j).reason); %#ok<AGROW>
+            end
+        end
+        if st.inputs.Count > 0 && isKey(st.inputs, id)
+            g = st.inputs(id);
+            for j = 1:numel(g)
+                c = g(j).class;
+                if isempty(c); c = cls; end
+                inputs(end+1) = struct('document_id', id, 'class', c, ...
+                    'input', g(j).input, 'reason', g(j).reason); %#ok<AGROW>
+            end
+        end
         continue;   % converted in the end: not a carry
     end
     if st.carried.Count > 0 && isKey(st.carried, id)
@@ -266,13 +629,37 @@ for k = 1:numel(docs)
             'source ([passthrough stays v1])']); %#ok<AGROW>
     end
 end
+% the documents not migrated ([orphaned response settings are an accepted
+% loss]): listed whether or not DOCS holds them, unless it does after all
+if st.notMigrated.Count > 0
+    ks = keys(st.notMigrated);
+    for k = 1:numel(ks)
+        if isKey(held, ks{k})
+            continue;
+        end
+        e = st.notMigrated(ks{k});
+        defects(end+1) = struct('document_id', ks{k}, 'class', e.class, ...
+            'field', '', 'reason', e.reason); %#ok<AGROW>
+    end
+end
 r = struct();
 r.gaps = gaps;
 r.carried_as_v1 = carried;
-r.counts = counts(numel(docs), gaps, withGaps, carried);
+r.known_v1_defects = defects;
+r.inputs_not_found = inputs;
+r.carried_fields = cfields;
+r.counts = counts(numel(docs), gaps, withGaps, carried, defects, inputs);
+r.counts.documents_converted = nConverted;
+r.counts.carried_fields = numel(cfields);
+r.counts.documents_with_carried_fields = withFields;
+fieldRows = {};
+for k = 1:numel(cfields)
+    fieldRows = [fieldRows, unique(regexp(cfields(k).carry, 'carry-\d{3}', 'match'), 'stable')]; %#ok<AGROW>
+end
+r.counts.carried_fields_by_register_row = tally(fieldRows, 'row');
 end
 
-function c = counts(nDocs, gaps, withGaps, carried)
+function c = counts(nDocs, gaps, withGaps, carried, defects, inputs)
 c = struct();
 c.documents = nDocs;
 c.gaps = numel(gaps);
@@ -292,6 +679,8 @@ end
 c.carried_by_register_row = tally(rows, 'row');
 c.carried_citing_a_row = citing;
 c.carried_citing_no_row = numel(carried) - citing;
+c.known_v1_defects = numel(defects);
+c.inputs_not_found = numel(inputs);
 end
 
 function t = tally(names, label)
@@ -314,6 +703,16 @@ rows = '';
 if ~isempty(r)
     rows = strjoin(reshape(unique(r), 1, []), ', ');
 end
+end
+
+function id = idOf(s)
+% the document id of S ('' when none); named apart from the main function's
+% `docId` variable
+id = docId(s);
+end
+
+function c = classOf(s)
+c = className(s);
 end
 
 function id = docId(s)

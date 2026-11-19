@@ -104,13 +104,15 @@
 %   intact for the NDI second pass, which can read file bytes and see the
 %   migrated-id graph. V_eta's tombstones declare the real did_v1 shape so the
 %   passthrough validates. See V_eta_migrator_vocabulary_audit.md.
-%   SINCE 2026-10-27 simple_calc, spike_clusters, spikewaves and
-%   binnedspikeratevm are CARRIED whole as v1 under a needs-home register row
-%   instead (Jess Haley, [simple_calc carries as needs home], [unbuilt spike
-%   classes carry as needs home]); the reasons below are why no home exists.
+%   SINCE 2026-10-27 simple_calc, spike_clusters and binnedspikeratevm are
+%   CARRIED whole as v1 under a needs-home register row instead (Jess Haley,
+%   [simple_calc carries as needs home], [unbuilt spike classes carry as needs
+%   home]); the reasons below are why no home exists. spikewaves was carried
+%   the same way until 2026-11-10, when it became two calculations ([spike
+%   waveforms are two calculations], [spike waveforms built now]); it reads
+%   its two files' bytes (did2.convert.v1Files 'readBytes').
 %     simple_calc              - no subject-bearing edge (only document_id).
 %     spike_clusters           - the spike count is inside spike_cluster.bin.
-%     spikewaves               - both counts are in the .vsw binary header.
 %     spike_interface_sorting_outputs
 %                              - declares NO dependencies at all, so there is no
 %                                subject; the unit count is inside the .zip.
@@ -562,7 +564,7 @@
 %   gate diffs this block against the generator and a hand edit fails it. To
 %   change an entry, change that migrator's H1 and re-run with --write.
 %
-%   95 migrator(s).
+%   96 migrator(s).
 %
 %     binaryseries_parameters
 %         Brainstorm-J migrator: did_v1 binaryseries_parameters -- CARRIED whole as
@@ -639,8 +641,8 @@
 %         epoch clock extents; the image fold is BLOCKED and the document is
 %         preserved.
 %     daqreader_mfdaq_epochdata_ingested
-%         Chunk-b/c de-encode: the mfdaq ingested cache dissolves into the generic
-%         daqreader_epochdata_ingested.
+%         Hand a v1 ingested mfdaq epoch archive on, exactly as v1 wrote it, to the
+%         batch pass that converts it.
 %     daqreader_ndr
 %         Chunk-c de-encode: daqreader_ndr folds into an acquisition_reader. The
 %         reader subtype ('ndr') was encoded in the CLASS NAME, but it is already
@@ -648,8 +650,8 @@
 %         onto the generic daqreader: ndr_reader_string -> daqreader.reader_string,
 %         and ndi_daqreader_ndr_class dropped (redundant). `file_extension` is NOT
 %         carried -- see the block at the copy site below for why, and do not restore
-%         it from this line. The daqreader superclass chain is rebuilt by
-%         ensureClassBlocks after this.
+%         it from this line. The daqreader migrator it hands on to writes the
+%         acquisition_reader document.
 %     daqsystem
 %         Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
 %         (configuration off `base`) + a `software` entity for its own implementation
@@ -705,7 +707,8 @@
 %         `underlying_element_id` / `stimulator_id`) keep resolving -- now to an
 %         entity.
 %     element_epoch
-%         Brainstorm-J migrator: element_epoch -> acquisition_epoch.
+%         Hand a v1 element_epoch on, exactly as v1 wrote it, to the batch passes that
+%         dissolve it.
 %     epochfiles_ingested
 %         Brainstorm-J migrator: DELIBERATE GUARDED PASSTHROUGH.
 %     file_reference
@@ -805,15 +808,21 @@
 %     ontology_image
 %         Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE. The
 %         current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the
-%         `ngrid` raster) is a GUARDED PASSTHROUGH deferred to the NDI second pass: a
-%         table row is not a subject, so pass 1 cannot fill a statement's `entity_id`
-%         edge without minting the husk the image_stack guard exists to stop. The
-%         legacy `ontology_name` + `ontology_region` shape (which the correction below
-%         shows has never existed in NDI) would migrate 1 -> 2 to an `observation`
-%         with value kind `term` about the element's entity + a session anchor (with
-%         an `ngrid` raster, 1 -> 3: an `observation` with value kind `intensity` + a
+%         `ngrid` raster) is CARRIED WHOLE AS v1, `needs_mapping`, carry-124 (Decided
+%         by Jess Haley, 2026-10-29, [ngrid with no statement carried] and [vintage-B
+%         ontologyImage cases], did-schema `did_v2_go_forward_class_audit.md`): a
+%         table row is not a subject, so no generic pass can fill a statement's
+%         `entity_id` edge without minting the husk the image_stack guard exists to
+%         stop. carry-124 is resolved by each dataset's import, which names the
+%         statement the image's values belong to (did-schema carry register:
+%         `resolved_by` "each dataset's import"); no generic pass, in DID-matlab or in
+%         NDI's second pass, builds the raster for this shape. The legacy
+%         `ontology_name` + `ontology_region` shape (which the correction below shows
+%         has never existed in NDI) would migrate 1 -> 2 to an `observation` with
+%         value kind `term` about the element's entity + a session anchor (with an
+%         `ngrid` raster, 1 -> 3: an `observation` with value kind `intensity` + a
 %         sampled_body + the anchor). Any third shape ERRORS rather than emitting. The
-%         raster and the provenance edge are deferred with the passthrough (#47).
+%         raster and the provenance edge are carried with the document (#47).
 %     ontology_label
 %         Brainstorm-J migrator: did_v1 ontology_label -- DEFERRED to the NDI second
 %         pass; the document is passed through UNCHANGED.
@@ -897,10 +906,8 @@
 %         data types, ...) and the depends_on edges
 %         (spatial_gene_expression_pyramid_id, subject_id, source_file_id) carry
 %         through as-is -- universalRenames has already snake_cased both the block key
-%         and its immediate fields, and ensureClassBlocks rebuilds
-%         document_class.superclasses from the V_eta chain. base.id is preserved so a
-%         dependent labeling row's cells_document_id edge (mustBeNonEmpty: true) still
-%         resolves.
+%         and its immediate fields. base.id is preserved so a dependent labeling row's
+%         cells_document_id edge (mustBeNonEmpty: true) still resolves.
 %     spatial_gene_expression_pyramid
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionPyramid -> V_eta
 %         spatial_gene_expression_pyramid, PASSED THROUGH. did-schema #88 restates the
@@ -910,6 +917,10 @@
 %         Expression" binding belongs to the #70 reshape, which #88 does not carry),
 %         no session anchor. base.id is preserved so a Cells / Tiles / file_reference
 %         row's `spatial_gene_expression_pyramid_id` edge still resolves.
+%     spatial_gene_expression_roi
+%         Brainstorm-J migrator: did_v1 spatialGeneExpressionROI, PASSED THROUGH
+%         unchanged (an id-preserving 1:1 passthrough under its v1 class name), as the
+%         other spatial-transcriptomics classes are until their migrator is built.
 %     spatial_gene_expression_tiles
 %         Brainstorm-J migrator: did_v1 spatialGeneExpressionTiles -> V_eta
 %         spatial_gene_expression_tiles, an id-preserving 1:1 passthrough. The class
@@ -917,8 +928,7 @@
 %         geometry) and the depends_on edges (spatial_gene_expression_pyramid_id
 %         required; subject_id optional -- the pyramid dep carries it; source_file_id
 %         optional) carry through as-is. universalRenames has snake_cased the block
-%         key and its immediate fields; ensureClassBlocks rebuilds the superclass
-%         chain. base.id is preserved.
+%         key and its immediate fields. base.id is preserved.
 %     speed_tuning
 %         Brainstorm-J migrator -> speed_tuning_calculation (did-schema #88).
 %         Brainstorm-J migrator: did_v1 speed_tuning (raw NDIcalc-vis result class) ->
@@ -946,8 +956,8 @@
 %         Brainstorm-J migrator: did_v1 spike_interface_sorting_outputs -- DEFERRED to
 %         the NDI second pass; the document is passed through UNCHANGED.
 %     spikewaves
-%         Brainstorm-J migrator: did_v1 spikewaves -- CARRIED whole as v1 under a
-%         needs-home register row (the document is returned UNCHANGED).
+%         Brainstorm-J migrator: did_v1 spikewaves -> TWO `calculation`s on the
+%         element, the spike times and the spike waveforms.
 %     stimulus_bath
 %         Deferred: stimulus_bath migrates to a formulation-valued manipulation in the
 %         NDI layer / the coarse resolveDeferredBaths pass.

@@ -301,7 +301,10 @@ end
 end
 
 function s = rawText(blk, name)
-%RAWTEXT The source's own spelling of a value, for `value.source_value`.
+%RAWTEXT What the source wrote for a value, for the parameter's source_numeric:
+%   its text where v1 stored text, the number where v1 stored a number
+%   ([numeric shape details] (1), Jess Haley, 2026-11-17; the old numeric
+%   shape kept a number as text, see did2.build.numericShape).
 s = '';
 if ~isstruct(blk) || ~isfield(blk, name)
     return;
@@ -311,6 +314,8 @@ if ischar(x)
     s = x;
 elseif isstring(x) && isscalar(x)
     s = char(x);
+elseif isnumeric(x) && isscalar(x) && strcmp(did2.build.numericShape(), 'new')
+    s = double(x);
 elseif isnumeric(x) && isscalar(x)
     s = sprintf('%.15g', double(x));
 end

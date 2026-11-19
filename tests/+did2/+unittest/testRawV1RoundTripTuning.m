@@ -74,6 +74,52 @@ roundTripCases(testCase, { ...
     'tuningcurve writer output', writerOutput('tuningcurve_calc'), true});
 end
 
+function testTuningSummariesGoWhereTheSchemaDeclaresThem(testCase)
+% [tuning summaries in the value] (Decided by Jess Haley, 2026-11-10):
+% circular_statistics and interpolated_values are written where the loaded
+% schema declares them -- on the calculator class on did-schema main, in
+% tuning_curve.value on a copy that moves them
+% (did2.unittest.helpers.tuningSummariesSchema) -- never in both; each
+% validates, and the round trip loses nothing from either.
+cases = { ...
+    'oridir writer output', writerOutput('oridirtuning_calc'), ...
+        'orientation_direction_tuning_calculation', {'circular_statistics'}; ...
+    'SF tuning writer output', writerOutput('spatial_frequency_tuning_calc'), ...
+        'spatial_frequency_tuning_calculation', {'interpolated_values'}; ...
+    'TF tuning writer output', writerOutput('temporal_frequency_tuning_calc'), ...
+        'temporal_frequency_tuning_calculation', {'interpolated_values'}; ...
+    'contrast tuning, converted shape', convertedShape('contrasttuning_calc'), ...
+        'contrast_tuning_calculation', {'interpolated_values'}};
+for moved = [false true]
+    if moved
+        did2.unittest.helpers.tuningSummariesSchema(testCase);
+    end
+    inValue = did2.unittest.helpers.schemaDeclares('tuning_curve', ...
+        {'value', 'interpolated_values'});
+    for k = 1:size(cases, 1)
+        [label, v1, leafClass, names] = cases{k, :};
+        label = sprintf('%s, summaries in the value = %d', label, inValue);
+        out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
+        verifyEmpty(testCase, out.quarantine, [label ': quarantined']);
+        verifyEmpty(testCase, out.passthrough, [label ': carried']);
+        leaf = [];
+        for j = 1:numel(out.migrated)
+            d = out.migrated{j}.toStruct();
+            if strcmp(char(d.document_class.class_name), leafClass); leaf = d; break; end
+        end
+        assertNotEmpty(testCase, leaf, [label ': no ' leafClass]);
+        for n = names
+            inV = isfield(leaf.tuning_curve.value, n{1});
+            onCalc = isfield(leaf, leafClass) && isstruct(leaf.(leafClass)) ...
+                && isfield(leaf.(leafClass), n{1});
+            verifyEqual(testCase, inV, inValue, sprintf('%s: %s in the value?', label, n{1}));
+            verifyEqual(testCase, onCalc, ~inValue, sprintf('%s: %s on the calculator?', label, n{1}));
+        end
+        roundTripCases(testCase, {label, v1, false});
+    end
+end
+end
+
 function testConvertedShapesRoundTrip(testCase)
 % the writers' documents with exactly the fields that carry them removed:
 % each converts, and its inverse rebuilds everything that is left
@@ -145,6 +191,49 @@ for cls = {'oridirtuning_calc', 'contrastsensitivity_calc'}
     out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
     verifyEmpty(testCase, out.quarantine, cls{1});
     verifyGreaterThan(testCase, numel(out.migrated), 1, cls{1});
+end
+end
+
+function testContrastSensitivityHalfMaximumFollowsTheSchema(testCase)
+% [one spelling for the half-maximum point] (Decided by Jess Haley,
+% 2026-11-10): the half-maximum point is written under the name the loaded
+% schema declares -- c50 while did-schema main says c50, half_maximum_below on
+% a copy that renames it (did2.unittest.helpers.halfMaximumSchema) -- and the
+% round trip rebuilds fitless_interpolated_c50 and empirical_c50_<V> from
+% either, losing nothing; both validate.
+v1 = writerOutput('contrastsensitivity_calc');
+for renamed = [false true]
+    if renamed
+        did2.unittest.helpers.halfMaximumSchema(testCase);
+    end
+    label = sprintf('contrast sensitivity, half_maximum_below declared = %d', renamed);
+    want = 'c50';
+    other = 'half_maximum_below';
+    if did2.unittest.helpers.schemaDeclares('contrast_sensitivity', ...
+            {'value', 'interpolated_values', 'half_maximum_below'})
+        [want, other] = deal(other, want);
+    end
+    out = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
+    verifyEmpty(testCase, out.quarantine, [label ': quarantined']);
+    leaf = [];
+    for k = 1:numel(out.migrated)
+        s = out.migrated{k}.toStruct();
+        if isfield(s, 'contrast_sensitivity'); leaf = s; break; end
+    end
+    assertNotEmpty(testCase, leaf, [label ': no contrast_sensitivity leaf']);
+    val = leaf.contrast_sensitivity.value;
+    [iv, ~, nIv] = did2.unittest.helpers.interpolatedEntries(val.interpolated_values);
+    verifyEqual(testCase, nIv, 1, label);
+    verifyTrue(testCase, isfield(iv, want), [label ': interpolated_values has no ' want]);
+    verifyFalse(testCase, isfield(iv, other), [label ': interpolated_values has ' other]);
+    fits = val.model_fit;
+    if isstruct(fits); fits = num2cell(fits); end
+    verifyNotEmpty(testCase, fits, label);
+    for k = 1:numel(fits)
+        verifyTrue(testCase, isfield(fits{k}, want), sprintf('%s: model_fit %d has no %s', label, k, want));
+        verifyFalse(testCase, isfield(fits{k}, other), sprintf('%s: model_fit %d has %s', label, k, other));
+    end
+    roundTripCases(testCase, {label, v1, false});
 end
 end
 

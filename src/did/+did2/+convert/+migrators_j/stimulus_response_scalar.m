@@ -27,15 +27,28 @@ function bodies = stimulus_response_scalar(preBody)
 %   MAPPING (the signed mapping, with its three revisions, in #88's names)
 %     element_id                     -> entity_id (element.m keeps ids)
 %     stimulator_id                  -> instrument_id
-%     stimulus_presentation_id       -> input_id, the ONLY input
-%     stimulus_control_id            -> NOT CARRIED: the control record
-%                                       (v1 control_stimulus_ids) becomes no
-%                                       v2 document; its content is the
-%                                       presentation's `control condition`
-%                                       covariate, folded by NDI's second pass
-%                                       ([control as covariate], Jess Haley,
-%                                       2026-10-22, superseding [control input
-%                                       told apart by its document])
+%     stimulus_presentation_id       -> input_id, the first input
+%     stimulus_control_id            -> input_id, after the presentation
+%                                       ([response links: epoch rebuilt,
+%                                       control as input], Jess Haley,
+%                                       2026-10-27, superseding [control as
+%                                       covariate], 2026-10-22, under which it
+%                                       was not carried): NDI's second pass
+%                                       turns the control record (v1
+%                                       control_stimulus_ids) into the pairing
+%                                       `calculation`, id preserved, so the
+%                                       edge keeps resolving; its v1 name is
+%                                       rebuilt from that class
+%                                       (did2.convert.inputEdgeNames)
+%     (no v1 edge)                   -> input_id, the spike-times observation
+%                                       of the unit for the response's epoch,
+%                                       added AFTER this migrator by the batch
+%                                       pass did2.convert.resolveResponseParameters
+%                                       ([response computed from the spike
+%                                       times], Jess Haley, 2026-11-12): the
+%                                       observation is minted from the unit's
+%                                       element_epoch by
+%                                       did2.convert.resolveEpochProbemap
 %     stimulus_response_scalar_parameters_id
 %                                    -> method_id (see THE PARAMETERS below)
 %     response_type                  -> value.harmonic ('mean' 0, 'F<n>' n)

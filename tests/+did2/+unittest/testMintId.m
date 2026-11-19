@@ -52,6 +52,41 @@ verifyNotEqual(testCase, did2.convert.mintId('x'), did2.convert.mintId('x'), ...
     'an empty key mints random ids');
 end
 
+function testTheMigrationMintsNoRandomIdWithoutASource(testCase)
+% [migration reliability practices] (b), "two runs on the same input are
+% identical": a mint made from the migration's own code (a did2.convert
+% function on the stack) with no source key is an error, not a random id.
+% did2.convert.contentId is such a caller; a body jsonencode cannot encode
+% gives it no key.
+did2.convert.mintId('-reset');
+unencodable = struct('f', @sin);
+assertEmpty(testCase, did2.convert.mintKey(unencodable), 'premise: no mint key');
+verifyError(testCase, @() did2.convert.contentId('probe', unencodable), ...
+    'did2:convert:mintId:noSource');
+verifyEqual(testCase, did2.convert.mintId('-depth'), 0, 'contentId closes its context');
+% the same call from outside the migration (this test) is random, as before
+did2.convert.mintId('-push', '');
+verifyNotEqual(testCase, did2.convert.mintId('x'), did2.convert.mintId('x'));
+end
+
+function testNoHashIsAnErrorNotARandomId(testCase)
+% with no SHA-256 the id cannot be derived: an error, where it was a random
+% id and a warning
+did2.convert.mintId('-reset');
+did2.convert.mintId('-push', '41e1b2c3d4e5f607_0123456789abcdef');
+good = did2.convert.mintId('build:chemical');
+verifyTrue(testCase, did.ido.isvalid(good), good);
+did2.convert.mintId('-simulateNoHash', true);
+verifyError(testCase, @() did2.convert.mintId('build:chemical'), ...
+    'did2:convert:mintId:noHash');
+verifyError(testCase, @() did2.convert.mintId('file_uid', 'some_source'), ...
+    'did2:convert:mintId:noHash');
+did2.convert.mintId('-reset');
+did2.convert.mintId('-push', '41e1b2c3d4e5f607_0123456789abcdef');
+verifyEqual(testCase, did2.convert.mintId('build:chemical'), good, ...
+    '-reset clears the simulation');
+end
+
 function testPopToRestoresTheDepth(testCase)
 did2.convert.mintId('-reset');
 did2.convert.mintId('-push', 'a');

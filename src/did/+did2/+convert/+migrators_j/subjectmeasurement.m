@@ -221,10 +221,13 @@ if isempty(folded)
         % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
         % v1 document passes through under it, so this document, left as v1 on purpose,
         % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-        % 2026-10-24) instead of passing through silently. Register row carry-145 covers it.
+        % 2026-10-24) instead of passing through silently. Register row carry-145 covers it,
+        % of kind needs_mapping (Jess Haley, 2026-11-10 [unnamed measurement kind
+        % needs a map]): the dataset map names the quantity kind.
         % carry-register: carry-145
         did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
-            '[carry-145] awaiting_home: no quantity kind is named by subjectmeasurement.measurement ([passthrough stays v1])');
+            ['[carry-145] needs_mapping: the dataset map names the quantity kind for ' ...
+             'this measurement name ([unnamed measurement kind needs a map])']);
     end
     return;
 end

@@ -226,8 +226,10 @@ function testTheMethodIsTheCalculatorAndEachPlaneIsItsOwnStatement(testCase)
 % calculator. INVERTED 2026-11-03 ([hartley planes are two statements],
 % Decided by Jess Haley): each plane is the value of its own statement, the
 % spike-triggered average (the source id) and the null cumulative
-% probability, and no body carries a "represented quantity" condition. The
-% two variables are plain labels until the terms are approved.
+% probability, and no body carries a "represented quantity" condition.
+% INVERTED 2026-11-18 ([hartley plane terms], Decided by Jess Haley): the two
+% variables were plain labels; they are now wikidata:Q7577165 and
+% EMPTY:0000448, each with its node.
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = staLeaf(out);
 % INVERTED 2026-10-30: [data analysis is the general method] (Jess Haley, did-schema
@@ -238,6 +240,9 @@ leaves = allOf(out, 'receptive_field_calculation');
 verifyEqual(testCase, numel(leaves), 2, 'one statement per plane');
 verifyEqual(testCase, cellfun(@(b) char(b.statement.variable.name), leaves, ...
     'UniformOutput', false), {'spike-triggered average', 'null cumulative probability'});
+verifyEqual(testCase, cellfun(@(b) char(b.statement.variable.node), leaves, ...
+    'UniformOutput', false), {'wikidata:Q7577165', 'EMPTY:0000448'}, ...
+    '[hartley plane terms]: each plane''s variable carries its node');
 verifyEqual(testCase, leaves{1}.base.id, 'hc_1', 'the source id is the spike-triggered average''s');
 verifyNotEqual(testCase, leaves{2}.base.id, 'hc_1');
 verifyEqual(testCase, depValueOf(leaves{2}, 'entity_id'), depValueOf(leaves{1}, 'entity_id'));
@@ -251,6 +256,29 @@ for k = 1:numel(sb)
     verifyFalse(testCase, isfield(sb{k}.data_body, 'conditions') ...
         && ~isempty(sb{k}.data_body.conditions), 'no body carries a condition');
 end
+end
+
+function testTheRoundTripFindsThePlanesByNodeAndOlderLabelsByName(testCase)
+% [hartley plane terms] (Jess Haley, 2026-11-18): the round trip tells the two
+% statements apart by the variable's node (code compares by node first); a
+% statement migrated before the terms were decided has a plain label and no
+% node, and is still found by its name. A wrong node is not read as a plane.
+out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
+[~, spec] = did2.convert.roundtrip.hartley_calc(out);
+labelled = out;
+wrong = out;
+for k = 1:numel(out)
+    if strcmp(did2.unittest.helpers.classKey(out{k}), 'receptive_field_calculation')
+        labelled{k}.statement.variable.node = '';
+        wrong{k}.statement.variable.node = 'EMPTY:0000001';
+    end
+end
+[~, specLabelled] = did2.convert.roundtrip.hartley_calc(labelled);
+verifyEqual(testCase, specLabelled.unplaced, spec.unplaced, ...
+    'a plain-label variable (no node) is read by its name, as before');
+[~, specWrong] = did2.convert.roundtrip.hartley_calc(wrong);
+verifyGreaterThan(testCase, numel(specWrong.unplaced), numel(spec.unplaced), ...
+    'a variable with another node is not read as a plane');
 end
 
 function testTheValueIsInItsBodiesAndCarriesTheEncoding(testCase)
@@ -298,7 +326,7 @@ function testTheLagAxisCarriesItsValuesRatherThanASpacing(testCase)
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
 verifyEqual(testCase, [ax.nCov], [0 0 1], 'only the lag has a covariate');
-verifyEqual(testCase, ax(3).cov.quantity.value(:), realLagVector());
+verifyEqual(testCase, ax(3).cov.numeric(:), realLagVector());
 end
 
 function testTheAxesAreRowsColumnsAndDelay(testCase)
@@ -331,7 +359,7 @@ v1.ngrid.coordinates = [realLagVector(); (2:201)'; (1:200)'];
 out = did2.convert.migrators_j.hartley_calc(v1);
 ax = planeBodies(out); ax = did2.unittest.helpers.axesOf(ax{1});
 verifyEqual(testCase, [ax.nCov], [0 1 1], 'Y is 1..200 (bare); X carries 2..201');
-verifyEqual(testCase, ax(2).cov.quantity.value(:), (2:201)');
+verifyEqual(testCase, ax(2).cov.numeric(:), (2:201)');
 end
 
 function testBothPlanesNameTheSourceFileAndSayWhichPlaneTheyAre(testCase)
@@ -378,8 +406,8 @@ end
 function testTheHartleyNumbersAreDataOneRowPerFrame(testCase)
 % [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03): S,
 % KXV, KYV, ORDER are data, one row per frame (dimension EMPTY:0000260
-% "frame"), not method parameters. Their four variables are not decided:
-% plain labels.
+% "frame"), not method parameters. Their four variables are the nodes of
+% [hartley column terms] (Decided by Jess Haley, 2026-11-19).
 out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 nb = numbersBody(out);
 assertNotEmpty(testCase, nb);
@@ -391,12 +419,54 @@ verifyEqual(testCase, char(dims.term.node), 'EMPTY:0000260');
 verifyEqual(testCase, dims.n, 3360);
 covs = nb.data.covariates;
 if iscell(covs); covs = [covs{:}]; end
-verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
-    {'hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'});
+verifyEqual(testCase, arrayfun(@(c) char(c.variable.node), covs, 'UniformOutput', false), ...
+    {'EMPTY:0000449', 'EMPTY:0000450', 'EMPTY:0000451', 'NCIT:C25390'});
 v1 = hartleyCalcV1();
-verifyEqual(testCase, covs(2).quantity.value(:), v1.hartley_reverse_correlation.hartley_numbers.KXV);
+verifyEqual(testCase, covs(2).numeric(:), v1.hartley_reverse_correlation.hartley_numbers.KXV);
 names = paramNames(staLeaf(out));
 verifyFalse(testCase, any(contains(names, 'hartley numbers')), strjoin(names, ', '));
+end
+
+function testTheRoundTripReadsTheHartleyColumnsByNodeAndOldLabels(testCase)
+% [hartley column terms] (Jess Haley, 2026-11-19): the round trip reads each
+% covariate by its variable's node; a body migrated before the terms were
+% decided names them by plain label ('hartley S', no node), and reads back the
+% same. Each rebuilds the four v1 columns exactly.
+v1 = hartleyCalcV1();
+out = did2.convert.migrators_j.hartley_calc(v1);
+[rebuilt, spec] = did2.convert.roundtrip.hartley_calc(out);
+verifyHartleyNumbers(testCase, rebuilt, v1, 'nodes');
+OLD = {'hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'};
+labelled = out;
+for k = 1:numel(out)
+    if strcmp(did2.unittest.helpers.classKey(out{k}), 'sampled_body') ...
+            && isequal(out{k}.base.id, numbersBody(out).base.id)
+        covs = labelled{k}.data.covariates;
+        wasCell = iscell(covs);
+        if wasCell; covs = [covs{:}]; end
+        for c = 1:numel(covs)
+            covs(c).variable = struct('node', '', 'name', OLD{c});
+        end
+        if wasCell; covs = num2cell(covs); end
+        labelled{k}.data.covariates = covs;
+    end
+end
+[rebuiltOld, specOld] = did2.convert.roundtrip.hartley_calc(labelled);
+verifyHartleyNumbers(testCase, rebuiltOld, v1, 'old labels');
+verifyEqual(testCase, specOld.unplaced, spec.unplaced, ...
+    'the old plain labels are read as the nodes are');
+end
+
+function verifyHartleyNumbers(testCase, rebuilt, v1, label)
+want = v1.hartley_reverse_correlation.hartley_numbers;
+got = rebuilt.hartley_reverse_correlation.hartley_numbers;
+for f = {'S', 'KXV', 'KYV', 'ORDER'}
+    verifyTrue(testCase, isfield(got, f{1}), sprintf('%s: %s not rebuilt', label, f{1}));
+    if isfield(got, f{1})
+        verifyEqual(testCase, double(got.(f{1})(:)), double(want.(f{1})(:)), ...
+            sprintf('%s: %s', label, f{1}));
+    end
+end
 end
 
 function testRaggedHartleyNumbersAreCarriedAsV1(testCase)
@@ -423,7 +493,7 @@ verifyEqual(testCase, char(ax.term.name), 'time');
 verifyEqual(testCase, char(ax.cov.variable.name), 'time');
 verifyTrue(testCase, ~isfield(ax.cov, 'origin') || isempty(ax.cov.origin));
 verifyEqual(testCase, ax.n, 5);
-verifyEqual(testCase, ax.cov.quantity.value(:), [0.106; 0.31; 0.55; 0.9; 1.4]);
+verifyEqual(testCase, ax.cov.numeric(:), [0.106; 0.31; 0.55; 0.9; 1.4]);
 % FINDING, 2026-10-21, NOT FIXED HERE: the spike train has no bytes -- the
 % times ARE the time covariate's positions -- yet did2.build.sampledBody declares its
 % default file series member `body_data_0` on every body (bodyFiles.m), so
@@ -515,7 +585,12 @@ out = did2.convert.migrators_j.hartley_calc(hartleyCalcV1());
 leaf = staLeaf(out);
 names = paramNames(leaf);
 verifyFalse(testCase, any(strcmp(names, 'T')), strjoin(names, ', '));
-verifyTrue(testCase, any(strcmp(names, 'X sample')), strjoin(names, ', '));
+% [term picks batch 3] (Jess Haley, 2026-11-09): X_sample and Y_sample are
+% NCIT:C69201 Horizontal Pixel Spacing and NCIT:C69210 Vertical Pixel Spacing
+verifyTrue(testCase, any(strcmp(names, 'Horizontal Pixel Spacing')), strjoin(names, ', '));
+verifyTrue(testCase, any(strcmp(names, 'Vertical Pixel Spacing')), strjoin(names, ', '));
+verifyFalse(testCase, any(strcmp(names, 'X sample')) || any(strcmp(names, 'Y sample')), ...
+    strjoin(names, ', '));
 verifyEqual(testCase, numel(jsondecode(paramText(leaf, 'stimulus sequence.frame times'))), 3360);
 
 v1 = hartleyCalcV1();
@@ -894,7 +969,7 @@ function b = staLeaf(bodies)
 hits = {};
 leaves = allOf(bodies, 'receptive_field_calculation');
 for k = 1:numel(leaves)
-    if strcmp(char(leaves{k}.statement.variable.name), 'spike-triggered average')
+    if strcmp(char(leaves{k}.statement.variable.node), 'wikidata:Q7577165')
         hits{end+1} = leaves{k}; %#ok<AGROW>
     end
 end

@@ -31,6 +31,11 @@ function f = fitEntry(model, options)
 %         'Coefficients', {'amplitude', 12.1; 'preferred direction', 90}, ...
 %         'Goodness', struct('r2', 0.91));
 %
+%   'Shape' 'old' or 'new' (default did2.build.numericShape(), 'new' since
+%   step 2 of did-schema did_v2_numeric_shape_plan.md [one shape for measured
+%   numbers]): 'new' writes each coefficient {variable, value} as the list
+%   item {variable, numeric}; a coefficient given in either shape is accepted.
+%
 %   See also did2.build.list, did2.build.composite.
 
 arguments
@@ -41,7 +46,15 @@ arguments
     options.SampledFit = []
     options.Fields (1,1) struct = struct()
     options.Target (1,:) char = 'tuning_curve_calculation.tuning_curve.value.model_fit'
+    options.Shape (1,:) char = ''
     options.SchemaCache = []
+end
+shape = options.Shape;
+if isempty(shape)
+    shape = did2.build.numericShape();
+end
+if ~any(strcmp(shape, {'old', 'new'}))
+    error('did2:build:badOption', '''Shape'' is ''old'' or ''new''; got ''%s''.', shape);
 end
 
 dot = find(options.Target == '.', 1);
@@ -59,6 +72,13 @@ if iscell(coef) && ~isempty(coef)
         error('did2:build:typeMismatch', '''Coefficients'' as a cell is N x 2: {variable, value}.');
     end
     coef = struct('variable', coef(:, 1)', 'value', coef(:, 2)');
+end
+if strcmp(shape, 'new') && isstruct(coef) && isfield(coef, 'value') && ~isfield(coef, 'numeric')
+    % [one shape for measured numbers], plan section 8, answer 5: a
+    % coefficient is a list item, its number `numeric` (unit optional; a
+    % migrated fit states none)
+    [coef.numeric] = coef.value;
+    coef = rmfield(coef, 'value');
 end
 if ~isempty(coef);               s.coefficients = coef;               end
 if ~isempty(options.Goodness);   s.goodness = options.Goodness;       end

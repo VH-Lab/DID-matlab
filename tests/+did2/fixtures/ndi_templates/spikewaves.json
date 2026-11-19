@@ -1,0 +1,31 @@
+{
+	"document_class": {
+		"definition":						"$NDIDOCUMENTPATH\/apps\/spikeextractor\/spikewaves.json",
+		"validation":						"$NDISCHEMAPATH\/apps\/spikeextractor\/spikewaves_schema.json",
+		"class_name":						"spikewaves",
+		"property_list_name":					"spikewaves",
+		"class_version":					1,
+		"superclasses": [
+			{ "definition":				"$NDIDOCUMENTPATH\/base.json" },
+			{ "definition":				"$NDIDOCUMENTPATH\/epochid.json" },
+			{ "definition":				"$NDIDOCUMENTPATH\/app.json" }
+		]
+	},
+	"depends_on": [
+		{	"name": "extraction_parameters_id",
+			"value": "" 
+		},
+		{	"name": "element_id",
+			"value": "" 
+		}
+	],
+        "files": {
+                "file_list": [
+                        "spikewaves.vsw", 
+			"spiketimes.bin"
+                ]
+        },
+	"spikewaves": {
+		"extraction_name": ""
+	}
+}

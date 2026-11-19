@@ -1,6 +1,8 @@
 function tests = testRawV1RoundTripElementEpoch
 %TESTRAWV1ROUNDTRIPELEMENTEPOCH The v1 `element_epoch` read as raw v1, and the
-%   round trip of its pass-1 carrier (an `acquisition_epoch`).
+%   round trip of what pass 1 makes of it: the v1 document handed on unchanged
+%   ([retired classes leave V2], Jess Haley, 2026-10-25, step (1); its pass-1
+%   carrier was the retired `acquisition_epoch` until then).
 %
 %   Decided by Jess Haley, 2026-10-26 (did-schema
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1], [migration
@@ -9,7 +11,9 @@ function tests = testRawV1RoundTripElementEpoch
 %   document carry] (the epoch of a carried element is carried, carry-064).
 %   The carrier's dissolution ([device clocks on one epoch], [untied epochs
 %   keep the session anchor]) is the batch passes' (testEpochMint,
-%   testResolveEpochProbemap) and is not this round trip.
+%   testResolveEpochProbemap); the round trip of a DISSOLVED element_epoch,
+%   from the final batch, is testResolveEpochProbemap's
+%   testADissolved*ElementEpoch* tests.
 %
 %   THE v1 DOCUMENTS are built from NDI's element_epoch.json / epochid.json /
 %   base.json templates at the locked NDI-matlab `main` (3cb19a8) as
@@ -30,10 +34,16 @@ for k = 1:size(cases, 1)
     [label, v1] = cases{k, :};
     out = runRaw(v1);
     verifyEmpty(testCase, out.quarantine, label);
-    verifyEmpty(testCase, out.passthrough, [label ': carried']);
+    verifyEqual(testCase, numel(out.passthrough), 1, [label ': handed on, recorded as a passthrough']);
     verifyEqual(testCase, numel(out.migrated), 1, label);
-    verifyEqual(testCase, out.migrated{1}.className(), 'acquisition_epoch', label);
+    verifyEqual(testCase, out.migrated{1}.className(), 'element_epoch', label);
+    verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1', label);
+    verifyFalse(testCase, out.source_outputs(1).carried, [label ': handed on, not carried']);
+    emitted = out.migrated{1}.toStruct();
+    emitted.document_class = rmfield(emitted.document_class, 'schema_version');
+    verifyTrue(testCase, isequaln(emitted, v1), [label ': the handed-on document is not the v1 source']);
     r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyTrue(testCase, r.carried, label);
     verifyGreaterThan(testCase, r.fields_inspected, 0);
     verifyEmpty(testCase, r.lost, sprintf('%s: lost: %s', label, describeLost(r)));
     verifyEmpty(testCase, r.invented, sprintf('%s: invented: %s', label, strjoin(r.invented, ', ')));
@@ -75,6 +85,9 @@ verifyTrue(testCase, startsWith(d, '[carry-064] '), d);
 for k = 1:numel(out.migrated)
     verifyNotEqual(testCase, out.migrated{k}.className(), 'acquisition_epoch');
 end
+% carried, not merely handed on: the batch passes do not read it
+so = out.source_outputs(strcmp({out.source_outputs.id}, 'ee_unit'));
+verifyTrue(testCase, isscalar(so) && so.carried, 'its epoch is not recorded as carried');
 end
 
 % ===================== helpers =========================================

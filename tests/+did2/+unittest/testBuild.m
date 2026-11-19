@@ -410,13 +410,24 @@ end
 
 function testValueCellVoltage(testCase)
 [mV, written] = sourceUnit('om:millivolt', 'millivolt', 'mV');
+% the old numeric shape: one cell per reading
 v = did2.build.valueCell('voltage', [0.012 0.013], 'SourceValue', [12 13], ...
-    'SourceUnit', mV, 'Approximate', false);
+    'SourceUnit', mV, 'Approximate', false, 'Shape', 'old');
 verifyEqual(testCase, size(v), [1 2]);
 verifyEqual(testCase, fieldnames(v)', {'volts', 'source_unit', 'source_value', 'approximate'}, ...
     'cell fields come out in the schema''s declared order');
 verifyEqual(testCase, [v.volts], [0.012 0.013]);
 verifyEqual(testCase, {v.source_unit}, {written, written});
+% the new shape (the default since step 2 of did-schema
+% did_v2_numeric_shape_plan.md): ONE cell whose canonical field and
+% source_numeric are arrays, one source_unit for the series
+v = did2.build.valueCell('voltage', [0.012 0.013], 'SourceValue', [12 13], ...
+    'SourceUnit', mV, 'Approximate', false);
+verifyEqual(testCase, size(v), [1 1]);
+verifyEqual(testCase, v.volts, [0.012 0.013]);
+verifyEqual(testCase, v.source_numeric, [12 13]);
+verifyEqual(testCase, v.source_unit, written);
+verifyFalse(testCase, isfield(v, 'source_value'));
 end
 
 function testValueCellLeavesOutWhatWasNotGiven(testCase)
@@ -472,8 +483,8 @@ end
 function testRegularCovariate(testCase)
 c = did2.build.covariate('time', 0, 'Unit', 'second', 'Origin', 0, 'Spacing', 0.001);
 verifyEqual(testCase, c.along, 0);
-verifyEqual(testCase, c.origin.value, 0);
-verifyEqual(testCase, c.spacing.value, 0.001);
+verifyEqual(testCase, c.origin, 0, 'the new numeric shape: origin and spacing are flat numbers');
+verifyEqual(testCase, c.spacing, 0.001);
 verifyEqual(testCase, c.unit.name, 'second');
 verifyFalse(testCase, isfield(c, 'quantity') || isfield(c, 'term') || isfield(c, 'regular') ...
     || isfield(c, 'n'), 'AMENDMENT 6 removed `regular` and the entry''s `n`');
@@ -483,8 +494,9 @@ function testCovariateValueForms(testCase)
 c = did2.build.covariate('channel', 1, 'Term', {'A1', 'A2'});
 verifyEqual(testCase, {c.term.name}, {'A1', 'A2'});
 c = did2.build.covariate('depth', 0, 'Value', [1 2 3], 'SourceValue', [1000 2000 3000], 'Unit', 'meter');
-verifyEqual(testCase, c.quantity.value, [1 2 3]);
-verifyEqual(testCase, c.quantity.source_value, [1000 2000 3000]);
+verifyEqual(testCase, c.numeric, [1 2 3], 'the new numeric shape: numeric, not quantity.value');
+verifyEqual(testCase, c.source_numeric, [1000 2000 3000]);
+verifyFalse(testCase, isfield(c, 'quantity'));
 c = did2.build.covariate('trial number', 0, 'Count', [1 2 3]);
 verifyEqual(testCase, c.count, [1 2 3]);
 c = did2.build.covariate('note', 0, 'Text', {'a', 'b'});
@@ -500,7 +512,8 @@ verifyFalse(testCase, isfield(c, 'document'));
 verifyError(testCase, @() did2.build.covariate('encounter', 0, 'Document', 0), ...
     ?MException);   % not an option
 c = did2.build.covariate('colour', 0, 'Matrix', ones(4, 3));
-verifyEqual(testCase, c.matrix, ones(4, 3));
+verifyEqual(testCase, c.numeric, ones(4, 3), 'the new numeric shape: an array at each position is numeric');
+verifyFalse(testCase, isfield(c, 'matrix'));
 end
 
 function testCovariateRules(testCase)
@@ -567,7 +580,7 @@ verifyError(testCase, @() build(did2.build.covariate('good', [1 0], 'Logical', t
 build(did2.build.covariate('good', [1 0], 'Logical', true(2, 3)));
 % matrix: a whole array at each position -- leading extents, then its shape
 doc = build(did2.build.covariate('rgb', 1, 'Matrix', ones(2, 3)));
-verifyEqual(testCase, size(doc.data.covariates.matrix), [2 3]);
+verifyEqual(testCase, size(doc.data.covariates.numeric), [2 3]);
 verifyError(testCase, @() build(did2.build.covariate('rgb', 1, 'Matrix', ones(3, 3))), ...
     'did2:build:ruleViolated');
 % key: along one dimension (n checked against the other document in batch)
@@ -605,8 +618,8 @@ covs = did2.build.list( ...
     did2.build.covariate('channel', 1, 'Value', [1 2]));
 verifyEqual(testCase, size(covs), [1 2]);
 verifyEmpty(testCase, covs(2).origin, 'absent fields are [] -- the schema cache''s absent marker');
-verifyEmpty(testCase, covs(1).quantity);
-verifyEqual(testCase, covs(2).quantity.value, [1 2]);
+verifyEmpty(testCase, covs(1).numeric);
+verifyEqual(testCase, covs(2).numeric, [1 2]);
 verifyEqual(testCase, size(did2.build.list()), [0 0]);
 end
 
@@ -616,11 +629,14 @@ function testCondition(testCase)
 c = did2.build.condition('trial type', 'Term', 'catch');
 verifyEqual(testCase, c.term.name, 'catch');
 q = did2.build.condition('OD600', 'Quantity', 0.4, 'SourceValue', '0.40');
-verifyEqual(testCase, q.quantity.value, 0.4);
-verifyEqual(testCase, q.quantity.source_value, '0.40', 'the source text is kept verbatim');
+verifyEqual(testCase, q.numeric, 0.4);
+verifyEqual(testCase, q.source_numeric, '0.40', 'the source text is kept verbatim');
 v = did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', 0.4);
-verifyEqual(testCase, v.quantity.value, 0.4, '''Value'' is the same option as ''Quantity''');
-verifyEqual(testCase, v.quantity.source_value, '0.4', 'a numeric SourceValue is written as text');
+verifyEqual(testCase, v.numeric, 0.4, '''Value'' is the same option as ''Quantity''');
+% [numeric shape details] (1), Jess Haley, 2026-11-17: the source's own type
+verifyEqual(testCase, v.source_numeric, 0.4, 'a numeric SourceValue stays a number');
+o = did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', 0.4, 'Shape', 'old');
+verifyEqual(testCase, o.quantity.source_value, '0.4', 'the old shape writes it as text');
 n = did2.build.condition('trial count', 'Count', 12);
 verifyEqual(testCase, n.count, 12);
 t = did2.build.condition('protocol', 'Text', 'free run');
@@ -635,8 +651,8 @@ end
 
 function testParameter(testCase)
 p = did2.build.parameter('threshold', 'Value', 4.5, 'SourceValue', '4.5', 'Unit', 'volt');
-verifyEqual(testCase, p.quantity.value, 4.5);
-verifyEqual(testCase, p.quantity.source_value, '4.5');
+verifyEqual(testCase, p.numeric, 4.5);
+verifyEqual(testCase, p.source_numeric, '4.5');
 verifyFalse(testCase, isfield(p, 'value'));
 a = did2.build.parameter('threshold', 'Value', 4.5, 'Approximate', true);
 verifyTrue(testCase, a.approximate);
@@ -925,8 +941,8 @@ chemA = did2.build.document('chemical', struct('value', struct('substance', ...
 chemB = did2.build.document('chemical', struct('value', struct('substance', ...
     did2.build.term('EFO:0002677', 'saline'))), 'SessionId', sid);
 form = did2.build.document('formulation', struct('value', struct('ingredients', ...
-    {{struct('concentration', struct('source_value', NaN)), ...
-      struct('concentration', struct('source_value', NaN))}})), ...
+    {{struct('concentration', struct('molar', 1e-3, 'source_value', 1e-3)), ...
+      struct('concentration', struct('molar', 1e-3, 'source_value', 1e-3))}})), ...
     'SessionId', sid, 'Edges', struct('ingredient_id', ...
     {{chemA.base.id, chemB.base.id}}));
 perMass = struct('amount_per_body_mass', struct('grams_per_gram', 1e-6, ...
@@ -1045,7 +1061,7 @@ doc = did2.build.statement('observation', newId(), 'voltage', ...
     'TimeReferenceIds', {newId()}, 'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage');
 verifyEqual(testCase, doc.interaction.method.term.name, 'whole-cell patch clamp');
 verifyEqual(testCase, numel(doc.interaction.method.parameters), 2);
-verifyEqual(testCase, doc.interaction.method.parameters(1).quantity.value, 100);
+verifyEqual(testCase, doc.interaction.method.parameters(1).numeric, 100);
 verifyFalse(testCase, isfield(doc.interaction, 'method_parameters'));
 % a term alone, and settings alone, are each a block
 t = did2.build.statement('observation', newId(), 'voltage', ...
@@ -1148,7 +1164,7 @@ rel = did2.build.directedRelation(newId(), newId(), did2.build.term('', 'part_of
     'MethodParameters', did2.build.parameter('threshold', 'Value', 0.5), ...
     'SessionId', testCase.TestData.sid);
 verifyEqual(testCase, rel.relation.method.term.name, 'image registration');
-verifyEqual(testCase, rel.relation.method.parameters.quantity.value, 0.5);
+verifyEqual(testCase, rel.relation.method.parameters.numeric, 0.5);
 u = did2.build.undirectedRelation({newId(), newId()}, did2.build.term('', 'same_as'), ...
     'Method', 'manual curation', 'SessionId', testCase.TestData.sid);
 verifyEqual(testCase, u.relation.method.term.name, 'manual curation');
@@ -1224,11 +1240,6 @@ verifyError(testCase, @() c.validateDocument(bad), 'did2:validation:badValueKind
 % the kind's own block must be there
 bad = rmfield(doc, 'temperature');
 verifyError(testCase, @() c.validateDocument(bad), 'did2:validation:missingClassBlock');
-% a read path that re-stamps the chain (ensureClassBlocks) keeps the kind
-again = did2.convert.ensureClassBlocks(doc, []);
-verifyEqual(testCase, {again.document_class.superclasses.class_name}, ...
-    {doc.document_class.superclasses.class_name});
-verifyTrue(testCase, isfield(again, 'temperature'));
 % a named calculator carries its kind in its own chain, so it takes none
 verifyEqual(testCase, c.documentAncestors('tuning_curve_calculation', ''), ...
     c.superclasses('tuning_curve_calculation'));
@@ -1420,8 +1431,14 @@ rel = did2.build.relativeTimeReference(newId(), 'Clock', 'dev_local_time', ...
 s = rel.relative_time_reference.value.start;
 verifyEqual(testCase, s.tolerance, struct('minus', 60, 'plus', 60));
 verifyFalse(testCase, s.approximate, 'an explicit Approximate is kept');
-c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1]);
+% one row per cell is the old numeric shape; the new shape's series has one
+% tolerance ([one shape for measured numbers], plan section 8, answer 4)
+c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1], 'Shape', 'old');
 verifyEqual(testCase, c(2).tolerance, struct('minus', 0, 'plus', 0.1), 'one row per cell');
+verifyError(testCase, @() did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1]), ...
+    'did2:build:sizeMismatch');
+c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05]);
+verifyEqual(testCase, c.tolerance, struct('minus', 0.05, 'plus', 0.05), 'one for the series');
 verifyFalse(testCase, isfield(rel.relative_time_reference.value, 'duration'));
 verifyError(testCase, @() did2.build.absoluteTimeReference('2024-03-01T09:00:00.000Z', ...
     'Tolerance', [-1 0], 'SessionId', sid), 'did2:build:badTolerance');

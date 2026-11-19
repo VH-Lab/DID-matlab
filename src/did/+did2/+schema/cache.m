@@ -1025,7 +1025,7 @@ classdef cache < handle
             %   INFO.fieldsByBlock is a containers.Map, a handle: the same
             %   map is handed to every caller, so callers must read it and
             %   never modify it. None does (checked 2026-10-06: cache.m,
-            %   v1_to_v2.m ensureClassBlocks, did2.build.document).
+            %   did2.build.document).
             arguments
                 obj
                 className (1,:) char
@@ -1634,7 +1634,9 @@ classdef cache < handle
             %                           as retired, raising
             %                           did2:build:retiredClass. ARMED;
             %                           DID_ENFORCE_RETIRED_CLASSES=0
-            %                           disarms. did2.convert turns it off.
+            %                           disarms. did2.convert leaves it
+            %                           as set ([retired classes leave V2]
+            %                           step 4).
             %
             %   BOTH ARE NOW ARMED (2026-08-10, team's call) -- and they were
             %   armed on OPPOSITE evidence, which must not be flattened out.
@@ -1830,8 +1832,9 @@ classdef cache < handle
                     ... where one is recorded; reading v1 and the generic
                     ... migration are not affected." ARMED BY DEFAULT, like
                     ... TermRegistry. Only did2.build reads it; did2.convert
-                    ... turns it off while it migrates (the generic migration
-                    ... is not affected). A schema with no
+                    ... leaves it as set (the generic migration's exception
+                    ... was removed by [retired classes leave V2] step 4,
+                    ... Jess Haley, 2026-10-25). A schema with no
                     ... class_disposition_meta.json refuses nothing.
                     ... DID_ENFORCE_RETIRED_CLASSES=0 turns it off.
                     'RetiredClasses', ...
@@ -2193,6 +2196,10 @@ classdef cache < handle
             % matrixPathsIn - the `matrix` fields among FIELDDEFS, recursively,
             %   each as PREFIX followed by its field names.
             paths = {};
+            % a list item's new-shape `numeric` (and a covariate's
+            % `source_numeric`) is a `matrix` too ([one shape for measured
+            % numbers], did2.schema.numericShapeFields)
+            fieldDefs = did2.schema.numericShapeFields(fieldDefs);
             for i = 1:numel(fieldDefs)
                 fdef = fieldDefs{i};
                 if ~isstruct(fdef) || ~isfield(fdef, 'name') || ~isfield(fdef, 'type')
@@ -2776,32 +2783,39 @@ classdef cache < handle
             %   exactly one canonical value; it may be absent only when the
             %   document's `needs_info` names it"; since [gap accepted when the
             %   report lists it], 2026-11-01, the run's migration report lists
-            %   it instead). Built here for the part
-            %   no document DID-matlab's migrators write today would fail
-            %   (missingCanonical): a cell of a value class with a
-            %   `source_unit` and ONE canonical slot (quantity_list_meta.json
-            %   `canonicals`: the slots other than source_unit, source_value,
-            %   approximate and tolerance) that states a unit and a finite
-            %   source_value but no canonical is refused, unless EXCUSED (the
-            %   paths the migration report lists as gaps) names a field
-            %   under the cell (its canonical). An entry naming the cell
-            %   itself never gets here: the cell is given, and
+            %   it instead). A cell of a value class with a `source_unit`
+            %   and one or more canonical slots (the slots other than
+            %   source_unit, source_value, approximate and tolerance; a
+            %   concentration has several: molar, grams_per_liter, ...,
+            %   osmolar) that states a source_value (a number, finite or
+            %   not) but no canonical (none of its canonical slots) is
+            %   refused, unless EXCUSED (the paths the migration report lists
+            %   as gaps) names a field under the cell (its canonical:
+            %   'length.value.meters'), or, for an element of a value array,
+            %   a field under the array's own path with no index ([waveform
+            %   unit gap once], Jess Haley, 2026-11-03: "a value with no
+            %   stated unit is one gap in the migration report, however many
+            %   samples it holds"). This covers a cell stating a unit and a
+            %   finite number, a cell with NO unit (neuron_extracellular's
+            %   mean waveform, jMeasurementFold, a probe_geometry with no
+            %   unit: jQuantity names the gap) and a cell whose number is NOT
+            %   FINITE (T14: missing is not a value). An entry naming the
+            %   cell itself never gets here: the cell is given, and
             %   did2.schema.reportedGaps refuses a gap for a field the
-            %   document gives (badGap, [missing facts are needs
-            %   info]). A canonical holding NaN is present here.
-            %   NOT CHECKED HERE, each because a writer of today would fail:
-            %     - a cell with NO unit (a source number with no unit; the
-            %       decision wants a gap, but neuron_extracellular's
-            %       mean waveform, jMeasurementFold and a probe_geometry
-            %       with no unit write source_value alone);
-            %     - a cell of several canonicals (concentration, score):
-            %       resolveDeferredBaths writes a bath's osmolarity, and a
-            %       concentration in a unit other than Molar, with no
-            %       canonical; virus_injection's 'dilution' too (a team
-            %       question, jTreatmentBodies); and "exactly one" of
-            %       several is G38's;
-            %     - a non-finite source_value (jQuantity writes no
-            %       canonical for NaN; T14 says missing is not a value).
+            %   document gives (badGap, [missing facts are needs info]). A
+            %   canonical holding NaN is present here.
+            %   A cell of SEVERAL canonical slots is checked the same way
+            %   since [bath concentration prefixes convert to molar] (Jess
+            %   Haley, 2026-11-12): resolveDeferredBaths writes a bath
+            %   concentration in a prefixed molar unit (mM) with its `molar`,
+            %   carries one whose unit it cannot read (carry-155), and writes
+            %   an osmolarity with its `osmolar` or lists the gap. A gap for
+            %   such a cell names '<cell>.canonical' (jDoseBodies: nothing
+            %   says which slot) or the slot itself; either is a field under
+            %   the cell. Whether a cell fills MORE than one slot is not
+            %   checked here.
+            %   NOT CHECKED HERE:
+            %     - a cell stating a unit and no number at all.
             %   Nor which units a cell admits ([allowed units are closed
             %   source_unit lists]): that is the binding check's.
             if nargin < 6
@@ -2823,6 +2837,16 @@ classdef cache < handle
             if ~strict && ~obj.holdsValueCell(subs)
                 return;   % nothing below this structure is a value cell
             end
+            % [one shape for measured numbers] (Jess Haley, 2026-11-17,
+            % did-schema did_v2_numeric_shape_plan.md), step 1: a value cell
+            % is read in either shape -- `source_value` or `source_numeric`;
+            % a series as cells of one number each, or as ONE cell whose
+            % canonical field and source_numeric are arrays. The new fields are
+            % declared by did2.schema.numericShapeFields, not by the schema
+            % JSON (which still describes the old shape until step 3).
+            parentName = '';
+            if isfield(fieldDef, 'name'); parentName = char(fieldDef.name); end
+            [subs, shapeKind] = did2.schema.numericShapeFields(subs, parentName);
             if isstruct(value)
                 elems = num2cell(reshape(value, 1, []));
             elseif iscell(value)
@@ -2892,65 +2916,102 @@ classdef cache < handle
                              'cell), got %d.'], subPath, typeName, numel(v));
                     end
                 end
+                if strict && strcmp(shapeKind, 'cell')
+                    obj.seriesShape(el, subs, elPath, typeName, numel(elems));
+                end
+            end
+        end
+
+        function seriesShape(~, el, subs, elPath, typeName, nCells)
+            % seriesShape - raise did2:validation:quantityShape when the value
+            %   cell EL mixes the two numeric shapes ([one shape for measured
+            %   numbers], Jess Haley, 2026-11-17, plan section 8, answer 4):
+            %   the old shape is an array of cells of one number each, the new
+            %   one is ONE cell whose canonical field (and source_numeric) is
+            %   an array (NCELLS is how many cells the value holds); and a cell
+            %   states what the source wrote once, as source_value (old) or
+            %   source_numeric (new). Which fields are a series is
+            %   did2.schema.numericShapeFields' `series` mark.
+            if isfield(el, 'source_value') && isfield(el, 'source_numeric')
+                error('did2:validation:quantityShape', ...
+                    ['"%s" is a %s value cell giving both source_value (old ' ...
+                     'shape) and source_numeric (new shape); the source''s ' ...
+                     'number has one place.'], elPath, typeName);
+            end
+            for j = 1:numel(subs)
+                d = subs{j};
+                if ~isfield(d, 'series') || ~d.series
+                    continue;
+                end
+                name = char(d.name);
+                if ~isfield(el, name) || isscalar(el.(name)) || isempty(el.(name))
+                    continue;
+                end
+                if nCells > 1
+                    error('did2:validation:quantityShape', ...
+                        ['"%s.%s" holds %d numbers in a %s value of %d cells: a ' ...
+                         'series is one cell of arrays (new shape) or cells of ' ...
+                         'one number each (old shape), not both.'], ...
+                        elPath, name, numel(el.(name)), typeName, nCells);
+                end
+                if isfield(el, 'source_value') && ~isempty(el.source_value)
+                    error('did2:validation:quantityShape', ...
+                        ['"%s.%s" is a series (new shape), so what the source ' ...
+                         'wrote is source_numeric, not source_value (in a %s ' ...
+                         'value cell).'], elPath, name, typeName);
+                end
             end
         end
 
         function missingCanonical(~, el, names, elPath, typeName, excused)
             % missingCanonical - raise did2:validation:quantityShape when the
-            %   value cell EL (of a class whose fields are NAMES) states a
-            %   unit and a finite source_value but leaves its one canonical
-            %   slot empty, and the migration report's gaps (EXCUSED) name
-            %   neither the cell nor a field under it ([canonical absent only
-            %   as needs info], Decided by Jess Haley, 2026-10-30; the scope
-            %   is in validateQuantityCells' header).
+            %   value cell EL (of the class TYPENAME, whose fields are NAMES)
+            %   states a source_value but leaves its canonical slot empty (or,
+            %   for a class of several canonical slots, every one of them),
+            %   and the migration report's gaps (EXCUSED) name neither a field
+            %   under the cell nor, for an element of a value array, a field
+            %   under the array ([canonical absent only as needs info],
+            %   Decided by Jess Haley, 2026-10-30; the scope is in
+            %   validateQuantityCells' header).
             if ~any(strcmp(names, 'source_unit'))
                 return;
             end
             canon = setdiff(names, {'source_unit', 'source_value', ...
-                'approximate', 'tolerance'}, 'stable');
-            if numel(canon) ~= 1
-                return;   % several canonicals: not checked here (header)
-            end
-            u = [];
-            if isfield(el, 'source_unit'); u = el.source_unit; end
-            stated = false;
-            if isstruct(u) && isscalar(u)
-                for f = {'node', 'name'}
-                    if isfield(u, f{1}) && ~isempty(strtrim(char(string(u.(f{1})))))
-                        stated = true;
-                    end
-                end
-            elseif ischar(u) || (isstring(u) && isscalar(u))
-                stated = ~isempty(strtrim(char(u)));
-            end
-            if ~stated
-                return;   % no unit: not checked here (header)
+                'source_numeric', 'approximate', 'tolerance'}, 'stable');
+            if isempty(canon)
+                return;
             end
             sv = [];
             if isfield(el, 'source_value'); sv = el.source_value; end
-            if ~(isnumeric(sv) && isscalar(sv) && isfinite(sv))
-                return;   % no finite number: not checked here (header)
+            % the new shape's name for it ([one shape for measured numbers])
+            if isempty(sv) && isfield(el, 'source_numeric'); sv = el.source_numeric; end
+            if ~(isnumeric(sv) && ~isempty(sv))
+                return;   % no number stated: not checked here (header)
             end
-            if isfield(el, canon{1}) && ~isempty(el.(canon{1}))
-                return;   % the canonical is there (NaN included)
+            for c = 1:numel(canon)
+                if isfield(el, canon{c}) && ~isempty(el.(canon{c}))
+                    return;   % a canonical is there (NaN included)
+                end
             end
             % gap paths write (k) after a struct-array field even for
             % one element; this path does not, so (1) is read as no index
             norm = @(p) regexprep(char(p), '\(1\)', '');
             here = norm(elPath);
+            % an element of a value array: one gap for the whole value
+            whole = regexprep(char(elPath), '\(\d+\)$', '');
             for k = 1:numel(excused)
                 e = norm(excused{k});
-                if strcmp(e, here) || startsWith(e, [here '.'])
+                if strcmp(e, here) || startsWith(e, [here '.']) ...
+                        || startsWith(char(excused{k}), [whole '.'])
                     return;
                 end
             end
             error('did2:validation:quantityShape', ...
-                ['"%s" is a %s value cell stating a source_value and a ' ...
-                 'source_unit but no canonical "%s". A quantity''s ' ...
-                 'canonical may be absent only when the run''s ' ...
-                 'migration report lists it ([canonical absent only as needs ' ...
-                 'info], Jess Haley, 2026-10-30).'], ...
-                elPath, typeName, canon{1});
+                ['"%s" is a %s value cell stating a source_value but no ' ...
+                 'canonical "%s". A quantity''s canonical may be absent ' ...
+                 'only when the run''s migration report lists it ' ...
+                 '([canonical absent only as needs info], Jess Haley, ' ...
+                 '2026-10-30).'], elPath, typeName, strjoin(canon, '" or "'));
         end
 
         function tf = holdsValueCell(obj, defs)
@@ -3231,6 +3292,19 @@ classdef cache < handle
             value = block.(fieldName);
             fieldType = char(fieldDef.type);
             qualifiedName = sprintf('%s.%s', blockClass, fieldName);
+            if strcmp(fieldType, 'boolean') && strcmp(fieldName, 'value') && isstruct(value)
+                % logical's `value`: the old bare true/false, or the new
+                % block {logical: true/false} ([one shape for measured
+                % numbers], Jess Haley, 2026-11-17, plan section 3), whose
+                % one field is checked as the bare value was
+                if ~isscalar(value) || ~isequal(fieldnames(value), {'logical'})
+                    error('did2:validation:typeMismatch', ...
+                        'Field "%s" must be boolean, or the block {logical: boolean}.', ...
+                        qualifiedName);
+                end
+                value = value.logical;
+                qualifiedName = [qualifiedName '.logical'];
+            end
             obj.validateTypeShape(value, fieldType, qualifiedName);
 
             mustBeScalar   = logical(fieldDef.mustBeScalar);

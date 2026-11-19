@@ -13,9 +13,11 @@ function out = mintId(action, arg2)
 %       what the document is) minted for the SOURCE of the innermost open
 %       context (its key). The n-th id of one ROLE for one source in one
 %       context is a pure function of (source, ROLE, n). With no context open,
-%       or a context whose key is empty, it is did.ido.unique_id() -- random,
-%       exactly as before. So a caller outside the migration (an NDI v2 writer
-%       calling did2.build.document) is unchanged.
+%       or a context whose key is empty, there is no source. A caller outside
+%       a migration run (an NDI v2 writer calling did2.build.document, a
+%       migrator called on its own) gets did.ido.unique_id() -- random,
+%       exactly as before. From the migration it is an error,
+%       did2:convert:mintId:noSource (NO RANDOM ID INSIDE THE MIGRATION, below).
 %   ID = did2.convert.mintId(ROLE, SOURCEID)
 %       the same, for a named SOURCEID (the v1 or migrated document the new
 %       one is minted for), counted in the innermost context; a batch pass
@@ -32,7 +34,10 @@ function out = mintId(action, arg2)
 %   N = did2.convert.mintId('-depth');  did2.convert.mintId('-popto', N)
 %       how many contexts are open; close down to N (for an onCleanup).
 %   did2.convert.mintId('-reset')
-%       close every context.
+%       close every context (and clear '-simulateNoHash').
+%   did2.convert.mintId('-simulateNoHash', TF)
+%       TF true: behave as if no SHA-256 were available (for a test of
+%       did2:convert:mintId:noHash).
 %
 %   THE FORMAT is did.ido's (did.ido.isvalid): 16 lowercase hex digits, '_',
 %   16 lowercase hex digits. The second half is the first 16 hex digits of
@@ -41,14 +46,36 @@ function out = mintId(action, arg2)
 %   there, so a minted document sorts beside its source), else the next 16 hex
 %   digits of the same hash.
 %
+%   NO RANDOM ID INSIDE THE MIGRATION ([migration reliability practices] (b):
+%   "two runs on the same input are identical"). The two ways this function
+%   had to a random id are errors when the migration reaches them, so the
+%   claim holds by construction rather than by a census:
+%     did2:convert:mintId:noSource  a ROLE-only call with no source key,
+%         either in a context opened with an empty key (a batch pass's
+%         run-wide context, or contentId's for a body with no mint key) while
+%         a did2.convert function other than this one is on the call stack,
+%         or with no context open while a batch pass (a did2.convert function
+%         whose header declares BATCH-PASS-) is on it. A migration mint names
+%         its source: mintId(ROLE, SOURCEID), a context keyed on it (v1_to_v2
+%         keys one on every source, did2.convert.mintKey; resolveClockAlignment
+%         and epochMint key one on each source whose migrator they call), or
+%         did2.convert.contentId for a source that states no id (DID-matlab
+%         #453, #457).
+%     did2:convert:mintId:noHash    no SHA-256 (no Java), so no id can be
+%         derived. It was a random id and a warning.
+%
 %   NOT CHANGED: a document's id that the migration PRESERVES (the v1 id) is
 %   not minted here. creation_timestamp is outside this practice.
 %
-%   See also did.ido.unique_id, did2.convert.v1_to_v2, did2.build.document.
+%   See also did.ido.unique_id, did2.convert.v1_to_v2, did2.build.document,
+%            did2.convert.contentId.
 
-persistent stack
+persistent stack noHash
 if isempty(stack)
     stack = struct('key', {}, 'counts', {});
+end
+if isempty(noHash)
+    noHash = false;
 end
 switch char(action)
     case '-push'
@@ -69,7 +96,11 @@ switch char(action)
         out = numel(stack);
     case '-reset'
         stack = struct('key', {}, 'counts', {});
+        noHash = false;
         out = 0;
+    case '-simulateNoHash'
+        noHash = logical(arg2);
+        out = noHash;
     case '-depth'
         out = numel(stack);
     otherwise
@@ -80,6 +111,14 @@ switch char(action)
             src = stack(end).key;
         end
         if isempty(src)
+            if calledFromTheMigration(~isempty(stack))
+                error('did2:convert:mintId:noSource', ...
+                    ['did2.convert.mintId("%s") was called by the migration with no ' ...
+                     'source to derive the id from (no context, or a context opened ' ...
+                     'with an empty key). A random id would make two runs on the same ' ...
+                     'input differ: name the source (mintId(ROLE, SOURCEID), a context ' ...
+                     'keyed on it, or did2.convert.contentId).'], role);
+            end
             out = did.ido.unique_id();
             return;
         end
@@ -92,15 +131,62 @@ switch char(action)
             end
             counts(counter) = n; %#ok<NASGU>
         end
-        out = derive(src, sprintf('%s#%d', role, n));
+        out = derive(src, sprintf('%s#%d', role, n), noHash);
 end
 end
 
-function id = derive(key, role)
-h = hashHex(sprintf('%s|%s', key, role));
-if isempty(h)
-    id = did.ido.unique_id();   % no hash available: never a fixed id
+function tf = calledFromTheMigration(contextOpen)
+% CONTEXTOPEN (a context opened with an empty key): a function of the
+% did2.convert package other than this one is on the call stack. No context:
+% a batch pass (a function at the top of the did2.convert package whose
+% header declares BATCH-PASS-) is on the call stack. A migrator called on its
+% own, or an NDI v2 writer, is neither.
+tf = false;
+st = dbstack('-completenames');
+for k = 1:numel(st)
+    f = strrep(st(k).file, '\', '/');
+    if ~contains(f, '/+did2/+convert/') || endsWith(f, '/+did2/+convert/mintId.m')
+        continue;
+    end
+    if contextOpen || isBatchPass(f)
+        tf = true;
+        return;
+    end
+end
+end
+
+function tf = isBatchPass(file)
+% FILE is directly in the did2.convert package and declares BATCH-PASS-
+persistent memo
+if isempty(memo)
+    memo = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+end
+if isKey(memo, file)
+    tf = memo(file);
     return;
+end
+[folder, ~] = fileparts(file);
+tf = endsWith(strrep(folder, '\', '/'), '/+did2/+convert');
+if tf
+    try
+        tf = contains(fileread(file), 'BATCH-PASS-');
+    catch
+        tf = false;
+    end
+end
+memo(file) = tf;
+end
+
+function id = derive(key, role, noHash)
+h = '';
+if ~noHash
+    h = hashHex(sprintf('%s|%s', key, role));
+end
+if isempty(h)
+    error('did2:convert:mintId:noHash', ...
+        ['No SHA-256 (Java) is available, so the id minted for source "%s", ' ...
+         'role "%s" cannot be derived; a random id would make two runs on the ' ...
+         'same input differ.'], key, role);
 end
 if did.ido.isvalid(key)
     first = lower(key(1:16));
@@ -112,7 +198,6 @@ end
 
 function hex = hashHex(text)
 %HASHHEX SHA-256 of TEXT (UTF-8) as 64 lowercase hex digits; '' when no JVM.
-persistent warned
 try
     md = java.security.MessageDigest.getInstance('SHA-256');
     bytes = md.digest(unicode2native(text, 'UTF-8'));
@@ -120,11 +205,5 @@ try
     hex = char(hex);
 catch
     hex = '';
-    if isempty(warned)
-        warned = true;
-        warning('did2:convert:mintId:noHash', ...
-            ['No SHA-256 (Java) available: minted ids are random, so two runs ' ...
-             'on the same input will not give the same ids.']);
-    end
 end
 end

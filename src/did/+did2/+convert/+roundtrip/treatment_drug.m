@@ -77,7 +77,9 @@ if ~isempty(onset)
     if ok && (ischar(stop) || (isstring(stop) && isscalar(stop))) && ~isempty(stop)
         block.administration_offset_time = char(stop);
     end
-    [d, ok] = getIn(p.anchor, 'absolute_time_reference', 'value', 'duration', 'source_value');
+    % source_value, or the new numeric shape's source_numeric (a duration is
+    % a `time` value; [numeric shape details] (2), Jess Haley, 2026-11-17)
+    [d, ok] = cellSource(getIn(p.anchor, 'absolute_time_reference', 'value', 'duration'));
     if ok && isnumeric(d) && isscalar(d)
         block.administration_duration = d;
     end

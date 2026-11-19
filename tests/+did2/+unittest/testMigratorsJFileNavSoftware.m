@@ -126,12 +126,22 @@ assertTrue(testCase, isfield(notes, 'v1_name_not_kept'), 'the name is counted');
 verifyEqual(testCase, notes.v1_name_not_kept.count, 1);
 verifyEqual(testCase, notes.v1_name_not_kept.by_class.filenavigator, 1);
 verifyTrue(testCase, any(strcmp(notes.v1_name_not_kept.distinct_details, 'intan1_nav')), 'DETAIL is the name');
-% a nameless navigator counts nothing
+% the summary states the count with its denominator
+V = out.summary.v1_name;
+verifyEqual(testCase, V.sources_inspected, 1, 'the denominator');
+verifyEqual(testCase, V.with_v1_name, 1);
+verifyEqual(testCase, V.statement_carried, 0);
+verifyEqual(testCase, V.not_kept, 1);
+verifyEqual(testCase, V.not_kept_by_class.filenavigator, 1);
+% a nameless navigator counts nothing, and says so with its denominator
 v1 = navBody('{ ''#\.rhd\>'' }', '', '');
 v1.base.name = '';
 out = runJ(v1);
 verifyFalse(testCase, isfield(out.summary, 'migration_notes') ...
     && isfield(out.summary.migration_notes, 'v1_name_not_kept'));
+verifyEqual(testCase, out.summary.v1_name.sources_inspected, 1);
+verifyEqual(testCase, out.summary.v1_name.with_v1_name, 0);
+verifyEqual(testCase, out.summary.v1_name.not_kept, 0);
 end
 
 function testFilenavigatorSinglePatternStaysAList(testCase)

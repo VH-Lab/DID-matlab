@@ -93,7 +93,7 @@ if ~isempty(onset)
     block.virus_AdministrationDate = onset;
 end
 if ~isempty(p.age)
-    days = numberOf(getIn(p.age, 'time', 'value', 'source_value'));
+    days = numberOf(cellSource(getIn(p.age, 'time', 'value')));
     if isempty(days) && any(strcmp('time.value', did2.schema.reportedGaps(p.age)))
         % [postnatal day 0 not stated] (Jess Haley, 2026-11-01): the migrator
         % names the age as a gap only for v1's 0, the template default

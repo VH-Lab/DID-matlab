@@ -73,18 +73,12 @@ for k = 1:numel(bodies)
     f = edgeIds(b, 'coordinate_system_id');
     if isempty(f); f = {''}; end
     frames = [frames, f(1)]; %#ok<AGROW>
-    values = asCell(getIn(b, 'length', 'value'));
-    col = zeros(numel(values), 1);
-    for j = 1:numel(values)
-        x = numberOf(getIn(values{j}, 'source_value'));
-        if isempty(x)
-            spec.unplaced{end+1} = sprintf('%s value %d states no source value', vname, j);
-            x = NaN;
-        end
-        col(j) = x;
-        [unode, ~] = termParts(getIn(values{j}, 'source_unit'));
-        units{end+1} = unode; %#ok<AGROW>
+    % one reading per cell (old numeric shape) or one cell of readings (new)
+    [col, readingUnits, missing] = cellReadings(getIn(b, 'length', 'value'));
+    for j = reshape(find(missing), 1, [])
+        spec.unplaced{end+1} = sprintf('%s value %d states no source value', vname, j);
     end
+    units = [units, readingUnits]; %#ok<AGROW>
     blk.(AXES{row, 1}) = col;
 end
 if isempty(first)
@@ -122,8 +116,13 @@ end
 model = '';
 for k = find(~used)
     b = bodies{k};
-    [~, vname] = termParts(getIn(b, 'statement', 'variable'));
-    if strcmp(classNameOf(b), 'assertion') && strcmpi(vname, 'probe model') && isempty(model)
+    % [variable terms batch 1] (Jess Haley, 2026-11-19): NCIT:C99285 "Model
+    % Number", by node; 'probe model' (no node) before that decision
+    [vnode, vname] = termParts(getIn(b, 'statement', 'variable'));
+    vnode = strtrim(char(vnode));
+    isModel = strcmpi(vnode, 'NCIT:C99285') ...
+        || (isempty(vnode) && any(strcmpi(vname, {'probe model', 'Model Number'})));
+    if strcmp(classNameOf(b), 'assertion') && isModel && isempty(model)
         [~, model] = termParts(getIn(b, 'term', 'value'));
         probes = [probes, edgeIds(b, 'entity_id')]; %#ok<AGROW>
         used(k) = true;

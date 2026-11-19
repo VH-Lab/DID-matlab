@@ -32,6 +32,9 @@
 %     rawV1Classes       - the classes whose migrator reads the RAW v1
 %                          document (no universalRenames, no superclass
 %                          migrators); one family at a time.
+%     jrclustSettingsNameDropped - a raw v1 jrclust_clusters without its
+%                          ndi_document.name ([jrclust settings-file name
+%                          dropped]: the settings-file name is not carried).
 %     isOntologyLabelClass - true for a label document under either class
 %                          name (`ontologyLabel`, `ontology_label`); the one
 %                          place DID-matlab decides it.
@@ -42,8 +45,6 @@
 %                          ([migration reliability practices] (a)): check
 %                          rebuilds the v1 document from the emitted v2
 %                          documents with the class's inverse and compares.
-%     ensureClassBlocks  - give a body exactly the class blocks its schema
-%                          chain hosts.
 %     isAlreadyTarget    - true when a body is already stamped did_v2 (a
 %                          stamp check), so a re-run skips it.
 %     schemaVersionRank  - where a schema version sits in the did_v1 ->
@@ -61,6 +62,11 @@
 %     migrationReport    - the run's report: every gap (a required field
 %                          the source never stated) and carry, by document;
 %                          the validator reads the gaps there.
+%     carryElementSubject, carriedElementSubject
+%                        - a migrated element's v1 subject held in the
+%                          report's carried fields (carry-172), written by
+%                          NDI-matlab's second pass and read back by the
+%                          round trip.
 %     migrationRecord    - the run's `migration` document and its report,
 %                          a JSON file attached as an opaque_body.
 %
@@ -73,8 +79,14 @@
 %     v1_to_v2), tuningNames (the one v1 <-> v2 name table for tuning
 %     properties and settings), tuningStimids (a tuning curve's stimids
 %     rebuilt), tuningBestValues (the value a tuning curve's `best`
-%     selection chose, read from its log), inputEdgeNames (input edge names
-%     rebuilt from their classes)
+%     selection chose, read from its log), tuningStatedValues (the number
+%     a tuning curve's exact_number selection fixes a property at),
+%     tuningLabelNote (a tuning curve's v1 display label, kept as the
+%     last line of its notes), tuningAxisNamingCounts (the run's count of
+%     raw tuning curves named from their v1 label), inputEdgeNames (input edge names
+%     rebuilt from their classes), isSpikeTimesObservation (a unit's
+%     per-epoch spike-times observation, the input a stimulus response is
+%     computed from)
 %
 %   Batch post-passes (run over a migrated batch, after v1_to_v2; each
 %   carries a BATCH-PASS declaration read by tools/batch_pass_declarations.py)

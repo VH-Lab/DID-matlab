@@ -104,10 +104,10 @@ verifyCarriedFor(testCase, {position('pm_1', 'EMPTY:0000137'), track('el_pos', '
 % first, under carry-147, and v1_to_v2's carryDependents follows only a
 % document that was converted
 verifyCarriedFor(testCase, {distance('dm_1', 1:19)}, ...
-    '[carry-147] awaiting_home: distance_metadata');
-verifyCarriedFor(testCase, {distance('dm_2', 4)}, 'reshaped retire classes carried');
+    '[carry-147] needs_mapping: built where the dataset map names the distance element');
+verifyCarriedFor(testCase, {distance('dm_2', 4)}, 'distance and its metadata are one statement');
 verifyCarriedFor(testCase, {distance('dm_1', 1:19), track('el_dist', 'distance')}, ...
-    '[carry-147] awaiting_home: distance_metadata');
+    '[carry-147] needs_mapping: built where the dataset map names the distance element');
 end
 
 % ===================== the switch ======================================

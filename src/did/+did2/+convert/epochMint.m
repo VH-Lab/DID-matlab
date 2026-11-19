@@ -22,8 +22,10 @@ function [result, report] = epochMint(result, options)
 %   A pass carrying no declaration is an ERROR there, never an empty set.
 %
 %   BATCH-PASS-CONSUMES: epochid, daqmetadatareader_epochdata_ingested,
-%       acquisition_epoch, stimulus_response_scalar, syncrule_mapping, pyraview
+%       element_epoch, acquisition_epoch, stimulus_response_scalar,
+%       syncrule_mapping, pyraview, spikewaves
 %   BATCH-PASS-EMITS: epochid -> document: epoch
+%   BATCH-PASS-EMITS: element_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: relative_reference
 %   BATCH-PASS-EMITS: daqmetadatareader_epochdata_ingested -> nothing: the loop
 %       only STAMPS the `epoch_id` edge onto the body and re-runs the ARMED
@@ -44,6 +46,11 @@ function [result, report] = epochMint(result, options)
 %       fourth armed loop stamps `epoch_id` onto the passed-through pyraview
 %       and re-runs +migrators_j/pyraview, which mints the voltage observation,
 %       its bodies and the epoch-scoped relative_time_reference.
+%   BATCH-PASS-EMITS: spikewaves -> nothing: SAME REASON ([spike waveforms
+%       built now], Jess Haley, 2026-11-10, D3). resolveDeferredSpikewaves
+%       stamps `epoch_id` onto the deferred spikewaves and re-runs
+%       +migrators_j/spikewaves, which mints the two calculations, their
+%       bodies and the epoch anchor, credited to that migrator.
 %   BATCH-PASS-EMITS: syncrule_mapping -> nothing: SAME REASON, the third time.
 %       The third armed loop stamps `epoch_id_1` / `epoch_id_2` onto the
 %       passed-through mapping and re-runs +migrators_j/syncrule_mapping; the
@@ -55,8 +62,8 @@ function [result, report] = epochMint(result, options)
 %   pass order from these; [migration reliability practices] (c), Jess Haley,
 %   2026-10-26). Read from this file's code, class by class.
 %   BATCH-PASS-READS: epochid, entity(session), entity(epoch),
-%       acquisition_epoch, daqmetadatareader_epochdata_ingested,
-%       stimulus_response_scalar, syncrule_mapping, pyraview,
+%       element_epoch, acquisition_epoch, daqmetadatareader_epochdata_ingested,
+%       stimulus_response_scalar, syncrule_mapping, pyraview, spikewaves,
 %       epochfiles_ingested, method(method_parameters), acquisition_system,
 %       entity(element), directed_relation(element lineage),
 %       result.deferred_bath_anchors
@@ -65,10 +72,13 @@ function [result, report] = epochMint(result, options)
 %       calculation(harmonic_component),
 %       entity(software minted by a batch pass), observation(pyraview),
 %       sampled_body(pyraview level), method(pyraview), clock_alignment,
-%       result.epoch_mint
+%       calculation(spike times), calculation(spike waveforms),
+%       sampled_body(spike times), sampled_body(spike waveforms),
+%       result.epoch_mint, result.batch_pass_outputs
 %   BATCH-PASS-CHANGES: relative_time_reference(bath anchor),
 %       daqmetadatareader_epochdata_ingested(epoch_id edge stamped)
-%   BATCH-PASS-REMOVES: stimulus_response_scalar, syncrule_mapping, pyraview
+%   BATCH-PASS-REMOVES: stimulus_response_scalar, syncrule_mapping, pyraview,
+%       spikewaves
 %
 %   `acquisition_epoch` ADDED 2026-08-17, and it was a REAL OMISSION, not a
 %   tidy-up. The #60 OPTION A loop below reads `acquisition_epoch` bodies (see
@@ -318,41 +328,26 @@ function [result, report] = epochMint(result, options)
 %   untested 1 -> N path would be this file's own recurring error -- machinery
 %   whose zero is a property of never having run.
 %
-%   AND FOR THE TWO daqreader ARMS THERE IS A SECOND, SEPARATE BLOCKER, which is
-%   a SCHEMA question and not this function's to answer. `jEpochDocId` reads the
-%   edge off the BODY, and unlike the metadata fold -- whose stamped body is
-%   immediately converted to `acquisition_metadata_file`, a class that DOES
-%   declare `epoch_id`, so the stamp never persists -- these two arms RETURN THE
-%   PRE-BODY in `bodies`. A stamped `epoch_id` would therefore PERSIST on a
-%   `daqreader_epochdata_ingested` document, and neither class declares the
-%   dependency:
-%
-%     DENOMINATOR: 247 JSON files under schemas/V_eta, 241 with a document_class
-%       (RE-DERIVED 2026-08-12; deps read by JSON path, not by grep)
-%       epoch_id DEPENDENCY declared by 4: acquisition_metadata_file (required),
-%         ingestion_manifest (required), directed_relation (optional),
-%         method_parameters (optional)
-%       daqreader_epochdata_ingested        depends_on: [daqreader_id]
-%       daqreader_image_epochdata_ingested  depends_on: [daqreader_id]
-%       stimulus_response_scalar            does NOT declare it either
-%
-%   So their armed branches are DEAD on real data today, reachable only by
-%   fixtures that hand-add the edge (testMigratorsJIngested.m's `withEpochEdge`,
-%   whose comment already calls it "the `epoch_id` edge #60's epoch pass will
-%   add"). Declaring it is a V_eta increment and, per the 2026-08-10 amendment to
-%   the #60 sign-off, an extension of what that signature names -- TEAM's call,
-%   not this pass's. If it is taken it must be OPTIONAL: this pass cannot always
-%   resolve an epoch (synthetic ids are skipped, and a pair may have no session
-%   document or an ambiguous one), and `RequiredDependencies` is ARMED, so a
-%   required edge that cannot be filled QUARANTINES rather than sitting empty.
-%
-%   THE ORDER HAS NOW REVERSED, and that is the only part of this block that
-%   changed on 2026-08-12. The rebuild machinery is no longer the blocker; the
-%   schema increment is the whole of what is left, for two of the three. The
-%   arming table below is the one place a fourth row would be added, and the
-%   `undeclared_edge` refusal is what stops a row being added before its class
-%   declares the edge -- it reads the schema, so it cannot go stale the way a
-%   list kept here would.
+%   THE TWO daqreader INGESTED-EPOCH CLASSES ARE NOT ARMED, BY DECISION. This
+%   block used to call their armed branches DEAD, waiting on a schema increment
+%   that would declare `epoch_id` on daqreader_epochdata_ingested and
+%   daqreader_image_epochdata_ingested so this pass could stamp it. That wait is
+%   over: Decided by Jess Haley, 2026-11-03 [handed-on are v1 as written]
+%   (did-schema did_v2_go_forward_class_audit.md; built by DID-matlab #372,
+%   5339621a, and #374, da487311; did-schema #105, which asked for the edge,
+%   closed as superseded on 2026-11-10) -- the two classes are HANDED ON
+%   unchanged as v1 (v1_to_v2's HAND_ON_CLASSES, stamped did_v1, never
+%   validated against v2), so no `epoch_id` is stamped on them, and
+%   defaultArmingMigrators has no row for either. No v1 source carries the
+%   edge (NDI's templates declare only `daqreader_id`; private/jEpochDocId's
+%   header), so their migrators hand every real document on as v1; their
+%   converting branches are reached only by test fixtures that add the edge
+%   (testMigratorsJIngested's `withEpochEdge`). A document handed on and not
+%   converted by a batch pass is stored as its v1 source at the end of the
+%   batch ([handed-on classes carried at the end]). The `undeclared_edge` refusal
+%   still stops a row from being added for a class that does not declare the
+%   edge: it reads the schema, so it cannot go stale the way a list kept here
+%   would.
 %
 %   `stimulus_response_scalar` is the one whose stamp would NOT persist --
 %   jCalculation.m:82-92 builds the leaf's `deps` by NAMING the edges it carries
@@ -395,6 +390,10 @@ function [result, report] = epochMint(result, options)
 %                    handle. [] means the production table (one row today).
 %                    Exists so the 1 -> N carry can be DRIVEN by a test; see
 %                    the arming block above.
+%     V1FileReader   ([] or function handle)      the reader of v1 attached
+%                    files the deferred spikewaves re-run hands v1_to_v2
+%                    (did2.convert.v1Files). [] uses the reader the last
+%                    v1_to_v2 set (did2.convert.v1Files('get')).
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.resolveDatasetEntities,
 %   did2.convert.resolveDeferredBaths, did2.validate.sourceCensus,
@@ -406,7 +405,23 @@ arguments
     options.SchemaCache = []
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'did_v2'})} = 'did_v2'
     options.ArmingMigrators = []
+    options.V1FileReader = []
 end
+% The reader of v1 attached files the deferred spikewaves re-run needs
+% (did2.convert.v1Files; [spike waveforms built now], D4): the one given, else
+% the one the last did2.convert.v1_to_v2 set, read BEFORE this pass's own
+% re-runs reset it.
+if isempty(options.V1FileReader)
+    options.V1FileReader = did2.convert.v1Files('get');
+end
+
+% Ids this pass mints are derived from their source document's id and role,
+% counted in one context for the run (did2.convert.mintId; practice (b) of
+% [migration reliability practices], Jess Haley, 2026-10-26), so two minted
+% for one (source, role) are told apart by their ordinal.
+mintDepth = did2.convert.mintId('-depth');
+did2.convert.mintId('-push', '');
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth)); %#ok<NASGU>
 
 % A batch pass builds documents from the v1 source's own terms, exactly as a
 % migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
@@ -414,10 +429,11 @@ end
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 armingMigrators = options.ArmingMigrators;
 if isempty(armingMigrators)
     armingMigrators = defaultArmingMigrators();
@@ -495,7 +511,17 @@ report = struct( ...
     'epoch_extent_duplicate_clock',        0, ...
     'epoch_extent_conflicting_clock',      0, ...
     'epoch_extent_refused_no_system',      0, ...
+    ... % [agreeing untied sources count as one] (Jess Haley, 2026-11-12):
+    ... % `..._untied_epochs` is the DENOMINATOR of the untied decision (distinct
+    ... % (session, epoch) pairs holding at least one untied source); every one
+    ... % is either anchored or carried, so anchored + epochs_carried equals it.
+    ... % `..._several_sources_anchored` is the part of `..._session_anchored`
+    ... % whose epoch had MORE THAN ONE untied source, all stating the same
+    ... % clocks in the same order with identical t0/t1.
+    'epoch_extent_untied_epochs',          0, ...
     'epoch_extent_untied_session_anchored', 0, ...
+    'epoch_extent_untied_several_sources_anchored', 0, ...
+    'epoch_extent_untied_epochs_carried',  0, ...
     'epoch_extent_carried_sources',        0, ...
     'epoch_extent_carried_source_ids',     {{}}, ...
     'epoch_extent_vacuous',             true, ...
@@ -553,6 +579,16 @@ report = struct( ...
     'pyraview_deferred_resolved',          0, ...
     'pyraview_deferred_unresolved',        0, ...
     'pyraview_deferred_epochs_minted',     0, ...
+    ... % [spike waveforms built now] (Jess Haley, 2026-11-10), D3: the
+    ... % spikewaves pass 1 deferred (did2:convert:needsEpochContext), re-run
+    ... % with their epoch (resolveDeferredSpikewaves). seen is the denominator:
+    ... % seen = resolved + unresolved + carried_dependent + quarantined.
+    'spikewaves_deferred_seen',            0, ...
+    'spikewaves_deferred_resolved',        0, ...
+    'spikewaves_deferred_unresolved',      0, ...
+    'spikewaves_deferred_quarantined',     0, ...
+    'spikewaves_deferred_carried_dependent', 0, ...
+    'spikewaves_deferred_epochs_minted',   0, ...
     ... % [one bath shape] (Jess Haley, 2026-10-27): the bath anchors
     ... % resolveDeferredBaths handed on, re-pointed at their epoch (see
     ... % resolveBathAnchors). handed_over is the denominator.
@@ -886,13 +922,26 @@ end
 % session-anchored time reference, using only the times the epoch states.
 % Extents that come from several sources, or disagree, still carry it." So
 % an untied source is held aside (untiedByKey) and decided after the loop.
+% [agreeing untied sources count as one] (Jess Haley, 2026-11-12) amends it:
+% SEVERAL untied sources of one epoch keep the session anchor too when they
+% all state the same clock list in the same order with identical t0/t1
+% (exact, isequaln); any difference still carries all of them.
 sysIdx = deviceClockIndex(bodies, rows, n);
+% THE SOURCES READ. An element's slice of an epoch is a v1 `element_epoch`
+% handed on by pass 1 ([retired classes leave V2], Decided by Jess Haley,
+% 2026-10-25, step (1): v1_to_v2 HAND_ON_CLASSES), or, in a batch written
+% before, the `acquisition_epoch` pass 1 renamed it to. A v1 element_epoch
+% pass 1 CARRIED (result.source_outputs `carried`: [dependents of a carried
+% document carry], carry-064; a clock list it cannot read, carry-038 /
+% carry-009) is not read: the stamp alone cannot tell it from one handed on,
+% as in did2.convert.foldGenericFiles, and it was never read before.
+passOneCarried = passOneCarriedIds(result);
 carriedSources = {};
 clocksByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
 untiedByKey = containers.Map('KeyType', 'char', 'ValueType', 'any');
 SESSION_ANCHOR = char([0 'session']);   % referent placeholder: the session document
 for k = 1:n
-    if ~strcmp(rows(k).class_name, 'acquisition_epoch'); continue; end
+    if ~isElementEpochSlice(rows(k).class_name, rows(k).doc_id, passOneCarried); continue; end
     report.epoch_extent_sources_seen = report.epoch_extent_sources_seen + 1;
     % The `epochid` MIXIN string specifically -- acquisition_epoch's chain is
     % {base, epochid}, the same shape the metadata fold reads. Taking
@@ -933,14 +982,19 @@ for k = 1:n
         clocksByKey(key) = entries;
     end
 end
-% [untied epochs keep the session anchor]: an epoch whose extents ALL come
-% from ONE untied source (no tied extent for it either) and agree keeps them,
-% anchored on the session document; otherwise every untied source is carried.
+% [untied epochs keep the session anchor], as amended by [agreeing untied
+% sources count as one] (Jess Haley, 2026-11-12): an epoch whose extents ALL
+% come from untied sources (no tied extent for it either), each agreeing with
+% itself and, when there are several, all stating the same clocks in the same
+% order with identical t0/t1, keeps them, anchored on the session document;
+% otherwise every untied source is carried. The sources state one extent, so
+% the FIRST source's entries are kept and its id is the one the reference
+% derives from; the others restate it and are neither kept nor carried.
 untiedKeys = untiedByKey.keys();
+report.epoch_extent_untied_epochs = numel(untiedKeys);
 for u = 1:numel(untiedKeys)
     held = untiedByKey(untiedKeys{u});
-    if isscalar(held) && ~isKey(clocksByKey, untiedKeys{u}) ...
-            && untiedEntriesAgree(held{1}.entries)
+    if ~isKey(clocksByKey, untiedKeys{u}) && untiedSourcesAgree(held)
         entries = held{1}.entries;
         for i = 1:numel(entries)
             entries{i}.system = SESSION_ANCHOR;
@@ -949,7 +1003,13 @@ for u = 1:numel(untiedKeys)
         clocksByKey(untiedKeys{u}) = entries;
         report.epoch_extent_untied_session_anchored = ...
             report.epoch_extent_untied_session_anchored + 1;
+        if ~isscalar(held)
+            report.epoch_extent_untied_several_sources_anchored = ...
+                report.epoch_extent_untied_several_sources_anchored + 1;
+        end
     else
+        report.epoch_extent_untied_epochs_carried = ...
+            report.epoch_extent_untied_epochs_carried + 1;
         for h = 1:numel(held)
             carriedSources{end+1} = held{h}.source; %#ok<AGROW>
         end
@@ -1090,8 +1150,15 @@ edgeMemo = containers.Map('KeyType', 'char', 'ValueType', 'double');
 % document or the original passthrough (whichever survived), so asking "what
 % class is it now" cannot tell an emitted fold from a withheld one -- which is
 % precisely the number to report.
+% The standalone `method` document (did-schema #88; the class was
+% `method_parameters` before, and jCalculation / the spike-settings migrators
+% emit `method`). The report counters keep their `method_parameters_*` names:
+% they are report keys tools/census_digest.py and runCorpusDiscovery read, and
+% renaming them would break the comparison with earlier runs. The source name
+% 'method_parameters' below is did2.validate.epochStrings' label for the parked
+% string, not a class name.
 for k = 1:n
-    if ~strcmp(rows(k).class_name, 'method_parameters'); continue; end
+    if ~strcmp(rows(k).class_name, 'method'); continue; end
     report.method_parameters_seen = report.method_parameters_seen + 1;
     if ~isempty(depValueOf(bodies{k}, 'epoch_id'))
         continue;   % already filled (a re-run); find-or-create, not create
@@ -1132,12 +1199,6 @@ for k = 1:n
         if isempty(b.method.parameters)
             b.method = rmfield(b.method, 'parameters');
         end
-    end
-    if isfield(b, 'method_parameters') && isstruct(b.method_parameters) ...
-            && isfield(b.method_parameters, 'other') ...
-            && isstruct(b.method_parameters.other) ...
-            && isfield(b.method_parameters.other, 'epochid')
-        b.method_parameters.other = rmfield(b.method_parameters.other, 'epochid');
     end
     bodies{k} = b;
     changedIdx(end+1)      = k;                %#ok<AGROW>
@@ -1249,7 +1310,13 @@ for k = 1:n
     % split migrator -- and not as one body that happens to be wrapped.
     migrator = armingMigratorFor(armingMigrators, ...
         'daqmetadatareader_epochdata_ingested');
+    % the arming migrator mints in a context keyed on its source, as v1_to_v2
+    % keys one on every source ([migration reliability practices] (b))
+    mk = did2.convert.mintKey(b);
+    if ~isempty(mk); mk = ['epochMint|' mk]; end
+    did2.convert.mintId('-push', mk);
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    did2.convert.mintId('-popto', mintDepth + 1);
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1418,7 +1485,13 @@ for k = 1:n
     report.response_scalar_edges_stamped = ...
         report.response_scalar_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'stimulus_response_scalar');
+    % the arming migrator mints in a context keyed on its source, as v1_to_v2
+    % keys one on every source ([migration reliability practices] (b))
+    mk = did2.convert.mintKey(b);
+    if ~isempty(mk); mk = ['epochMint|' mk]; end
+    did2.convert.mintId('-push', mk);
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    did2.convert.mintId('-popto', mintDepth + 1);
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1601,7 +1674,13 @@ for k = 1:n
     b = setDep(b, 'time_reference_id_2', refB);
     report.syncrule_edges_stamped = report.syncrule_edges_stamped + 1;
     migrator = armingMigratorFor(armingMigrators, 'syncrule_mapping');
+    % the arming migrator mints in a context keyed on its source, as v1_to_v2
+    % keys one on every source ([migration reliability practices] (b))
+    mk = did2.convert.mintKey(b);
+    if ~isempty(mk); mk = ['epochMint|' mk]; end
+    did2.convert.mintId('-push', mk);
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    did2.convert.mintId('-popto', mintDepth + 1);
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1721,7 +1800,13 @@ for k = 1:n
     end
     b = setDep(bodies{k}, 'epoch_id', epochIdByKey(key));
     migrator = armingMigratorFor(armingMigrators, 'pyraview');
+    % the arming migrator mints in a context keyed on its source, as v1_to_v2
+    % keys one on every source ([migration reliability practices] (b))
+    mk = did2.convert.mintKey(b);
+    if ~isempty(mk); mk = ['epochMint|' mk]; end
+    did2.convert.mintId('-push', mk);
     offered = normaliseArmingOutput(migrator(lendSessionIdField(b)));
+    did2.convert.mintId('-popto', mintDepth + 1);
     nOffered = numel(offered);
     report.arming_calls          = report.arming_calls + 1;
     report.arming_bodies_offered = report.arming_bodies_offered + nOffered;
@@ -1814,14 +1899,15 @@ if isempty(minted) && isempty(changedIdx)
     report.arming_bodies_dropped = report.arming_bodies_offered;
     report.epoch_index_report = edgeIndex.report;
     [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
+    [result, report] = resolveDeferredSpikewaves(result, report, epochIdByKey, options);
     [result, report] = resolveBathAnchors(result, report, options);
     result.epoch_mint = report;
     return;
 end
 
-% --- pad + validate, through the same door every other pass uses ----------
+% --- validate, through the same door every other pass uses ----------
 % The bodies are tagged schema_version == TargetVersion, so v1_to_v2
-% short-circuits them (isAlreadyTarget) to ensureClassBlocks + validate. A body
+% short-circuits them (isAlreadyTarget) to validate. A body
 % that cannot validate lands in `quarantine` and is NOT emitted -- loudly, on a
 % 0-quarantine gate, which is the correct volume for a builder that produced an
 % invalid document.
@@ -1904,8 +1990,8 @@ for j = 1:numel(changedIdx)
     if armIdx > 0
         report.arming_bodies_carried = report.arming_bodies_carried + 1;
     elseif ~isempty(rows(changedIdx(j)).class_name) ...
-            && strcmp(rows(changedIdx(j)).class_name, 'method_parameters')
-        % MEASURED, NOT REPAIRED, and deliberately so. `method_parameters.epoch_id`
+            && strcmp(rows(changedIdx(j)).class_name, 'method')
+        % MEASURED, NOT REPAIRED, and deliberately so. `method.epoch_id`
         % is OPTIONAL, so an epoch that quarantined leaves this body carrying an
         % edge to a document not in the batch -- an orphan. That path predates
         % this rebuild and changing it would change a current result, so it is
@@ -2043,6 +2129,7 @@ result.summary = recountSummary(result);
 % (the chain lookup threw) are different problems with different owners.
 report.epoch_index_report = edgeIndex.report;
 [result, report] = resolveDeferredPyraviews(result, report, epochIdByKey, options);
+[result, report] = resolveDeferredSpikewaves(result, report, epochIdByKey, options);
 [result, report] = resolveBathAnchors(result, report, options);
 result.epoch_mint = report;
 end
@@ -2070,6 +2157,8 @@ end
 q = result.quarantine;
 keep = true(1, numel(q));
 stamped = {};
+deferredIds = {};        % the v1 id of each pyraview stamped (in order)
+deferredEpochIds = {};   % and the epoch its epoch_id edge names
 nDeferredFolded = 0;
 % The sessions the batch holds: a #88 session entity's base.id IS its session id.
 sessionIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
@@ -2123,6 +2212,10 @@ for k = 1:numel(q)
         continue;
     end
     stamped{end+1} = setDep(v1, 'epoch_id', epochIdByKey(key)); %#ok<AGROW>
+    vid = '';
+    if isfield(v1.base, 'id'); vid = char(v1.base.id); end
+    deferredIds{end+1} = vid; %#ok<AGROW>
+    deferredEpochIds{end+1} = epochIdByKey(key); %#ok<AGROW>
     nDeferredFolded = nDeferredFolded + 1;
     keep(k) = false;
 end
@@ -2132,6 +2225,8 @@ end
 out = did2.convert.v1_to_v2(stamped, 'Validate', options.Validate, ...
     'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion);
 report.pyraview_deferred_resolved = nDeferredFolded - numel(out.quarantine);
+result = recordBatchPassOutputs(result, out, deferredIds, deferredEpochIds, ...
+    'did2.convert.epochMint (resolveDeferredPyraviews)');
 % The epochs minted here ARE this pass's mints, so they count in epochs_minted
 % (the census digest checks that figure against the epochs in the batch).
 for j = 1:numel(out.migrated)
@@ -2144,6 +2239,182 @@ for j = 1:numel(out.migrated)
 end
 result.migrated = [result.migrated, out.migrated];
 result.quarantine = [q(keep), out.quarantine];
+result.summary = recountSummary(result);
+end
+
+function result = recordBatchPassOutputs(result, out, sourceIds, contextIds, passName)
+%RECORDBATCHPASSOUTPUTS What each source a batch pass re-migrated became.
+%   [whole-batch round trip] (Jess Haley, 2026-10-27): the round trip takes
+%   each source's FINAL documents back to v1, found by the ids it became
+%   (RESULT.source_outputs, written by pass 1). Pass 1 records nothing for a
+%   source it DEFERRED, so a deferred pyraview, which this pass re-runs
+%   through v1_to_v2, became documents no record named: the round trip saw
+%   only the one that holds its v1 id (the observation) and reported "no level
+%   body was emitted" (PRED, DID-matlab Test code run 43169466173). This
+%   appends, per re-migrated source, the ids its re-run made (OUT.
+%   source_outputs, matched by v1 id) to RESULT.batch_pass_outputs, a struct
+%   array {id, pass, output_ids, context_ids}. CONTEXT_IDS are documents the
+%   source's inverse reads that the source did not become -- the epoch entity
+%   its epoch_id edge names, whose local_identifier is the v1 epochid
+%   (did2.convert.roundtrip.pyraview) -- and none for a source the re-run
+%   carried whole as v1 (it is its own document).
+if ~isfield(result, 'batch_pass_outputs') || isempty(result.batch_pass_outputs)
+    result.batch_pass_outputs = struct('id', {}, 'pass', {}, 'output_ids', {}, ...
+        'context_ids', {});
+end
+if ~isfield(out, 'source_outputs') || isempty(out.source_outputs)
+    return;
+end
+rows = out.source_outputs;
+for j = 1:numel(sourceIds)
+    if isempty(sourceIds{j})
+        continue;   % a source stating no v1 id: the round trip cannot find it by id
+    end
+    hit = find(strcmp({rows.id}, sourceIds{j}) & [rows.done], 1);
+    if isempty(hit)
+        continue;   % the re-run quarantined it: still quarantined, nothing to name
+    end
+    outIds = rows(hit).output_ids;
+    if ischar(outIds); outIds = {outIds}; end
+    ctxIds = {contextIds{j}};
+    if rows(hit).carried
+        ctxIds = {};
+    end
+    result.batch_pass_outputs(end+1) = struct('id', sourceIds{j}, 'pass', passName, ...
+        'output_ids', {reshape(outIds, 1, [])}, 'context_ids', {ctxIds});
+end
+end
+
+function [result, report] = resolveDeferredSpikewaves(result, report, epochIdByKey, options)
+%RESOLVEDEFERREDSPIKEWAVES The spikewaves pass 1 DEFERRED, migrated now.
+%   [spike waveforms built now] (Jess Haley, 2026-11-10, did-schema
+%   did_v2_go_forward_class_audit.md), D3: "add a `spikewaves` arming/deferral
+%   step to `epochMint.m`". +migrators_j/spikewaves defers a document whose
+%   epoch has no entity yet (did2:convert:needsEpochContext, the pyraview
+%   pattern above); here, once the epochs exist, the `epoch_id` edge is
+%   stamped onto the quarantined v1 body and it runs through v1_to_v2 again,
+%   with the run's v1 file reader (OPTIONS.V1FileReader), since the migrator
+%   reads its two files. An epoch no document of the batch names is minted, as
+%   for a pyraview, for a session the batch holds.
+%
+%   [dependents of a carried document carry] (carry-064): pass 1's
+%   carryDependents cannot see a deferred document, so it is checked here: a
+%   spikewaves whose element or extraction settings document is in the batch
+%   CARRIED as v1 is carried whole as v1 too (counted carried_dependent),
+%   never converted with an edge to a v1 document.
+if ~isfield(result, 'quarantine') || isempty(result.quarantine)
+    return;
+end
+q = result.quarantine;
+keep = true(1, numel(q));
+stamped = {};
+carriedV1 = {};
+% the ids the batch holds as CARRIED v1 documents (not the handed-on classes
+% v1_to_v2 carryDependents does not follow)
+handedOn = {'stimulus_presentation', 'daqmetadatareader_epochdata_ingested', ...
+    'control_stimulus_ids', 'openminds_stimulus'};
+carriedIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+sessionIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:numel(result.migrated)
+    try
+        b = result.migrated{k}.toStruct();
+        cn = classNameOf(b);
+        if strcmp(cn, 'session')
+            sessionIds(char(b.base.id)) = true;
+        end
+        if isfield(b.document_class, 'schema_version') ...
+                && strcmp(char(b.document_class.schema_version), 'did_v1') ...
+                && ~any(strcmp(cn, handedOn))
+            carriedIds(char(b.base.id)) = true;
+        end
+    catch
+    end
+end
+for k = 1:numel(q)
+    if ~isfield(q(k), 'class_name') || ~strcmp(q(k).class_name, 'spikewaves') ...
+            || ~isfield(q(k), 'identifier') ...
+            || ~strcmp(q(k).identifier, 'did2:convert:needsEpochContext')
+        continue;
+    end
+    report.spikewaves_deferred_seen = report.spikewaves_deferred_seen + 1;
+    try
+        v1 = jsondecode(q(k).original_body);
+    catch
+        report.spikewaves_deferred_unresolved = report.spikewaves_deferred_unresolved + 1;
+        continue;
+    end
+    deps = {};
+    if isfield(v1, 'depends_on') && ~isempty(v1.depends_on)
+        d = v1.depends_on;
+        if iscell(d); d = [d{:}]; end
+        for j = 1:numel(d)
+            if isfield(d, 'value') && ~isempty(d(j).value); deps{end+1} = char(d(j).value); end %#ok<AGROW>
+        end
+    end
+    if any(cellfun(@(x) isKey(carriedIds, x), deps))
+        c = v1;
+        c.document_class.schema_version = 'did_v1';
+        carriedV1{end+1} = did2.document(c); %#ok<AGROW>
+        report.spikewaves_deferred_carried_dependent = ...
+            report.spikewaves_deferred_carried_dependent + 1;
+        keep(k) = false;
+        continue;
+    end
+    es = '';
+    if isfield(v1, 'epochid') && isstruct(v1.epochid) && isfield(v1.epochid, 'epochid')
+        es = char(v1.epochid.epochid);
+    end
+    sid = '';
+    if isfield(v1, 'base') && isstruct(v1.base) && isfield(v1.base, 'session_id')
+        sid = char(v1.base.session_id);
+    end
+    key = pairKey(sid, es);
+    if ~isempty(es) && ~isKey(epochIdByKey, key) && ~isempty(sid) ...
+            && isKey(sessionIds, sid)
+        ds = '';
+        if isfield(v1.base, 'datestamp'); ds = char(v1.base.datestamp); end
+        e = mintEpoch(es, sid, sid, ds);
+        epochIdByKey(key) = e.base.id;
+        stamped{end+1} = e; %#ok<AGROW>
+        report.spikewaves_deferred_epochs_minted = ...
+            report.spikewaves_deferred_epochs_minted + 1;
+    end
+    if isempty(es) || ~isKey(epochIdByKey, key)
+        report.spikewaves_deferred_unresolved = report.spikewaves_deferred_unresolved + 1;
+        continue;
+    end
+    stamped{end+1} = setDep(v1, 'epoch_id', epochIdByKey(key)); %#ok<AGROW>
+    keep(k) = false;
+end
+if isempty(stamped) && isempty(carriedV1)
+    return;
+end
+out = struct('migrated', {{}}, 'quarantine', struct([]));
+nStampedSw = 0;
+for j = 1:numel(stamped)
+    if strcmp(classNameOf(stamped{j}), 'spikewaves'); nStampedSw = nStampedSw + 1; end
+end
+if ~isempty(stamped)
+    out = did2.convert.v1_to_v2(stamped, 'Validate', options.Validate, ...
+        'SchemaCache', options.SchemaCache, 'TargetVersion', options.TargetVersion, ...
+        'V1FileReader', options.V1FileReader);
+end
+report.spikewaves_deferred_quarantined = numel(out.quarantine);
+report.spikewaves_deferred_resolved = nStampedSw - numel(out.quarantine);
+for j = 1:numel(out.migrated)
+    try
+        if strcmp(classNameOf(out.migrated{j}.toStruct()), 'epoch')
+            report.epochs_minted = report.epochs_minted + 1;
+        end
+    catch
+    end
+end
+result.migrated = [result.migrated, out.migrated, carriedV1];
+if isempty(out.quarantine)
+    result.quarantine = q(keep);
+else
+    result.quarantine = [q(keep), out.quarantine];
+end
 result.summary = recountSummary(result);
 end
 
@@ -2385,8 +2656,10 @@ function tbl = defaultArmingMigrators()
 %   the document keeps the passthrough it has today. The refusal is not being
 %   worked around; it is doing exactly its job on the arm where it applies.
 %
-%   Adding a row for either daqreader arm before its schema increment lands is
-%   still caught by that refusal, which reads the schema rather than this list.
+%   The two daqreader ingested-epoch classes have no row: they are handed on
+%   unchanged as v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03),
+%   so no `epoch_id` is stamped on them; a row added for either would still
+%   be caught by that refusal, which reads the schema rather than this list.
 tbl = struct( ...
     'daqmetadatareader_epochdata_ingested', ...
         @did2.convert.migrators_j.daqmetadatareader_epochdata_ingested, ...
@@ -2563,8 +2836,8 @@ function cn = classNameOf(b)
 %CLASSNAMEOF The class name, except that an `entity` (did-schema #88: one
 %   entity class with a bound type) answers its TYPE ('session', 'epoch',
 %   ...), so the rows below keep comparing on 'session' and 'epoch'. The
-%   standalone `method` (#88; `method_parameters` before) answers
-%   'method_parameters', the name the epoch_id stamping loop looks for. A
+%   standalone `method` (#88; `method_parameters` before) answers its own
+%   name, 'method', which the epoch_id stamping loop looks for. A
 %   statement answers its DIRECTION ('observation', ...; an old-vintage joined
 %   leaf is read as its direction too); its value kind is `rows(k).value_kind`
 %   (did2.convert.statementKind).
@@ -2580,7 +2853,7 @@ if strcmp(cn, 'entity') && isfield(b, 'entity') && isstruct(b.entity) ...
     t = did2.build.vocabularyHandle('entity_type', b.entity.type);
     if ~isempty(t); cn = t; end
 elseif strcmp(cn, 'method')
-    cn = 'method_parameters';
+    % its own name (did-schema #88); no alias to the pre-#88 class
 else
     cn = did2.convert.statementKind(b);
 end
@@ -2748,11 +3021,15 @@ end
 if ~isKey(mintedIdxById, epochId); why = 'epoch not minted here'; return; end
 sec = struct('node', 'om:second-Time', 'name', 'second');
 try
+    % its id derived from the (epoch, system, clock) it is the extent of
+    % (did2.convert.mintId; practice (b) of [migration reliability practices])
     ref = did2.build.relativeTimeReference(sysId, 'Clock', clk, ...
         'Start', t(1), 'StartSourceValue', t(1), 'StartSourceUnit', sec, ...
         'StartApproximate', false, ...
         'Duration', t(2) - t(1), 'DurationSourceValue', t(2) - t(1), ...
         'DurationSourceUnit', sec, 'DurationApproximate', false, ...
+        'Id', did2.convert.mintId('epoch extent time reference', ...
+            strrep(ek, char(0), '|')), ...
         'SessionId', sessionId, 'CreationTimestamp', did2.convert.migrationTime(), ...
         'Validate', false);
 catch
@@ -2912,12 +3189,15 @@ function report = measureIngestionProbemap(report, rows, bodies, n)
 %     A #30 recording-observation (+migrators_j/private/jRecordingObservation.m,
 %     driven from +migrators_j/element.m:144-148) is emitted ONE PER ELEMENT with
 %     a SESSION 'during' anchor -- jSessionAnchor(preBody,'during'), a
-%     `session_relative_reference` -- NEVER an epoch anchor. Its own header says
-%     so: "one observation per element is emitted, with the shared session
-%     'during' anchor -- coarse but true. Per-epoch observations are the second
-%     pass" (:108-118). This pass runs BEFORE resolveSessionAnchors
-%     (runCorpusDiscovery.m: epoch_mint at :171, session_anchor_fold at :208), so
-%     the anchor is still class `session_relative_reference` when read here.
+%     `relative_time_reference` whose referent is the session entity (it was a
+%     `session_relative_reference` before #73, folded later by
+%     resolveSessionAnchors; nothing mints that class now) -- NEVER an epoch
+%     anchor. Its own header says so: "one observation per element is emitted,
+%     with the shared session 'during' anchor -- coarse but true. Per-epoch
+%     observations are the second pass".
+%     (Since 2026-10-21 pass 1 emits no such observation at all: the per-epoch
+%     recording observations are minted after this pass by
+%     resolveEpochProbemap; testEpochProbemapMeasurement pins that.)
 %
 %   So `recording_obs_epoch_scoped` is expected 0 -- there is NO per-epoch #30
 %   observation for a per-epoch probemap observation to duplicate -- and that 0
@@ -2991,17 +3271,19 @@ for k = 1:n
     recSeen = recSeen + 1;
     trId = depValueOf(bodies{k}, 'time_reference_1');
     if isempty(trId); trId = depValueOf(bodies{k}, 'time_reference_id'); end
+    % The session anchor is a `relative_time_reference` whose referent is the
+    % session entity (jSessionAnchor; the pre-#73 `session_relative_reference`
+    % and `session_bounded_reference` classes no longer exist and nothing mints
+    % them). Anything not epoch-scoped is session-scoped, so it needs no
+    % class-name test of its own.
     if isempty(trId) || ~isKey(classById, trId)
         recUnresolved = recUnresolved + 1;
-    elseif any(strcmp(classById(trId), ...
-            {'session_relative_reference', 'session_bounded_reference'}))
-        recSession = recSession + 1;
     elseif isKey(bodyById, trId) ...
             && referenceIsEpochScoped(bodyById(trId), classById)
         recEpoch = recEpoch + 1;
     else
-        % an absolute_reference, or a relative_reference anchored to a session
-        % DOCUMENT -- neither is epoch-scoped.
+        % the session anchor, an absolute reference, or a relative reference
+        % anchored to anything but an epoch -- none is epoch-scoped.
         recSession = recSession + 1;
     end
     subjId = depValueOf(bodies{k}, 'subject_id');
@@ -3221,9 +3503,8 @@ tf = any(ismember(kinds, superNames));
 end
 
 function tf = referenceIsEpochScoped(refBody, classById)
-%REFERENCEISEPOCHSCOPED True when a reference document's `relative_to` names an
-%   `epoch`. Used only for reference classes other than the session anchors the
-%   switch already handles -- a robustness path, expected never to fire today.
+%REFERENCEISEPOCHSCOPED True when a reference document's referent
+%   (`referent_id`, or the pre-#88 `relative_to`) names an `epoch`.
 tf = false;
 if ~isstruct(refBody); return; end
 target = depValueOf(refBody, 'relative_to');
@@ -3396,13 +3677,12 @@ function entries = acquisitionEpochClocks(body)
 %   block, so universalRenames has already normalised it. The camelCase fallback
 %   rule applies one level down, which is why did2.convert.epochClockReferences needs it for
 %   `epochtable.epochclock` and this does not.
+%
+%   EITHER SHAPE ([retired classes leave V2]): the records are read by
+%   did2.convert.elementEpochClockRecords, from a v1 element_epoch's
+%   epoch_clock / t0_t1 or from an acquisition_epoch's `clocks`.
 entries = {};
-if ~isstruct(body) || ~isfield(body, 'acquisition_epoch') ...
-        || ~isstruct(body.acquisition_epoch) ...
-        || ~isfield(body.acquisition_epoch, 'clocks')
-    return;
-end
-c = body.acquisition_epoch.clocks;
+c = did2.convert.elementEpochClockRecords(body);
 if ~isstruct(c); return; end
 for k = 1:numel(c)
     e = struct('name', '', 't0', NaN, 't1', NaN);
@@ -3460,11 +3740,16 @@ for k = 1:numel(entries)
     % by the builder and counted, never guessed.
     sec = struct('node', 'om:second-Time', 'name', 'second');
     try
+        % its id derived from the source that states the clock, and the
+        % clock and system (did2.convert.mintId; practice (b) of [migration
+        % reliability practices], Jess Haley, 2026-10-26)
         ref = did2.build.relativeTimeReference(e.system, 'Clock', e.name, ...
             'Start', e.t0, 'StartSourceValue', e.t0, 'StartSourceUnit', sec, ...
             'StartApproximate', false, ...
             'Duration', e.t1 - e.t0, 'DurationSourceValue', e.t1 - e.t0, ...
             'DurationSourceUnit', sec, 'DurationApproximate', false, ...
+            'Id', did2.convert.mintId(['epoch clock ' e.name ' on ' char(e.system)], ...
+                char(e.source)), ...
             'SessionId', sessionId, 'CreationTimestamp', datestamp, 'Validate', false);
     catch
         stats.no_time = stats.no_time + 1;
@@ -3680,6 +3965,31 @@ if ~isempty(sid)
 end
 end
 
+function tf = untiedSourcesAgree(held)
+%UNTIEDSOURCESAGREE True when every untied source of one epoch agrees with
+%   itself (untiedEntriesAgree) and every source states the same clock list,
+%   in the same order, with identical t0/t1 as the first ([agreeing untied
+%   sources count as one], Jess Haley, 2026-11-12: exact, isequaln; any
+%   difference carries all of them). One source reduces to
+%   untiedEntriesAgree, which is [untied epochs keep the session anchor].
+tf = false;
+if isempty(held); return; end
+ref = held{1}.entries;
+for h = 1:numel(held)
+    e = held{h}.entries;
+    if ~untiedEntriesAgree(e); return; end
+    if h == 1; continue; end
+    if numel(e) ~= numel(ref); return; end
+    for i = 1:numel(e)
+        if ~strcmp(e{i}.name, ref{i}.name) ...
+                || ~isequaln([e{i}.t0 e{i}.t1], [ref{i}.t0 ref{i}.t1])
+            return;
+        end
+    end
+end
+tf = true;
+end
+
 function tf = untiedEntriesAgree(entries)
 %UNTIEDENTRIESAGREE True when one untied source states no clock twice with
 %   different times ([untied epochs keep the session anchor], Jess Haley,
@@ -3698,4 +4008,28 @@ for k = 1:numel(entries)
         seen(e.name) = [e.t0 e.t1];
     end
 end
+end
+
+function m = passOneCarriedIds(result)
+% the v1 ids of the sources pass 1 carried as v1 (result.source_outputs,
+% `carried`); empty when the result holds no such record
+m = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if ~isfield(result, 'source_outputs') || ~isstruct(result.source_outputs) ...
+        || ~isfield(result.source_outputs, 'carried')
+    return;
+end
+for k = 1:numel(result.source_outputs)
+    so = result.source_outputs(k);
+    if so.carried && ~isempty(so.id)
+        m(char(so.id)) = true;
+    end
+end
+end
+
+function tf = isElementEpochSlice(className, docId, passOneCarried)
+% an element's slice of an epoch this pass reads: an acquisition_epoch (a batch
+% written before [retired classes leave V2]), or a v1 element_epoch pass 1
+% handed on, not one it carried
+tf = strcmp(className, 'acquisition_epoch') || (strcmp(className, 'element_epoch') ...
+    && ~(~isempty(docId) && isKey(passOneCarried, char(docId))));
 end

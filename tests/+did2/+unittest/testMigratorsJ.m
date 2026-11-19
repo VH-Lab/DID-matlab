@@ -469,10 +469,12 @@ sub = firstOfClassJ(out.migrated, 'cell');   % #88: a spikes element is an entit
 verifyEqual(testCase, sub.get('base.id'), 'el_1');                 % id preserved
 % [element local identifier is name and reference] (Jess Haley, 2026-10-26)
 verifyEqual(testCase, sub.get('entity.local_identifier'), 'unit3 | 1');
-% ndi_element_class preserved as a term_assertion; the v1 type `spikes` is the
-% entity type, not a statement ([cell spellings are one meaning], [cell
-% spellings amended], Jess Haley, 2026-10-27), so one assertion, not two
-verifyEqual(testCase, nLeafJ(out.migrated, 'assertion+term'), 1);
+% the v1 type `spikes` is the entity type, not a statement ([cell spellings
+% are one meaning], [cell spellings amended], Jess Haley, 2026-10-27); and
+% since [ndi element class not kept] (Jess Haley, 2026-10-27; built
+% 2026-11-10) `ndi.neuron` is rebuilt from the entity type, not written: no
+% term assertion at all (it was one, the class, before)
+verifyEqual(testCase, nLeafJ(out.migrated, 'assertion+term'), 0);
 % lineage: derived_from the underlying element (safe computational lineage)
 rel = firstOfClassJ(out.migrated, 'directed_relation');
 verifyTrue(testCase, did2.build.isVocabulary(rel.get('directed_relation.relation'), 'relation', 'derived_from'));   % by node (L1)
@@ -856,7 +858,7 @@ end
 p = m.toStruct();
 cnd = p.statement.conditions;
 verifyEqual(testCase, cnd.variable.name, regName('numeric value'));
-verifyEqual(testCase, cnd.quantity.value, 2.5, 'AbsTol', 1e-12);
+verifyEqual(testCase, cnd.numeric, 2.5, 'AbsTol', 1e-12);   % the new numeric shape
 verifyFalse(testCase, isfield(cnd, 'unit'), 'an unlabelled number has no unit');
 n = out.summary.migration_notes.treatment_number_unlabelled;
 verifyEqual(testCase, n.ids, {'tr_01'});
@@ -892,7 +894,7 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+time');
 verifyEqual(testCase, m.get('base.id'), 'tr_01');
 verifyEqual(testCase, m.get('statement.variable').node, 'EMPTY:0000199');
 t = m.get('time.value');
-verifyEqual(testCase, t(1).source_value, 6.5);
+verifyEqual(testCase, t(1).source_numeric, 6.5);   % the new numeric shape
 verifyEqual(testCase, t(1).seconds, 6.5 * 3600, 'AbsTol', 1e-9);
 verifyEqual(testCase, t(1).source_unit.name, 'hour');
 notes = out.summary.migration_notes;
@@ -1011,7 +1013,7 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 % the amount) -> ingredient_id -> chemical (the substance)
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
-verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_value, 5);
+verifyEqual(testCase, f.get('formulation.value').ingredients(1).concentration.source_numeric, 5);
 % [canonical absent only as needs info] (Jess Haley, 2026-10-30): a number with
 % no unit keeps its source_value, has no canonical, and the canonical is
 % listed as a gap in the migration report
@@ -1051,9 +1053,10 @@ fs = f.toStruct();
 ing = fs.formulation.value.ingredients;
 assertEqual(testCase, numel(ing), 2, 'both ingredients are listed');
 verifyEqual(testCase, numel(dependencyIds(fs, 'ingredient_id')), 2);
-verifyEqual(testCase, ing(1).concentration.source_value, 5);
+verifyEqual(testCase, ing(1).concentration.source_numeric, 5);
 verifyTrue(testCase, ~isfield(ing, 'concentration') || isempty(ing(2).concentration) ...
-    || (isstruct(ing(2).concentration) && ~isfield(ing(2).concentration, 'source_value')), ...
+    || (isstruct(ing(2).concentration) && ~isfield(ing(2).concentration, 'source_numeric') ...
+        && ~isfield(ing(2).concentration, 'source_value')), ...
     'the unstated amount is left out, not NaN');
 [fields, reasons] = gapFieldsJ(fs);
 verifyEqual(testCase, sort(fields), sort({ ...
@@ -1172,7 +1175,7 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, c.get('chemical.value').substance.name, 'pAAV-hSyn-hChR2(H134R)-EYFP');
 conc = f.get('formulation.value').ingredients(1).concentration;
-verifyEqual(testCase, conc.source_value, 1000);
+verifyEqual(testCase, conc.source_numeric, 1000);
 % [virus dilution needs info] (Decided by Jess Haley, 2026-10-31, did-schema
 % did_v2_go_forward_class_audit.md; docs/V2_PLAN.md G71): a dilution is a
 % source number with no unit, so no unit is written (the migrator's own label
@@ -1231,7 +1234,7 @@ verifyNotEmpty(testCase, form);
 if ~isempty(form)
     verifyEqual(testCase, form.get('document_class.class_name'), 'formulation');
     conc = form.get('formulation.value').ingredients(1).concentration;
-    verifyEqual(testCase, conc.source_value, 1e-5, 'AbsTol', 1e-12);
+    verifyEqual(testCase, conc.source_numeric, 1e-5, 'AbsTol', 1e-12);
     verifyEqual(testCase, conc.source_unit.name, 'Molar');
     % [canonical absent only as needs info] (Jess Haley, 2026-10-30): the
     % unit table knows Molar (om:molar), so the canonical is filled; the
@@ -1271,7 +1274,7 @@ for c = 1:size(cases, 1)
         form = firstOfClassJ(out.migrated, 'formulation');
         assertNotEmpty(testCase, form, label);
         conc = form.get('formulation.value').ingredients(1).concentration;
-        verifyEqual(testCase, conc.source_value, 2.5e-6, 'AbsTol', 1e-15, label);
+        verifyEqual(testCase, conc.source_numeric, 2.5e-6, 'AbsTol', 1e-15, label);
         verifyTrue(testCase, isfield(conc, 'molar'), [label ': molar filled']);
         if isfield(conc, 'molar')
             verifyEqual(testCase, conc.molar, 2.5e-6, 'AbsTol', 1e-15, label);
@@ -1307,7 +1310,7 @@ for L = 1:size(locs, 1)
     form = firstOfClassJ(out.migrated, 'formulation');
     assertNotEmpty(testCase, form, label);
     conc = form.get('formulation.value').ingredients(1).concentration;
-    verifyEqual(testCase, conc.source_value, 10, label);
+    verifyEqual(testCase, conc.source_numeric, 10, label);
     verifyTrue(testCase, isfield(conc, 'liters_per_liter'), [label ': liters_per_liter filled']);
     if isfield(conc, 'liters_per_liter')
         verifyEqual(testCase, conc.liters_per_liter, 0.1, 'AbsTol', 1e-15, label);
@@ -1386,7 +1389,7 @@ dv = d.get('dose.value');
 verifyDoseVolumeGapJ(testCase, d, dv);   % the solution's volume is unrecorded
 assertEqual(testCase, numel(dv.ingredients), 1, 'one per-ingredient amount');
 a = dv.ingredients(1).amount_per_body_mass;
-verifyEqual(testCase, a.source_value, 0.25);
+verifyEqual(testCase, a.source_numeric, 0.25);
 verifyEqual(testCase, a.grams_per_gram, 0.25e-6, 'AbsTol', 1e-15);
 verifyEqual(testCase, a.source_unit.node, 'SNOMED:396163008');
 [f, c] = doseChainJ(out.migrated, d);
@@ -1448,9 +1451,9 @@ verifyFalse(testCase, isfield(v, 'mass') && isstruct(v.mass) && ~isempty(v.mass)
     'a mass row naming a chemical is not the top-level mass');
 assertEqual(testCase, numel(v.ingredients), 1);
 verifyEqual(testCase, v.ingredients(1).mass.grams, 2e-3, 'AbsTol', 1e-15);
-verifyEqual(testCase, v.ingredients(1).mass.source_value, 2);
+verifyEqual(testCase, v.ingredients(1).mass.source_numeric, 2);
 verifyEqual(testCase, v.volume.liters, 0.5e-3, 'AbsTol', 1e-15);
-verifyEqual(testCase, v.volume.source_value, 0.5);
+verifyEqual(testCase, v.volume.source_numeric, 0.5);
 [f, c] = doseChainJ(out.migrated, d);
 verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
     'the entry is paired with the alprazolam chemical');
@@ -1477,7 +1480,7 @@ verifyEmpty(testCase, out.quarantine);
 v = out.migrated{1}.get('dose.value');
 assertEqual(testCase, numel(v.ingredients), 1);
 verifyEqual(testCase, v.ingredients(1).substance_amount.moles, 3e-3, 'AbsTol', 1e-15);
-verifyEqual(testCase, v.ingredients(1).substance_amount.source_value, 3);
+verifyEqual(testCase, v.ingredients(1).substance_amount.source_numeric, 3);
 verifyDoseVolumeGapJ(testCase, out.migrated{1}, v);   % the whole formulation's amount is unrecorded
 end
 
@@ -1558,7 +1561,7 @@ v1 = treatmentDrugDoc('td_same_vols', sprintf(['ontologyName,name,value,ontology
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 v = out.migrated{1}.get('dose.value');
-verifyEqual(testCase, v.volume.source_value, 1);
+verifyEqual(testCase, v.volume.source_numeric, 1);
 verifyFalse(testCase, isfield(out.summary.migration_notes, 'dose_amount_conflict'));
 end
 
@@ -2076,7 +2079,7 @@ assertNotEmpty(testCase, b, 'another range folds too');
 c = b.toStruct().data_body.conditions;
 if iscell(c); c = c{1}; end
 verifyEqual(testCase, char(c(1).variable.node), 'EMPTY:0000402');
-verifyEqual(testCase, double(c(1).matrix(:)'), [10 200]);
+verifyEqual(testCase, double(c(1).numeric(:)'), [10 200]);   % the new numeric shape
 end
 
 function testACarriedImageStackIsTheV1SourceNotTheSuperclassReshape(testCase)
@@ -2238,7 +2241,8 @@ end
 
 function testImageStackBecomesBodyBackedObservation(testCase)
 % UPDATED for did-schema #88: an image stack folds to an intensity_observation
-% (variable 'image intensity'; the v1 label rides on statement.notes; the
+% (variable NCIT:C221750 "Imaging Signal Intensity" by node since [variable
+% terms batch 1], 'image intensity' before; the v1 label rides on statement.notes; the
 % acquisition timestamp is a whole-statement condition) + a sampled_body whose
 % data.keys carry one key per dimension in dimension_order, owned by the
 % observation (owner_id), datum_order 'F' (a MATLAB array, column-major) + the
@@ -2261,7 +2265,7 @@ verifyEqual(testCase, nLeafJ(out.migrated, 'sampled_body'), 1);
 verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 1);
 obs = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(obs), 'observation+intensity');
-verifyEqual(testCase, obs.get('statement.variable').name, 'image intensity');
+verifyEqual(testCase, obs.get('statement.variable').node, 'NCIT:C221750');
 verifyEqual(testCase, obs.get('statement.notes'), 'a two-photon stack');
 verifyEqual(testCase, depVal(obs, 'entity_id'), 'subj_007');
 verifyEqual(testCase, obs.get('value.data_type'), 'uint16');
@@ -2285,11 +2289,11 @@ verifyEqual(testCase, did2.convert.axisKey(keys(1).term), 'y');
 verifyEqual(testCase, keys(1).term.name, did2.convert.axisTerm('y').name);   % Y-Coordinate where registered
 verifyEqual(testCase, keys(1).n, 512);
 verifyTrue(testCase, ~isempty(keys(1).cov.origin));
-verifyEqual(testCase, keys(1).cov.spacing.value, 0.5);
-verifyEqual(testCase, keys(1).cov.origin.value, 0);
+verifyEqual(testCase, keys(1).cov.spacing, 0.5);   % the new numeric shape: flat
+verifyEqual(testCase, keys(1).cov.origin, 0);
 % C/Z/T carry a recorded scale of 1, so they are calibrated, not index axes
-verifyEqual(testCase, keys(3).cov.spacing.value, 1);
-verifyEqual(testCase, keys(3).cov.origin.value, 0);
+verifyEqual(testCase, keys(3).cov.spacing, 1);
+verifyEqual(testCase, keys(3).cov.origin, 0);
 verifyEqual(testCase, did2.convert.axisKey(keys(5).term), 'time');   % 't' is time (om:Time) where registered
 verifyEqual(testCase, keys(5).term.name, did2.convert.axisTerm('t').name);
 verifyEqual(testCase, keys(5).n, 10);
@@ -2454,8 +2458,8 @@ verifyEqual(testCase, keys(3).term.name, did2.convert.axisTerm('t').name);
 verifyEqual(testCase, keys(1).cov.source_unit.name, 'micrometre');
 verifyEqual(testCase, keys(2).cov.source_unit.name, 'micrometre');
 verifyEqual(testCase, keys(3).cov.source_unit.name, 'second');
-verifyEqual(testCase, keys(1).cov.spacing.value, 1.5);
-verifyEqual(testCase, keys(3).cov.spacing.value, 0.2);
+verifyEqual(testCase, keys(1).cov.spacing, 1.5);   % the new numeric shape: flat
+verifyEqual(testCase, keys(3).cov.spacing, 0.2);
 end
 
 
@@ -3156,7 +3160,7 @@ bath.base = struct('id', 'aabb1122ccdd3344_5500000000000004', ...
 bath.epochid = struct('epochid', 'epoch_t00001');
 bath.stimulus_bath = struct( ...
     'location', struct('ontologyNode', 'uberon:0001017', 'name', 'CNS'), ...
-    'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+    'mixture_table', 'chebi:6904,muscimol,5,,mM');
 
 % the stimulator's clock record for the bath's epoch: without one the bath
 % is carried, carry-157 ([one-reading quick answers] Q2;
@@ -3214,7 +3218,7 @@ if ~isempty(form)
         if strcmp(out.migrated{k}.get('base.id'), chemId); chem = out.migrated{k}; end
     end
     % the mixture row's amount rides on the formulation's ingredient entry
-    verifyEqual(testCase, form.get('formulation.value').ingredients(1).concentration.source_value, 5);
+    verifyEqual(testCase, form.get('formulation.value').ingredients(1).concentration.source_numeric, 5);
 end
 verifyNotEmpty(testCase, chem, 'the formulation must name its chemical');
 if ~isempty(chem)
@@ -3268,7 +3272,7 @@ for loc = {struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Labora
         'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
     bath.epochid = struct('epochid', 'epoch_t00001');
     bath.stimulus_bath = struct('location', loc{1}, ...
-        'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+        'mixture_table', 'chebi:6904,muscimol,5,,mM');
     % its stimulator's clock record for the epoch ([one-reading quick
     % answers] Q2: without one the bath is carried)
     ee = stimulatorEpochDoc(stimId, 'aabb1122ccdd3344_9900aabbccddeeff', ...
@@ -3332,7 +3336,7 @@ bath.base = struct('id', 'aabb1122ccdd3344_5500000000000034', 'session_id', sess
 bath.epochid = struct('epochid', 'epoch_t00009');
 bath.stimulus_bath = struct( ...
     'location', struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Laboratory'), ...
-    'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+    'mixture_table', 'chebi:6904,muscimol,5,,mM');
 
 out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
     'Validate', false, 'TargetVersion', 'did_v2');
@@ -3409,7 +3413,7 @@ bath.base = struct('id', 'aabb1122ccdd3344_5500000000000024', 'session_id', sess
 bath.epochid = struct('epochid', 'epoch_t00007');
 bath.stimulus_bath = struct( ...
     'location', struct('ontologyNode', 'NCIm:C0179246', 'name', 'Baths, Water, Laboratory'), ...
-    'mixture_table', 'chebi:6904,muscimol,5,,mg/ml');
+    'mixture_table', 'chebi:6904,muscimol,5,,mM');
 
 out = did2.convert.v1_to_v2({jsonencode(elem), jsonencode(ee), jsonencode(bath)}, ...
     'Validate', false, 'TargetVersion', 'did_v2');
@@ -4676,12 +4680,13 @@ verifyEqual(testCase, software.entity.name, ...   % #88: the one entity class
     'ndi.daq.reader.mfdaq.ndr');
 end
 
-function testMfdaqIngestedDeEncodesToDaqreaderEpochdataIngested(testCase)
-% Chunk c: daqreader_mfdaq_epochdata_ingested de-encodes onto the generic
-% daqreader_epochdata_ingested -- the mfdaq subtype `parameters` block moves onto
-% the parent (kept) and the mfdaq block is removed. Tested on the migrator
-% FUNCTION directly (the quick CI's V_zeta schema still has the class; under the
-% V_eta corpus run the class is gone and the folded parent validates).
+function testMfdaqIngestedIsHandedOnAsV1WithItsEpochid(testCase)
+% Chunk c used to de-encode daqreader_mfdaq_epochdata_ingested onto the
+% generic daqreader_epochdata_ingested (the mfdaq `parameters` block moved onto
+% the parent, the mfdaq block removed). Since [retired classes leave V2]
+% (Decided by Jess Haley, 2026-10-25, step (1)) the retired class is not
+% written: the migrator returns the v1 document unchanged, handed on as v1
+% (v1_to_v2 HAND_ON_CLASSES). The epochid block is still the epoch identity.
 %
 % THE `epochid` ASSERTION IS INVERTED FROM WHAT IT USED TO BE. This test
 % required `epochid` to be ABSENT, on chunk (b)'s premise that "the epoch link is
@@ -4706,22 +4711,23 @@ body.daqreader_epochdata_ingested = struct('epochtable', ...
 body.daqreader_mfdaq_epochdata_ingested = struct('parameters', ...
     struct('sample_analog_segment', 1000000, 'sample_digital_segment', 1000000));
 out = did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested(body);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'daqreader_epochdata_ingested');
-% the mfdaq `parameters` de-encoded onto the parent, epochtable preserved
-verifyEqual(testCase, out.daqreader_epochdata_ingested.parameters.sample_analog_segment, 1000000);
+verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'daqreader_mfdaq_epochdata_ingested');
+verifyTrue(testCase, isequaln(out, body), 'handed on unchanged');
+% the mfdaq `parameters` stay where v1 wrote them, epochtable preserved
+verifyEqual(testCase, out.daqreader_mfdaq_epochdata_ingested.parameters.sample_analog_segment, 1000000);
 verifyTrue(testCase, isfield(out.daqreader_epochdata_ingested, 'epochtable'));
-% the subtype block is gone
-verifyFalse(testCase, isfield(out, 'daqreader_mfdaq_epochdata_ingested'));
 % the epochid block SURVIVES -- it is the epoch identity, not a stale duplicate
 verifyTrue(testCase, isfield(out, 'epochid'), ...
     'epochid is a did_v1 superclass block, not a dependency -- it must survive');
 verifyEqual(testCase, out.epochid.epochid, 't00001');
 end
 
-function testElementEpochRenamedToAcquisitionEpoch(testCase)
-% Chunk e: element is retired, so element_epoch is renamed to acquisition_epoch.
-% The V_eta migrator reuses the base clocks-block transform (epoch_clock/t0_t1 ->
-% clocks array-of-records) and then renames the class and its property block.
+function testElementEpochIsHandedOnUnchanged(testCase)
+% Chunk e renamed element_epoch to the retired acquisition_epoch (its clocks as
+% records). Since [retired classes leave V2] (Decided by Jess Haley,
+% 2026-10-25, step (1)) the migrator returns the v1 document unchanged, handed
+% on as v1 (v1_to_v2 HAND_ON_CLASSES); the clocks are read by the batch passes
+% (did2.convert.elementEpochClockRecords), as the migrator read them.
 body = struct();
 body.document_class = struct('class_name', 'element_epoch', 'class_version', '1.0.0', ...
     'superclasses', [ struct('class_name', 'base',    'class_version', '1.0.0'), ...
@@ -4732,13 +4738,12 @@ body.base = struct('id', 'ee_1', 'session_id', 'sess_09', ...
 body.epochid = struct('epochid', 't00001');
 body.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0; 930.35]);
 out = did2.convert.migrators_j.element_epoch(body);
-verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'acquisition_epoch');
-% the property block is renamed too, and the base clocks transform ran
-verifyTrue(testCase, isfield(out, 'acquisition_epoch'));
-verifyFalse(testCase, isfield(out, 'element_epoch'));
-verifyEqual(testCase, out.acquisition_epoch.clocks(1).name, 'dev_local_time');
-verifyEqual(testCase, out.acquisition_epoch.clocks(1).t0, 0);
-verifyEqual(testCase, out.acquisition_epoch.clocks(1).t1, 930.35);
+verifyTrue(testCase, isequaln(out, body), 'handed on unchanged');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'element_epoch');
+clocks = did2.convert.elementEpochClockRecords(out);
+verifyEqual(testCase, clocks(1).name, 'dev_local_time');
+verifyEqual(testCase, clocks(1).t0, 0);
+verifyEqual(testCase, clocks(1).t1, 930.35);
 end
 
 function testDistanceMetadataIsCarriedWholeAsV1(testCase)
@@ -4781,9 +4786,9 @@ verifyEqual(testCase, s.distance_metadata.ontologyNode_A, 'animal_9');
 verifyEqual(testCase, s.distance_metadata.ontologyStringValues_B, 'uid_b1');
 verifyFalse(testCase, isfield(s.distance_metadata, 'endpoints'));
 verifyTrue(testCase, startsWith(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    '[carry-147] awaiting_home: '), 'the note cites carry-147');
+    '[carry-147] needs_mapping: '), 'the note cites carry-147');
 verifyTrue(testCase, contains(out.summary.migration_notes.carried_as_v1.distinct_details{1}, ...
-    'reshaped retire classes carried'), 'the note names the decision');
+    'distance and its metadata are one statement'), 'the note names the decision');
 % NOT a length_observation and no endpoint relation minted
 names = cellfun(@(d) did2.unittest.helpers.classKey(d), out.migrated, 'UniformOutput', false);
 verifyFalse(testCase, any(strcmp(names, 'observation+length')));
@@ -4839,7 +4844,10 @@ obs = out{find(strcmp(names, 'observation+voltage'), 1)};
 verifyEqual(testCase, obs.base.id, 'pv_1');
 verifyTrue(testCase, logical(obs.value.data_body));   % #88: the value lives in bodies
 verifyEqual(testCase, obs.value.data_type, 'int16');
-verifyEqual(testCase, obs.statement.variable.name, 'lfp');
+% [variable terms batch 1] (Jess Haley, 2026-11-19): AFO:AFR_0001916 "voltage"
+% by node; the v1 label, exactly as written, in the observation's notes
+verifyEqual(testCase, obs.statement.variable.node, 'AFO:AFR_0001916');
+verifyEqual(testCase, obs.statement.notes, 'lfp');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_7');
 % every level body shares the statement (the observation) and owns one file;
 % levels are told apart by dt (native 1/1000 vs decimated 1/500)
@@ -4877,7 +4885,7 @@ end
 % by the retired sample_time.dt -- that block is no longer written here (step 5
 % of the signed build order), and writing the cadence into both would store one
 % fact twice.
-dts = sort(arrayfun(@(k) sbods{k}.data.covariates(1).spacing.source_value, ...
+dts = sort(arrayfun(@(k) sbods{k}.data.covariates(1).source_spacing, ...   % the new numeric shape
     1:numel(sbods)));
 verifyEqual(testCase, dts, [1e-3 2e-3], 'AbsTol', 1e-9);
 % and by extent: 10 s at 1000 Hz and at 500 Hz. `n` was hardcoded 0 on every
@@ -4909,8 +4917,10 @@ function testSpikewavesDefersToSecondPass(testCase)
 % samples_per_spike. Neither field exists, so both defaulted to 0 and every
 % document described an extraction of ZERO spikes of ZERO samples -- a
 % fabricated measurement that validates cleanly and that neither Phase 1
-% counter can see. The real counts are in the .vsw header, and single-document
-% migrators carry files without reading their bytes.
+% counter can see. The real counts are in the .vsw header. Since 2026-11-10
+% ([spike waveforms built now]) the migrator reads the two files' bytes; this
+% fixture attaches none it can read, so the document is carried whole as v1
+% (testMigratorsJSpikewaves covers the conversion).
 out = did2.convert.migrators_j.spikewaves(spikewavesBody());
 verifyClass(testCase, out, 'cell');
 verifyEqual(testCase, numel(out), 1);
@@ -5054,7 +5064,7 @@ leaf = calcLeafJ(testCase, out, 'contrast_tuning_calculation', 'ct_1', 'sub_8');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [2 5 9 12]);
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0 0.25 0.5 1]);
 verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'contrast');
 end
 
@@ -5093,11 +5103,11 @@ verifyFalse(testCase, any(strcmp(names, 'observation+angle')));
 leaf = calcLeafJ(testCase, out, 'orientation_direction_tuning_calculation', 'odt_1', 'neuron_1');
 verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_1');
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0 90 180 270]);
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [10 2 9 3]);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
     0.002, 'AbsTol', 1e-9);
-cs = leaf.orientation_direction_tuning_calculation.circular_statistics;
+cs = did2.unittest.helpers.tuningSummary(leaf, 'circular_statistics');   % [tuning summaries in the value]
 verifyEqual(testCase, cs.orientation_preference, 47.5, 'AbsTol', 1e-9);
 verifyEqual(testCase, cs.circular_variance, 0.3, 'AbsTol', 1e-9);
 mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
@@ -5150,7 +5160,7 @@ os = entityByNameJ(out, 'Linux');
 verifyEqual(testCase, depValue(leaf, 'operating_system_id'), os.base.id);
 it = entityByNameJ(out, 'MATLAB');
 verifyEqual(testCase, depValue(leaf, 'interpreter_id'), it.base.id);
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 90 180 270]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0 90 180 270]);
 end
 
 
@@ -5211,8 +5221,9 @@ function testContrastSensitivityCalcUndefersToLeaf(testCase)
 % The aggregate ndi.calc.vis.contrast_sensitivity output folds 1 -> 1,
 % id-preserved, into contrast_sensitivity_calculation. UPDATED for #88: the
 % spatial frequencies are the statement's key (data.keys), each RB/RBN/RBNS
-% Naka-Rushton variant is one value.model_fit entry whose coefficients are a
-% {variable, value} list, input_parameters -> method.parameters, the consumed
+% Naka-Rushton variant is one value.model_fit entry per spatial frequency
+% (since 2026-11-11, [tuning fit coefficients named by symbol]; one per
+% variant before) whose coefficients are a {variable, value} list, input_parameters -> method.parameters, the consumed
 % responses -> input_id. INVERTED 2026-10-23 (Jess Haley [contrast sensitivity
 % lossless]): the stimulus_presentation_id is an input too (after the
 % responses), and `is_modulated_response` 1 -> significance.modulated_response
@@ -5231,8 +5242,9 @@ body.app = struct('name', 'ndi.calc.vis.contrast_sensitivity', 'version', '1.0',
     'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
     'sensitivity_rb', [10 20 15 5], 'empirical_c50_rb', [0.2 0.3 0.4 0.5], ...
-    'parameters_rb', [12 0.25 2], ...
-    'sensitivity_rbns', [9 18 14 4], 'parameters_rbns', [11 0.27 2.1], ...
+    'parameters_rb', [12 13 14 15; 0.25 0.26 0.27 0.28], ...
+    'sensitivity_rbns', [9 18 14 4], ...
+    'parameters_rbns', [11 12 13 14; 0.27 0.28 0.29 0.3; 2.1 2.2 2.3 2.4; 1 1.1 1.2 1.3], ...
     'fitless_interpolated_c50', [0.21 0.31 0.41 0.51], ...
     'visual_response_p_bonferroni', [0.01 0.02 0.03 0.04], ...
     'is_modulated_response', 1, 'response_type', 'mean', ...
@@ -5249,29 +5261,53 @@ verifyEqual(testCase, depValuesJ(leaf, 'input_id'), {'resp_cs', 'pres_cs'});
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');
 verifyNotEqual(testCase, lower(char(leaf.interaction.method.term.name)), 'ndi.calc.vis.contrast_sensitivity');
 verifyEqual(testCase, paramValueJ(leaf, 'threshold'), 1);
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0.5 1 2 4]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0.5 1 2 4]);
 csv = leaf.contrast_sensitivity.value;
-verifyEqual(testCase, numel(csv.model_fit), 2);            % rb and rbns, not rbn
-models = arrayfun(@(e) lower(char(e.model.name)), csv.model_fit, 'UniformOutput', false);
-rbAt = find(endsWith(models, ' rb'), 1);
-verifyNotEmpty(testCase, find(endsWith(models, ' rbns'), 1));
-verifyEmpty(testCase, find(endsWith(models, ' rbn'), 1));
-assertNotEmpty(testCase, rbAt);
-rb = csv.model_fit(rbAt);
-verifyEqual(testCase, rb.sensitivity, [10 20 15 5]);       % metric rides INSIDE its fit
-verifyEqual(testCase, rb.c50, [0.2 0.3 0.4 0.5]);
-verifyEqual(testCase, [rb.coefficients.value], [12 0.25 2]);
+% UPDATED 2026-11-11 ([tuning fit coefficients named by symbol], Decided by
+% Jess Haley, did-schema docs/plans/did_v2_go_forward_class_audit.md): one
+% Naka-Rushton fit (EMPTY:0000416) per variant and spatial frequency, the
+% variant told by its constraints (RB: n = 1, s = 1; RBNS: none), the
+% coefficients named by symbol, the per-SF values on the fit of their
+% spatial frequency (the j-th fit of a variant is spatial frequency j)
+mfc = csv.model_fit;
+if isstruct(mfc); mfc = num2cell(mfc); end
+verifyEqual(testCase, numel(mfc), 8);            % rb and rbns at 4 SFs, not rbn
+verifyTrue(testCase, all(cellfun(@(e) strcmp(char(e.model.node), 'EMPTY:0000416'), mfc)));
+held = cellfun(@(e) constraintTextJ(e), mfc, 'UniformOutput', false);
+rbFits = mfc(strcmp(held, 'n=1;s=1'));
+verifyEqual(testCase, numel(rbFits), 4);
+verifyEqual(testCase, nnz(strcmp(held, '')), 4);   % rbns
+verifyEqual(testCase, nnz(strcmp(held, 's=1')), 0);   % no rbn
+hmFit = halfMaximumNameJ('model_fit');
+sens = [10 20 15 5];
+c50s = [0.2 0.3 0.4 0.5];
+P = [12 13 14 15; 0.25 0.26 0.27 0.28];
+for j = 1:4
+    rb = rbFits{j};
+    verifyEqual(testCase, rb.sensitivity, sens(j));       % metric rides INSIDE its fit
+    % [one spelling for the half-maximum point] (Jess Haley, 2026-11-10): the name
+    % the loaded schema declares, half_maximum_below once did-schema renames c50
+    verifyEqual(testCase, rb.(hmFit), c50s(j));
+    co = rb.coefficients;
+    if iscell(co); co = [co{:}]; end
+    verifyEqual(testCase, arrayfun(@(x) char(x.variable.name), co, 'UniformOutput', false), {'Rm', 'c50'});
+    verifyEqual(testCase, [co.numeric], P(:, j)');   % the new numeric shape: {variable, numeric}
+end
 % [interpolated values are a list] (Decided by Jess Haley, 2026-10-30, did-schema
 % V_eta_go_forward_class_audit.md): one structure, or a list once the loaded
 % schema declares it; either way the one entry as stated, and no |response|
 % entry (contrast_sensitivity_calc states none)
 [iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries(csv.interpolated_values);
 verifyEqual(testCase, nIv, 1);
-verifyEqual(testCase, iv.c50, [0.21 0.31 0.41 0.51]);
+verifyEqual(testCase, iv.(halfMaximumNameJ('interpolated_values')), [0.21 0.31 0.41 0.51]);
 verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, csv.significance.visual_response_p_bonferroni, [0.01 0.02 0.03 0.04]);
 verifyEqual(testCase, csv.significance.modulated_response, true);
-verifyEqual(testCase, lower(csv.response_type.name), 'mean');
+% INVERTED 2026-11-13: [response type harmonics are integers] (Decided by Jess
+% Haley, 2026-11-12, did-schema did_v2_go_forward_class_audit.md): v1 `mean`
+% is NCIT:C53319 Arithmetic Mean ('mean', no node, until then)
+verifyEqual(testCase, char(csv.response_type.node), 'NCIT:C53319');
+verifyEqual(testCase, char(csv.response_type.name), 'Arithmetic Mean');
 % contrast_sensitivity_calc carries no response_units, so what the response
 % measured is not stated: INVERTED 2026-10-23 (Jess Haley [unstated response
 % variable]) -- the variable is the general term EMPTY:0000398 "neural
@@ -5301,7 +5337,7 @@ body.app = struct('name', 'ndi.calc.vis.contrast_sensitivity', 'version', '1.0',
     'url', 'https://github.com/VH-Lab/NDI-matlab', 'os', 'Linux', ...
     'os_version', '22.04', 'interpreter', 'MATLAB', 'interpreter_version', '24.2');
 body.contrast_sensitivity_calc = struct('spatial_frequencies', [0.5 1 2 4], ...
-    'sensitivity_rb', [10 20 15 5], 'parameters_rb', [12 0.25 2], ...
+    'sensitivity_rb', [10 20 15 5], 'parameters_rb', [12 13 14 15; 0.25 0.26 0.27 0.28], ...
     'visual_response_p_bonferroni', [0.01 0.02 0.03 0.04], ...
     'is_modulated_response', 0, 'response_type', 'mean', ...
     'input_parameters', struct('threshold', 1));
@@ -5380,9 +5416,11 @@ verifyEqual(testCase, depValue(leaf, 'input_id'), 'resp_tc');
 % V_eta_go_forward_class_audit.md, G29): the method term of a calculation that
 % is not a fit is EDAM:operation_2945 "Data analysis"; the calculator is the software.
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'EDAM:operation_2945');
-verifyEqual(testCase, paramTextJ(leaf, 'best algorithm'), 'empirical_maximum');
+% [term picks batch 3] (Jess Haley, 2026-11-09): best_algorithm is NCIT:C16275
+% Algorithm, its value text
+verifyEqual(testCase, paramTextJ(leaf, 'Algorithm'), 'empirical_maximum');
 verifyEqual(testCase, leaf.tuning_curve.value.mean, [1 4 8 11]);
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [0 0.25 0.5 1]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [0 0.25 0.5 1]);
 sw = entityByNameJ(out, 'ndi.calc.stimulus.tuningcurve');
 verifyEqual(testCase, depValue(leaf, 'software_id'), sw.base.id);
 os = entityByNameJ(out, 'Linux');
@@ -5480,8 +5518,8 @@ verifyEqual(testCase, numel(covs), 2);
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.name), covs, 'UniformOutput', false), ...
     {regName('spatial frequency'), regName('temporal frequency')});
 verifyEqual(testCase, [covs.along], [0 0]);
-verifyEqual(testCase, covs(1).quantity.value, [0.5 0.5 1]);
-verifyEqual(testCase, covs(2).quantity.value, [2 4 4]);
+verifyEqual(testCase, covs(1).numeric, [0.5 0.5 1]);   % the new numeric shape
+verifyEqual(testCase, covs(2).numeric, [2 4 4]);
 end
 
 
@@ -5556,7 +5594,8 @@ out = did2.convert.migrators_j.ontology_image(ontologyImageVintageA());
 verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(o), 'observation+term');
-verifyEqual(testCase, o.statement.variable.name, 'imaged region');
+% [variable terms batch 1] (Jess Haley, 2026-11-19): NCIT:C13717 by node
+verifyEqual(testCase, o.statement.variable.node, 'NCIT:C13717');
 verifyEqual(testCase, o.term.value.node, regNode('uberon:0002436'));
 verifyEqual(testCase, o.term.value.name, 'primary visual cortex');
 verifyEqual(testCase, depValue(o, 'entity_id'), 'elem_9');
@@ -5643,7 +5682,7 @@ verifyEqual(testCase, depValue(o, 'entity_id'), 'probe_7');
 % a single reading, expressed as a length-1 array
 vals = o.voltage.value;
 verifyEqual(testCase, numel(vals), 1);
-verifyEqual(testCase, vals(1).source_value, 0.5, 'AbsTol', 1e-9);
+verifyEqual(testCase, vals(1).source_numeric, 0.5, 'AbsTol', 1e-9);   % the new numeric shape
 % #88: a bound term; 'V' is the registry's om:volt 'volt' (jSourceUnit)
 verifyEqual(testCase, vals(1).source_unit.node, 'om:volt');
 verifyEqual(testCase, vals(1).source_unit.name, 'volt');
@@ -5651,9 +5690,10 @@ verifyEqual(testCase, vals(1).volts, 0.5, 'AbsTol', 1e-9);
 % temperature qualifies the SAME statement rather than becoming its own doc
 c = o.statement.conditions;   % #88: conditions live on `statement`
 verifyEqual(testCase, c.variable.name, regName('temperature'));
-verifyEqual(testCase, c.quantity.value, 11, 'AbsTol', 1e-9);
-verifyEqual(testCase, c.quantity.source_value, '11', ...
-    'a condition''s source_value is text');
+verifyEqual(testCase, c.numeric, 11, 'AbsTol', 1e-9);
+% [numeric shape details] (1), Jess Haley, 2026-11-17: v1 stored a number
+verifyEqual(testCase, c.source_numeric, 11, ...
+    'a condition''s source_numeric is the source''s number, as a number');
 % no unit is asserted for temperature -- the source states no scale
 verifyFalse(testCase, isfield(c, 'source_unit') && ~isempty(c.source_unit));
 verifyFalse(testCase, isfield(c, 'unit'));
@@ -5673,7 +5713,7 @@ v1.electrode_offset_voltage = struct('offset', -0.3, 'temperature', NaN);
 
 out = did2.convert.migrators_j.electrode_offset_voltage(v1);
 o = out{1};
-verifyEqual(testCase, o.voltage.value(1).source_value, -0.3, 'AbsTol', 1e-9);
+verifyEqual(testCase, o.voltage.value(1).source_numeric, -0.3, 'AbsTol', 1e-9);
 verifyFalse(testCase, isfield(o.statement, 'conditions'));
 end
 
@@ -5718,11 +5758,12 @@ verifyEqual(testCase, depValue(a, 'entity_id'), 'elem_9');
 verifyEqual(testCase, a.document_class.class_name, 'assertion');   % #88
 end
 
-function testAnOpenmindsElementWithAnIdOrADescriptionIsCarried(testCase)
-% [openMINDS element leftovers carried] (Decided by Jess Haley, 2026-10-29,
-% did-schema V_eta_go_forward_class_audit.md): "a v1 `openminds_element`
-% holding an `openminds_id` or a `fields.description` is carried whole as v1,
-% as for openMINDS subjects"; the register row is carry-128. Each alone carries.
+function testAnOpenmindsElementsDescriptionIsItsNotesAndItsIdIsNotStored(testCase)
+% INVERTED 2026-11-10 from testAnOpenmindsElementWithAnIdOrADescriptionIsCarried
+% ([openMINDS element leftovers carried], carry-128). Decided by Jess Haley,
+% 2026-11-10 [openMINDS element description in notes] (did-schema
+% did_v2_go_forward_class_audit.md): the description is the term assertion's
+% notes, and the openminds_id is not stored (an openMINDS export rebuilds it).
 body = struct();
 body.document_class = struct('class_name', 'openminds_element', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
@@ -5733,19 +5774,19 @@ body.openminds = struct('openminds_type', 'https://openminds.om-i.org/types/Cell
     'matlab_type', 'openminds.controlledterms.CellType', ...
     'openminds_id', 'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d', ...
     'fields', struct('name', 'type III BNST neuron', ...
-        'preferredOntologyIdentifier', 'EMPTY:0000073', 'description', ''));
+        'preferredOntologyIdentifier', 'EMPTY:0000073', 'description', 'A type of neuron.'));
 out = runJ(body);
-verifyCarriedWholeAsV1(testCase, body, out);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-128] '), d);
-desc = body;
-desc.base.id = 'ome_3';
-desc.openminds.openminds_id = '';
-desc.openminds.fields.description = 'A type of neuron.';
-out = runJ(desc);
-verifyCarriedWholeAsV1(testCase, desc, out);
-d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-verifyTrue(testCase, startsWith(d, '[carry-128] '), d);
+assertNotEmpty(testCase, out.migrated);
+a = out.migrated{1}.toStruct();
+verifyEqual(testCase, a.document_class.class_name, 'assertion');
+verifyEqual(testCase, char(a.statement.notes), 'A type of neuron.');
+verifyFalse(testCase, contains(jsonencode(a), 'dc2f5dd6-5cea-477c-a035-ca2dd3e6649d'), ...
+    'the openminds_id is not stored');
+notes = struct();
+if isfield(out.summary, 'migration_notes'); notes = out.summary.migration_notes; end
+verifyFalse(testCase, isfield(notes, 'carried_as_v1') && ...
+    any(contains(cellstr(notes.carried_as_v1.distinct_details), '[carry-128]')), ...
+    'carry-128 is no longer cited');
 end
 
 function testOpenmindsStimulusPassesThroughForSecondPass(testCase)
@@ -6040,14 +6081,17 @@ verifyFalse(testCase, any(strcmp(vars, 'NCIT:C44479')), 'Z-Coordinate (depth): n
 
 lr = out{find(strcmp(names, 'observation+length'), 1)};
 verifyEqual(testCase, depValue(lr, 'entity_id'), 'probe_5');
-verifyEqual(testCase, numel(lr.length.value), 2);
-verifyEqual(testCase, lr.length.value(2).source_value, 20, 'AbsTol', 1e-9);
-verifyEqual(testCase, lr.length.value(1).source_unit.name, 'micrometre');   % registry label for 'um'
-verifyEqual(testCase, lr.length.value(2).meters, 2e-5, 'AbsTol', 1e-12);
+% the new numeric shape: the series is ONE cell of arrays (plan section 8, answer 4)
+verifyEqual(testCase, numel(lr.length.value), 1);
+verifyEqual(testCase, numel(lr.length.value.source_numeric), 2);
+verifyEqual(testCase, lr.length.value.source_numeric(2), 20, 'AbsTol', 1e-9);
+verifyEqual(testCase, lr.length.value.source_unit.name, 'micrometre');   % registry label for 'um'
+verifyEqual(testCase, lr.length.value.meters(2), 2e-5, 'AbsTol', 1e-12);
 
 % probe_model, not the invented probe_type
 assertion = out{find(strcmp(names, 'assertion+term'), 1)};
-verifyEqual(testCase, assertion.statement.variable.name, 'probe model');
+% [variable terms batch 1] (Jess Haley, 2026-11-19): NCIT:C99285 by node
+verifyEqual(testCase, assertion.statement.variable.node, 'NCIT:C99285');
 verifyEqual(testCase, assertion.term.value.name, 'linear');
 end
 
@@ -6127,6 +6171,45 @@ verifyEqual(testCase, vars, {'NCIT:C44477', 'NCIT:C44478', 'NCIT:C44479'}, ...
 % the anchor names none (only site values are coordinates)
 anchor = out{end};
 verifyEmpty(testCase, depValue(anchor, 'coordinate_system_id'));
+end
+
+function testProbeGeometryWithNoUnitListsEachCanonicalAsAGap(testCase)
+% [canonical absent only as needs info] (Decided by Jess Haley, 2026-10-30,
+% did-schema did_v2_go_forward_class_audit.md): "every quantity holds exactly
+% one canonical value; it may be absent only when ... named", and the
+% validator now checks a number with no unit too. A probe_geometry whose
+% `unit` is blank writes each site value with its source_value alone, and
+% each observation's canonical `meters` is ONE gap in the run's migration
+% report ([waveform unit gap once], Jess Haley, 2026-11-03), so each
+% observation validates.
+v1 = struct();
+v1.document_class = struct('class_name', 'probe_geometry', 'class_version', '1.0.0', ...
+    'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+v1.depends_on = struct('name', {'probe_id'}, 'value', {'probe_8'});
+v1.base = struct('id', 'pg_8', 'session_id', 'sess_09', 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.probe_geometry = struct( ...
+    'site_locations_leftright', [0 20], ...
+    'site_locations_frontback', [5 5], ...
+    'site_locations_depth', [], ...
+    'ndim', 2, 'unit', '', 'probe_model', '');
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+out = did2.convert.migrators_j.probe_geometry(v1);
+names = cellfun(@(b) did2.unittest.helpers.classKey(b), out, 'UniformOutput', false);
+isObs = find(strcmp(names, 'observation+length'));
+verifyEqual(testCase, numel(isObs), 2, 'two populated axes');
+for k = isObs
+    obs = out{k};
+    if isa(obs, 'did2.document'); obs = obs.toStruct(); end
+    verifyFalse(testCase, isfield(obs.length.value, 'meters') ...
+        && any(~cellfun(@isempty, {obs.length.value.meters})), ...
+        'no unit: no canonical is computed');
+    fields = gapFieldsJ(obs);
+    verifyEqual(testCase, fields, {'length.value.meters'}, ...
+        'one gap for the value, not one per site');
+    did2.schema.cache.shared().validateDocument(obs);
+end
 end
 
 function testProbeGeometryWithContactGeometryIsCarriedAsV1(testCase)
@@ -6341,7 +6424,7 @@ verifyEqual(testCase, depValue(leaf, 'input_id'), 'tc_2');
 verifyEqual(testCase, char(leaf.interaction.method.term.node), 'OBI:0200072');   % [tuning fits use curve fitting now], Jess Haley 2026-10-27
 mf = leaf.tuning_curve.value.model_fit;   % [one fit entry], Jess Haley 2026-10-22
 verifyEqual(testCase, numel(mf), 1);
-verifyEqual(testCase, lower(char(mf(1).model.name)), 'dog');
+verifyEqual(testCase, char(mf(1).model.node), 'EMPTY:0000442');   % [tuning fit coefficients named by symbol]
 verifyEqual(testCase, mf(1).goodness.r2, 0.95, 'AbsTol', 1e-9);
 verifyEqual(testCase, mf(1).metrics.preferred_value, 0.13, 'AbsTol', 1e-9);
 verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova_p, ...
@@ -6350,7 +6433,7 @@ verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova
 % structure, or a list once the loaded schema declares it; this fixture has no
 % `abs` block, so either way the one entry as stated
 [iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
-    leaf.spatial_frequency_tuning_calculation.interpolated_values);
+    did2.unittest.helpers.tuningSummary(leaf, 'interpolated_values'));   % [tuning summaries in the value]
 verifyEqual(testCase, nIv, 1);
 verifyEmpty(testCase, fieldnames(ivAbs));
 verifyEqual(testCase, iv.preferred_value, 0.12, 'AbsTol', 1e-9);
@@ -6564,7 +6647,7 @@ verifyEqual(testCase, nParamsJ(leaf), 0, ...
     'a bare temporal_frequency_tuning document carries no input_parameters, and its five models write no function list');
 verifyEqual(testCase, paramTextJ(leaf, 'function'), '');
 
-verifyEqual(testCase, leaf.data.covariates(1).quantity.value, [1 2 4 8]);
+verifyEqual(testCase, leaf.data.covariates(1).numeric, [1 2 4 8]);
 verifyEqual(testCase, lower(leaf.data.dimensions(1).term.name), 'temporal frequency');
 v = leaf.tuning_curve.value;
 verifyEqual(testCase, v.mean, [1; 5; 9; 3]);
@@ -6577,12 +6660,12 @@ verifyEqual(testCase, leaf.tuning_curve.value.significance.visual_response_anova
 verifyEqual(testCase, leaf.tuning_curve.value.significance.across_stimuli_anova_p, ...
     0.031, 'AbsTol', 1e-12);
 [iv, ivAbs, nIv] = did2.unittest.helpers.interpolatedEntries( ...
-    leaf.temporal_frequency_tuning_calculation.interpolated_values);
+    did2.unittest.helpers.tuningSummary(leaf, 'interpolated_values'));   % [tuning summaries in the value]
 verifyEqual(testCase, iv.preferred_value, 4.2, 'AbsTol', 1e-12);
 % the values as stated first, then |response| (the fixture's abs.fitless is
 % the same struct as its fitless)
 verifyEqual(testCase, nIv, 2, 'as stated, then |response|');
-ivList = leaf.temporal_frequency_tuning_calculation.interpolated_values;
+ivList = did2.unittest.helpers.tuningSummary(leaf, 'interpolated_values');
 if iscell(ivList); ivList = [ivList{:}]; end
 verifyTrue(testCase, ~isfield(ivList, 'response_transform') ...
     || isempty(ivList(1).response_transform), 'the first entry is as stated');
@@ -6597,27 +6680,51 @@ transforms = arrayfun(@(e) fitTransformJ(e), mfAll, 'UniformOutput', false);
 verifyEqual(testCase, transforms, [repmat({''}, 1, 5), {'absolute value'}]);
 absFit = mfAll(strcmp(transforms, 'absolute value'));
 assertEqual(testCase, numel(absFit), 1, 'one absolute-value fit entry (fit_dog)');
-verifyEqual(testCase, lower(char(absFit.model.name)), 'dog');
+verifyEqual(testCase, char(absFit.model.node), 'EMPTY:0000442');   % [tuning fit coefficients named by symbol]
 verifyEqual(testCase, absFit.metrics.bandwidth, 2.65, 'AbsTol', 1e-12);
 mf = mfAll(strcmp(transforms, ''));
 assertEqual(testCase, numel(mf), 5, ...
     ['the TF family carries five co-existing fits (dog, movshon, movshon_c, ' ...
      'spline, gausslog); a single model_fit means the array collapsed']);
-gotModels = sort(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false));
-verifyEqual(testCase, gotModels, {'dog', 'gausslog', 'movshon', 'movshon c', 'spline'});
-mv = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'movshon'));
+% UPDATED 2026-11-11 ([tuning fit coefficients named by symbol], Jess Haley):
+% each model is a term found by node; movshon and movshon c are one model
+% (EMPTY:0000443), movshon with the constraint C = 0
+gotModels = sort(arrayfun(@(e) char(e.model.node), mf, 'UniformOutput', false));
+verifyEqual(testCase, gotModels, {'EMPTY:0000442', 'EMPTY:0000443', 'EMPTY:0000443', ...
+    'EMPTY:0000444', 'EMPTY:0000445'});
+byNode = @(node, held) mf(arrayfun(@(e) strcmp(char(e.model.node), node) ...
+    && strcmp(constraintTextJ(e), held), mf));
+mv = byNode('EMPTY:0000443', 'C=0');
 assertEqual(testCase, numel(mv), 1, 'expected exactly one movshon entry');
 verifyEqual(testCase, mv.goodness.r2, 0.83, 'AbsTol', 1e-12);
 verifyEqual(testCase, mv.metrics.preferred_value, 4.0, 'AbsTol', 1e-12);
-dg = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'dog'));
+verifyEqual(testCase, nCoeffJ(mv), 4);   % [k fc fh B]
+mvc = byNode('EMPTY:0000443', '');
+assertEqual(testCase, numel(mvc), 1, 'expected exactly one movshon c entry');
+verifyEqual(testCase, nCoeffJ(mvc), 5);   % [k fc fh B C]
+dg = byNode('EMPTY:0000442', '');
 assertEqual(testCase, numel(dg), 1, 'expected exactly one dog entry');
-verifyEqual(testCase, nCoeffJ(dg), 5);   % [0 a1 b1 a2 b2]
+% the writer's leading constant 0 is not a coefficient: [a1 b1 a2 b2]
+verifyEqual(testCase, nCoeffJ(dg), 4);
 verifyEqual(testCase, dg.metrics.bandwidth, 2.65, 'AbsTol', 1e-12);
-sp = mf(strcmp(arrayfun(@(e) lower(char(e.model.name)), mf, 'UniformOutput', false), 'spline'));
+sp = byNode('EMPTY:0000445', '');
 assertEqual(testCase, numel(sp), 1, 'expected exactly one spline entry');
 verifyEqual(testCase, nCoeffJ(sp), 0, ...
     'the spline fit has no parameters block in the writer; coefficients here would be invented');
 verifyFalse(testCase, any(strcmp(gotModels, 'abs')));
+end
+
+function s = constraintTextJ(e)
+% a model_fit entry's constraints as sorted 'symbol=value' text ('' when none)
+s = '';
+if ~isfield(e, 'constraints') || isempty(e.constraints)
+    return;
+end
+c = e.constraints;
+if isstruct(c); c = num2cell(c); end
+parts = cellfun(@(x) sprintf('%s=%g', char(x.variable.name), x.numeric), c, ...   % the new numeric shape
+    'UniformOutput', false);
+s = strjoin(sort(parts), ';');
 end
 
 function t = fitTransformJ(e)
@@ -6938,10 +7045,12 @@ function testTheNeedsHomeClassesAreCarriedWholeAsV1(testCase)
 % [simple_calc carries as needs home] and [unbuilt spike classes carry as needs
 % home] (Decided by Jess Haley, 2026-10-27, did-schema
 % V_eta_go_forward_class_audit.md): each is carried whole as v1 through the
-% carry path, citing a needs-home register row (carry-101..104), read raw so
+% carry path, citing a needs-home register row (carry-102..104), read raw so
 % the carry is
 % the untouched v1 source.
-fixtures = {simpleCalcDoc(), spikewavesBody(), spikeClustersBody(), binnedSpikeRateBody()};
+% spikewaves left this list on 2026-11-10 ([spike waveforms built now]): it
+% converts (testMigratorsJSpikewaves).
+fixtures = {simpleCalcDoc(), spikeClustersBody(), binnedSpikeRateBody()};
 for k = 1:numel(fixtures)
     v1 = jsondecode(jsonencode(fixtures{k}));
     cls = v1.document_class.class_name;
@@ -6953,7 +7062,7 @@ for k = 1:numel(fixtures)
     emitted.document_class = rmfield(emitted.document_class, 'schema_version');
     verifyTrue(testCase, isequaln(emitted, v1), [cls ': the carry is not the v1 source']);
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
-    rowOf = struct('simple_calc', 'carry-104', 'spikewaves', 'carry-101', ...
+    rowOf = struct('simple_calc', 'carry-104', ...
         'spike_clusters', 'carry-102', 'binnedspikeratevm', 'carry-103');
     verifyTrue(testCase, startsWith(d, ['[' rowOf.(cls) '] ']), [cls ': ' d]);
     verifyTrue(testCase, contains(d, 'awaiting_home'), [cls ': ' d]);
@@ -7371,7 +7480,7 @@ end
 function v = paramValueJ(leaf, varName)
 e = paramEntryJ(leaf, varName);
 v = [];
-if ~isempty(e); v = e.quantity.value; end
+if ~isempty(e); v = e.numeric; end   % the new numeric shape
 end
 
 
@@ -7392,7 +7501,7 @@ if ~isfield(fit, 'coefficients') || ~isstruct(fit.coefficients); return; end
 c = fit.coefficients;
 for k = 1:numel(c)
     if isfield(c(k), 'variable') && isstruct(c(k).variable) && isfield(c(k).variable, 'name') ...
-            && ~isempty(c(k).variable.name) && ~isempty(c(k).value)
+            && ~isempty(c(k).variable.name) && ~isempty(c(k).numeric)   % the new numeric shape
         n = n + 1;
     end
 end
@@ -7535,4 +7644,13 @@ function n = regName(name)
 %   given ([term labels stay as the ontology spells them]).
 t = did2.convert.registeredTerm('', name);
 n = t.name;
+end
+
+function name = halfMaximumNameJ(block)
+% contrast_sensitivity.value.<BLOCK>'s half-maximum field as the loaded schema
+% spells it ([one spelling for the half-maximum point], Jess Haley, 2026-11-10)
+name = 'c50';
+if did2.unittest.helpers.schemaDeclares('contrast_sensitivity', {'value', block, 'half_maximum_below'})
+    name = 'half_maximum_below';
+end
 end

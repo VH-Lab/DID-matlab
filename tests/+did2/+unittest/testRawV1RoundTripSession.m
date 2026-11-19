@@ -112,7 +112,7 @@ v1 = jsondecode(jsonencode(v1));
 out = runRaw(v1);
 verifyEmpty(testCase, out.passthrough, 'converted, as before');
 r = did2.convert.roundtrip.check(v1, out.migrated);
-verifyRoundTrip(testCase, r, 'V_zeta session', [findingsFor('session'), ...
+verifyRoundTrip(testCase, r, 'session with the three deleted fields', [findingsFor('session'), ...
     {'session.date', 'session.purpose', 'session.type'}]);
 end
 

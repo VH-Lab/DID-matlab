@@ -51,9 +51,13 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %     VALUE also carries `significance` and `model_fit[]` on a fitted curve
 %       (Jess Haley 2026-10-22 [significance with results], [one fit entry];
 %       on tuning_curve_calculation until then).
-%     LEAFFIELDS   the named calculation's blocks: `circular_statistics`
+%     LEAFFIELDS   the tuning summaries: `circular_statistics`
 %       (orientation/direction, v1 `vector`); `interpolated_values`
 %       (contrast, SF, TF, v1 `fitless`). Field names per the #73 naming pass.
+%       jCalculation places each where the loaded schema declares it: in
+%       `tuning_curve.value` once did-schema moves it there ([tuning summaries
+%       in the value], Decided by Jess Haley, 2026-11-10), else on the named
+%       calculation's own block.
 %     DROPPED   cellstr naming every v1 field this mapping has no home for
 %       (reported by the port, never silently): e.g. contrast fits'
 %       relative_max_gain / saturation_index / sensitivity, SF/TF's `abs`
@@ -71,25 +75,37 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %     does not say ([unstated response variable], 2026-10-23); OUTCOME names
 %     the case for the report.
 %
-%   Fit coefficients are a vector in v1 with no names; each becomes a
-%   `{variable, value}` entry named '<model> parameter k' (a label) -- a
-%   CONSERVATIVE CHOICE, recorded.
+%   NAMED BY SYMBOL (Decided by Jess Haley, 2026-11-11, did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md [tuning fit coefficients
+%   named by symbol]): v1 stores a fit's coefficients as an unnamed vector.
+%   Each becomes a `{variable, value}` entry whose variable is the label of
+%   its SYMBOL in the writer's equation, in stored order; the model is one
+%   registered term and `equation` the writer's formula in those symbols. The
+%   table is did2.convert.tuningFitModels (read by the round trip too):
+%   Naka-Rushton (EMPTY:0000416) [Rm c50 n s]; double Gaussian direction
+%   tuning (EMPTY:0000441) [Rsp Rp Op sig Rn]; difference of Gaussians
+%   (EMPTY:0000442) [a1 b1 a2 b2]; Movshon 2005 (EMPTY:0000443) [k fc fh B C];
+%   log-Gaussian (EMPTY:0000444) [a b c d]; cubic spline interpolation
+%   (EMPTY:0000445), no coefficients. The TF difference of Gaussians' leading
+%   constant 0 (temporal_frequency_analysis.m `dog_par = [0 dog_par]`) is not
+%   written; a TF DoG vector that does not start with 0, or any vector with
+%   more values than its model has symbols, stays unplaced and carries the
+%   document (carry-056). `movshon` and `movshon c` are one model, the first
+%   with the constraint C = 0.
 %
 %   ONE FUNCTION, TOLD APART BY ITS CONSTRAINTS (Jess Haley, 2026-10-27, did-schema
 %   V_eta_go_forward_class_audit.md):
 %     contrast  [Naka-Rushton is one function] (2026-10-26), built by [tuning
 %               fits use curve fitting now]: the writer's naka_rushton_RB_,
-%               _RBN_ and _RBNS_ fits are ONE model, 'Naka-Rushton'
-%               (R(c) = Rm c^n / (c^(n s) + c50^(n s)); NDIcalc-vis-matlab
-%               00e3e0f ndi.calc.vis.contrast_tuning writes the parameters as
-%               [Rm c50], [Rm c50 n], [Rm c50 n s]), RB written as the
-%               constraints n = 1 and s = 1, RBN as s = 1, in the fit entry's
-%               `constraints`: {variable 'Naka-Rushton parameter 3' (n), value
-%               1} and {'Naka-Rushton parameter 4' (s), 1}. The model is the
-%               term EMPTY:0000416 "Naka-Rushton function" (Decided by Jess
-%               Haley, 2026-10-30 [Naka-Rushton function minted]), not the
-%               bare label 'Naka-Rushton' written before; the coefficients
-%               keep their names, 'Naka-Rushton parameter k'.
+%               _RBN_ and _RBNS_ fits are ONE model, EMPTY:0000416
+%               "Naka-Rushton function" ([Naka-Rushton function minted],
+%               2026-10-30; NDIcalc-vis-matlab 00e3e0f
+%               ndi.calc.vis.contrast_tuning writes the parameters as [Rm c50],
+%               [Rm c50 n], [Rm c50 n s]), RB written as the constraints n = 1
+%               and s = 1, RBN as s = 1, in the fit entry's `constraints`:
+%               {variable 'n', value 1} and {'s', 1} ([tuning fit coefficients
+%               named by symbol]; 'Naka-Rushton parameter 3' and '... 4'
+%               before).
 %     speed     [Priebe fits are one function]: the writer's `fit`,
 %               `fit_no_speed` and `fit_fullspeed` are one equation
 %               (NDIcalc-vis-matlab 00e3e0f: vis.speed.fit, fit_nospeed and
@@ -119,6 +135,36 @@ function [value, valueAxes, leafFields, dropped, response, extra] = jTuningCurve
 %   from other documents, so they are placed ([tuning stimids rebuild]:
 %   stimid, stimulus_presentation_number).
 %
+%   OPTS.VariedParameters (family 'stimulus'): the curve's varied stimulus
+%   parameters, tuningcurve_calc's v1 input_parameters.independent_parameter
+%   split at ',' (jCalculation). [tuning axes named from the varied property]
+%   (Decided by Jess Haley, 2026-11-12, did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md): the axis (dimension term and
+%   covariate variable) is named from them through the registered terms
+%   (did2.convert.tuningNames: angle -> Direction NCIT:C42677, sFrequency ->
+%   Spatial Frequency NCIT:C75389, tFrequency -> Temporal Frequency
+%   NCIT:C25515, ...), not from `independent_variable_label`; an `angle` axis
+%   whose values span less than 180 degrees is an orientation, Orientation
+%   NCIT:C165680. The label text is kept in notes: EXTRA.labelNote is the v1
+%   label when the axis terms do not already restate it (letter case and '_'
+%   versus space aside, [display label compared loosely]), else [];
+%   jCalculation writes it with did2.convert.tuningLabelNote. With no varied
+%   parameters (the tuning_response app's bare curve has no settings), one
+%   per column that the name table does not hold, or a count that is not the
+%   number of columns, the axis is named from the label, as before.
+%   EXTRA.axisNaming says which: 'varied parameter', or 'label: <why>'
+%   ('' outside family 'stimulus'); jCalculation leaves it as one
+%   'tuning_axis_naming' note per folded raw curve, the count [tuning label
+%   choices confirmed] (Decided by Jess Haley, 2026-11-17) asks for.
+%
+%   RESPONSE TYPE ([response type harmonics are integers], Decided by Jess
+%   Haley, 2026-11-12): `properties.response_type` `mean` is NCIT:C53319
+%   Arithmetic Mean and `peak` STATO:0000151 maximum observed value
+%   (jResponseType). [harmonic is a field beside the response type] (Jess
+%   Haley, 2026-11-17): F1 and F2 are NCIT:C94900 Fourier Analysis with
+%   `value.harmonic` 1 and 2, once the loaded schema declares
+%   tuning_curve.value.harmonic; until then they stay labels, as before.
+%
 %   OPTS.HalfHeight (family 'oridir'; [oridir half-height values], Jess
 %   Haley, 2026-11-09, did-schema did_v2_tuning_model_plan.md): the four
 %   values NDIcalc-vis-matlab's oridir calculator writes in v1 `vector`
@@ -139,6 +185,7 @@ arguments
     family (1,:) char
     opts.Rebuilt = {}
     opts.HalfHeight (1,1) logical = false
+    opts.VariedParameters = {}
 end
 
 value = struct();
@@ -146,7 +193,7 @@ valueAxes = [];
 leafFields = struct();
 dropped = {};
 extra = struct('abs', struct('present', false, 'value', struct(), 'leafFields', struct()), ...
-    'notes', '');
+    'notes', '', 'labelNote', [], 'axisNaming', '');
 [v0, ~, o0] = jResponseVariable([]);   % no block: the source does not say
 response = struct('variable', v0, 'outcome', o0);
 if ~isstruct(srcBlk) || ~isscalar(srcBlk)
@@ -154,7 +201,8 @@ if ~isstruct(srcBlk) || ~isscalar(srcBlk)
 end
 
 if strcmp(family, 'stimulus')
-    [value, valueAxes, dropped, response] = rawCurve(srcBlk, opts.Rebuilt);
+    [value, valueAxes, dropped, response, extra.labelNote, extra.axisNaming] = ...
+        rawCurve(srcBlk, opts.Rebuilt, opts.VariedParameters);
     return;
 end
 
@@ -165,7 +213,15 @@ props = sub(srcBlk, 'properties');
 % is notation]); the spellings are that term's registry `synonyms`
 [value, response] = putUnit(value, getf(props, {'response_units', 'responseUnits'}));
 rt = getf(props, {'response_type', 'responseType'});
-if ischar(rt) && ~isempty(rt); value.response_type = jLabel(rt); end
+if isstring(rt) && isscalar(rt); rt = char(rt); end
+if ischar(rt) && ~isempty(rt)
+    % [harmonic is a field beside the response type] (Jess Haley, 2026-11-17):
+    % F1 / F2 are Fourier Analysis with `harmonic` 1 / 2, once the schema in
+    % use declares tuning_curve.value.harmonic (siblings first)
+    [value.response_type, h] = jResponseType(rt, ...
+        jSchemaHasPath('tuning_curve', {'value', 'harmonic'}));
+    if ~isempty(h); value.harmonic = h; end
+end
 co = getf(props, {'coordinates'});
 if ischar(co) && ~isempty(co); value.coordinates = co; end
 % every other `properties` field was read by nothing and listed nowhere: it is
@@ -193,7 +249,7 @@ for k = 1:numel(axesNames)
         used{end+1} = nm; %#ok<AGROW>
     end
 end
-valueAxes = makeAxes(present, cols);
+valueAxes = makeAxes(labelTerms(present), cols);
 [value, used] = takeArr(value, used, 'mean', tc, {'mean'}, false);
 [value, used] = takeArr(value, used, 'stddev', tc, {'stddev'}, false);
 [value, used] = takeArr(value, used, 'stderr', tc, {'stderr'}, false);
@@ -326,11 +382,15 @@ end
 
 % =============================================================================
 
-function [value, valueAxes, dropped, response] = rawCurve(st, rebuilt)
+function [value, valueAxes, dropped, response, labelNote, naming] = rawCurve(st, rebuilt, varied)
 % v1 `stimulus_tuningcurve` (tuningcurve_calc, and the raw pre-calculator curve).
 % REBUILT: fields the caller rebuilds from other documents (placed here).
+% VARIED: the varied stimulus parameters (OPTS.VariedParameters); LABELNOTE
+% the v1 label for the notes, or [] (see the header); NAMING what the axis
+% was named from (axisTerms).
 value = struct();
-labels = getf(st, {'independent_variable_label'});
+rawLabel = getf(st, {'independent_variable_label'});
+labels = rawLabel;
 if ischar(labels); labels = {labels}; end
 if isstring(labels); labels = cellstr(labels); end
 if ~iscell(labels); labels = {}; end
@@ -350,7 +410,8 @@ if numel(names) < numel(cols)
         names{d} = sprintf('independent variable %d', d);
     end
 end
-valueAxes = makeAxes(names(1:numel(cols)), cols);
+[terms, labelNote, naming] = axisTerms(names(1:numel(cols)), cols, varied, rawLabel);
+valueAxes = makeAxes(terms, cols);
 used = {};   % the field names AS SPELLED in the document (snake or camelCase)
 [~, nm] = getfn(st, {'independent_variable_label'}); used{end+1} = nm;
 [~, nm] = getfn(st, {'independent_variable_value'}); used{end+1} = nm;
@@ -403,8 +464,88 @@ tf = isstruct(response) && isfield(response, 'outcome') ...
     && any(strcmp(response.outcome, {'neural firing rate', 'dF/F'}));
 end
 
-function valueAxes = makeAxes(names, cols)
-%MAKEAXES The value's stimulus dimension(s) and the covariates along them.
+function terms = labelTerms(names)
+% each axis named from its label (snake_case '_' as ' '), the registered term
+% when the registry holds the name (jLabel)
+terms = cellfun(@(nm) jLabel(strrep(nm, '_', ' ')), reshape(names, 1, []), ...
+    'UniformOutput', false);
+end
+
+function [terms, labelNote, naming] = axisTerms(names, cols, varied, rawLabel)
+%AXISTERMS The axis terms of a raw curve, and the label for its notes
+%   ([tuning axes named from the varied property], Jess Haley, 2026-11-12;
+%   see OPTS.VariedParameters in the header). NAMES are the label's parts,
+%   one per column; RAWLABEL is v1 independent_variable_label as read.
+%   NAMING says what the axis was named from, for the count [tuning label
+%   choices confirmed] (Decided by Jess Haley, 2026-11-17, did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md) asks for: 'varied
+%   parameter', or 'label: ' and why (no independent_parameter; one the name
+%   table does not hold; a count that is not the number of columns).
+terms = labelTerms(names);
+labelNote = [];
+naming = 'varied parameter';
+if ischar(varied) || isstring(varied); varied = cellstr(varied); end
+if ~iscell(varied) || isempty(varied)
+    naming = 'label: no independent_parameter';
+    return;
+end
+if numel(varied) ~= numel(cols)
+    naming = sprintf('label: %d independent_parameter(s) for %d column(s)', ...
+        numel(varied), numel(cols));
+    return;
+end
+byParameter = cell(1, numel(cols));
+for d = 1:numel(cols)
+    [v2, found] = did2.convert.tuningNames('v2', char(varied{d}));
+    if ~found
+        % a parameter the table does not hold: named from the label
+        naming = sprintf('label: independent_parameter not in the name table: %s', ...
+            char(varied{d}));
+        return;
+    end
+    c = double(cols{d}(:));
+    c = c(isfinite(c));
+    if strcmp(varied{d}, 'angle') && ~isempty(c) && max(c) - min(c) < 180
+        % an orientation, not a 0-360 direction
+        byParameter{d} = did2.convert.registeredTerm('NCIT:C165680', 'Orientation');
+    else
+        byParameter{d} = jLabel(v2);
+    end
+end
+terms = byParameter;
+if ~isempty(rawLabel) && ~labelRestated(rawLabel, terms)
+    labelNote = rawLabel;
+end
+end
+
+function tf = labelRestated(rawLabel, terms)
+%LABELRESTATED True when the v1 label is what the round trip rebuilds from
+%   the axis terms (+roundtrip/private/rawCurveBlock.m: each term's name,
+%   lower case, ' ' as '_', joined by ','), compared as [display label
+%   compared loosely] (Jess Haley, 2026-11-10) compares: part by part at ',',
+%   each trimmed, letter case and '_' versus space aside.
+names = cellfun(@(t) lower(strrep(strtrim(char(t.name)), ' ', '_')), terms, ...
+    'UniformOutput', false);
+a = looseParts(rawLabel);
+b = looseParts(strjoin(names, ','));
+tf = ~isempty(a) && isequal(a, b);
+end
+
+function p = looseParts(x)
+p = {};
+if isstring(x); x = cellstr(x); end
+if iscell(x)
+    if ~all(cellfun(@ischar, x(:))); return; end
+    x = strjoin(reshape(x, 1, []), ',');
+end
+if ~ischar(x) || isempty(strtrim(x)); return; end
+p = strtrim(strsplit(x, ','));
+p = cellfun(@(c) lower(regexprep(c, '[_\s]+', ' ')), p, 'UniformOutput', false);
+end
+
+function valueAxes = makeAxes(terms, cols)
+%MAKEAXES The value's stimulus dimension(s) and the covariates along them,
+%   TERMS{d} naming column d (labelTerms, axisTerms).
 %   One column: dimension term = the variable, one quantity covariate.
 %   Several columns of one length n (Jess Haley 2026-10-22 [tuning grid]):
 %     a FULL GRID -> one dimension per variable (n_d = its distinct values),
@@ -421,10 +562,9 @@ n = numel(cols{1});
 if any(cellfun(@numel, cols) ~= n)
     return;   % ragged: no honest dimension; the values stay, without one
 end
-labels = cellfun(@(nm) strrep(nm, '_', ' '), names, 'UniformOutput', false);
 if isscalar(cols)
-    valueAxes = struct('dimensions', did2.build.dimension(jLabel(labels{1}), n), ...
-        'covariates', did2.build.covariate(jLabel(labels{1}), 0, ...
+    valueAxes = struct('dimensions', did2.build.dimension(terms{1}, n), ...
+        'covariates', did2.build.covariate(terms{1}, 0, ...
             'Value', reshape(cols{1}, 1, [])));
     return;
 end
@@ -434,8 +574,8 @@ if isGrid
     dims = cell(1, k);
     covs = cell(1, k);
     for d = 1:k
-        dims{d} = did2.build.dimension(jLabel(labels{d}), numel(levels{d}));
-        covs{d} = did2.build.covariate(jLabel(labels{d}), d - 1, ...
+        dims{d} = did2.build.dimension(terms{d}, numel(levels{d}));
+        covs{d} = did2.build.covariate(terms{d}, d - 1, ...
             'Value', reshape(levels{d}, 1, []));
     end
     valueAxes = struct('dimensions', did2.build.list(dims{:}), ...
@@ -448,7 +588,7 @@ end
 % did-schema V_eta_data_body_model_plan.md, answer "A").
 covs = cell(1, k);
 for d = 1:k
-    covs{d} = did2.build.covariate(jLabel(labels{d}), 0, 'Value', reshape(cols{d}, 1, []));
+    covs{d} = did2.build.covariate(terms{d}, 0, 'Value', reshape(cols{d}, 1, []));
 end
 valueAxes = struct('dimensions', did2.build.dimension( ...
     struct('node', 'XCO:0000000', 'name', 'experimental condition'), n), ...
@@ -571,77 +711,111 @@ for g = 1:numel(prefixes)
         model = blockName;
         if startsWith(model, 'fit_'); model = model(5:end); end
     end
-    [model, constraints, modelTerm] = oneFunction(model, blockName, family);
-    [e, d] = oneFit(grp, model, constraints, family, modelTerm);
+    [model, constraints, spec] = oneFunction(model, blockName, family);
+    [e, d] = oneFit(grp, model, constraints, family, spec);
     entries{end+1} = e; %#ok<AGROW>
     dropped = [dropped, prefixed([blockName '.' P], d)]; %#ok<AGROW>
 end
 dropped = [dropped, prefixed([blockName '.'], stated(blk, fn(~claimed)))];
 end
 
-function [model, constraints, modelTerm] = oneFunction(model, blockName, family)
-%ONEFUNCTION The one model a fit is, and the constraints that tell it apart
-%   ({coefficient number, value} rows): see ONE FUNCTION in the header.
-%   MODELTERM is the model's term when it has one ([] otherwise: oneFit
-%   writes the label of MODEL); MODEL stays the stem of the coefficient names.
+function [model, constraints, spec] = oneFunction(model, blockName, family)
+%ONEFUNCTION The one model a fit is, and the constraints that tell it apart:
+%   see ONE FUNCTION and NAMED BY SYMBOL in the header. SPEC is the fit's row
+%   of did2.convert.tuningFitModels (its term, symbols, equation and
+%   constraints) when it has one, else [] and CONSTRAINTS are {coefficient
+%   number, value} rows (the speed fits); MODEL stays the label of a fit with
+%   no row.
 constraints = zeros(0, 2);
-modelTerm = [];
-switch family
-    case 'contrast'
-        t = regexp(model, '^naka_rushton_(RB|RBN|RBNS)$', 'tokens', 'once', 'ignorecase');
-        if ~isempty(t)
-            model = 'Naka-Rushton';
-            % Decided by Jess Haley, 2026-10-30, did-schema
-            % V_eta_go_forward_class_audit.md [Naka-Rushton function minted]:
-            % the model is EMPTY:0000416 "Naka-Rushton function" (empty-ontology
-            % #32), not a bare label. Written by its node even where the term
-            % registry in use does not hold the row yet (did-schema #242); a
-            % migration runs with the TermRegistry check off.
-            modelTerm = did2.convert.registeredTerm('EMPTY:0000416', 'Naka-Rushton function');
-            switch upper(t{1})
-                case 'RB'
-                    constraints = [3 1; 4 1];   % n = 1, s = 1
-                case 'RBN'
-                    constraints = [4 1];        % s = 1
-            end
-        end
-    case 'speed'
-        if strcmpi(model, 'Priebe_fit')
-            switch blockName
-                case 'fit_no_speed'
-                    constraints = [3 0];        % xi = 0
-                case 'fit_fullspeed'
-                    constraints = [3 1];        % xi = 1
-            end
-        end
+spec = [];
+if any(strcmp(family, {'oridir', 'contrast', 'sf', 'tf'}))
+    row = did2.convert.tuningFitModels(family, model);
+    if isscalar(row)
+        spec = row;
+        return;
+    end
+end
+if strcmp(family, 'speed') && strcmpi(model, 'Priebe_fit')
+    % [Priebe fits are one function]; not covered by [tuning fit coefficients
+    % named by symbol] (no model term yet): named by position, as before
+    switch blockName
+        case 'fit_no_speed'
+            constraints = [3 0];        % xi = 0
+        case 'fit_fullspeed'
+            constraints = [3 1];        % xi = 1
+    end
 end
 end
 
-function [e, dropped] = oneFit(s, model, constraints, family, modelTerm)
+function c = coefficient(variable, x)
+% a fit's coefficient or constraint: in the new numeric shape the list item
+% {variable, numeric} ([one shape for measured numbers], plan section 8,
+% answer 5: "unit optional, empty for migrated fits since v1 states none"),
+% as did2.build.fitEntry writes it; in the old shape {variable, value}
+if strcmp(did2.build.numericShape(), 'new')
+    c = struct('variable', variable, 'numeric', x);
+else
+    c = struct('variable', variable, 'value', x);
+end
+end
+
+function [e, dropped] = oneFit(s, model, constraints, family, spec)
 label = strrep(model, '_', ' ');
-if nargin >= 5 && ~isempty(modelTerm)
-    e = struct('model', modelTerm);   % [Naka-Rushton function minted]
+used = {};
+dropped = {};
+p = getf(s, {'parameters'});
+if nargin >= 5 && isstruct(spec) && isscalar(spec)
+    % [tuning fit coefficients named by symbol] (Decided by Jess Haley,
+    % 2026-11-11): the model term, the writer's formula, and each coefficient
+    % and constraint named by its symbol, in stored order
+    e = struct('model', did2.convert.registeredTerm(spec.node, spec.name));
+    if ~isempty(spec.equation)
+        e.equation = spec.equation;
+    end
+    [p, ok] = storedCoefficients(s, p, spec);
+    if ok
+        used{end+1} = 'parameters';
+        if ~isempty(p)
+            c = cell(1, numel(p));
+            for k = 1:numel(p)
+                c{k} = coefficient(symbolLabel(spec.symbols{k}), double(p(k)));
+            end
+            e.coefficients = did2.build.list(c{:});
+        end
+    else
+        % more values than the model has symbols, or a TF difference of
+        % Gaussians whose leading value is not the writer's constant 0: the
+        % vector has no faithful naming, so it stays unplaced and the document
+        % is carried (carry-056)
+        dropped{end+1} = 'parameters';
+    end
+    if ~isempty(spec.constraints)
+        c = cell(1, size(spec.constraints, 1));
+        for k = 1:size(spec.constraints, 1)
+            c{k} = coefficient(symbolLabel(spec.constraints{k, 1}), ...
+                spec.constraints{k, 2});
+        end
+        e.constraints = did2.build.list(c{:});
+    end
 else
     e = struct('model', jLabel(label));
-end
-used = {};
-p = getf(s, {'parameters'});
-if isnumeric(p) && ~isempty(p)
-    c = cell(1, numel(p));
-    for k = 1:numel(p)
-        c{k} = struct('variable', jLabel(sprintf('%s parameter %d', ...
-            label, k)), 'value', double(p(k)));
+    if isnumeric(p) && ~isempty(p)
+        c = cell(1, numel(p));
+        for k = 1:numel(p)
+            c{k} = coefficient(jLabel(sprintf('%s parameter %d', ...
+                label, k)), double(p(k)));
+        end
+        e.coefficients = did2.build.list(c{:});
+        used{end+1} = 'parameters';
     end
-    e.coefficients = did2.build.list(c{:});
-    used{end+1} = 'parameters';
-end
-if ~isempty(constraints)
-    c = cell(1, size(constraints, 1));
-    for k = 1:size(constraints, 1)
-        c{k} = struct('variable', jLabel(sprintf('%s parameter %d', label, ...
-            constraints(k, 1))), 'value', constraints(k, 2));
+    if ~isempty(constraints)
+        c = cell(1, size(constraints, 1));
+        for k = 1:size(constraints, 1)
+            c{k} = coefficient(jLabel(sprintf('%s parameter %d', label, ...
+                constraints(k, 1))), constraints(k, 2));
+        end
+        e.constraints = did2.build.list(c{:});
     end
-    e.constraints = did2.build.list(c{:});
 end
 gd = struct();
 for f = {{'r2', {'r2', 'r_squared'}}, {'sse', {'sse'}}, {'sse_per_point', {'sse_per_point', 'sse_perpoint'}}}
@@ -700,8 +874,41 @@ if isnumeric(y) && ~isempty(y) && ~isempty(xs) && all(cellfun(@numel, xs) == num
     e.sampled_fit = struct('independent_values', [xs{:}], 'response', double(y(:)));
     used{end+1} = yn;
 end
-dropped = stated(s, setdiff(fieldnames(s), used));
-dropped = reshape(dropped, 1, []);
+dropped = [dropped, reshape(stated(s, setdiff(fieldnames(s), [used, dropped])), 1, [])];
+end
+
+function [p, ok] = storedCoefficients(s, p, spec)
+%STOREDCOEFFICIENTS The coefficient values of a fit with a model row, in stored
+%   order. OK is false when the v1 vector cannot be named by the row's
+%   symbols: more values than symbols, or (SPEC.leadingZero, the TF difference
+%   of Gaussians) a vector that is absent, empty or does not start with the
+%   writer's constant 0, which the round trip would restore. A fit with no
+%   `parameters` (the spline) is OK with no values.
+ok = true;
+[~, nm] = getfn(s, {'parameters'});
+if spec.leadingZero
+    if ~(isnumeric(p) && ~isempty(p) && double(p(1)) == 0)
+        ok = false;
+        p = [];
+        return;
+    end
+    p = p(2:end);
+elseif isempty(nm) || ~isnumeric(p)
+    p = [];
+    ok = isempty(nm) || isempty(s.(nm));
+    return;
+end
+p = double(p(:));
+if numel(p) > numel(spec.symbols)
+    ok = false;
+    p = [];
+end
+end
+
+function t = symbolLabel(symbol)
+% a coefficient's symbol as a label ({node '', name}): never looked up in the
+% term registry, where a one-letter symbol could match a registered name
+t = struct('node', '', 'name', symbol);
 end
 
 function [out, used, notes] = halfHeightValues(vec)

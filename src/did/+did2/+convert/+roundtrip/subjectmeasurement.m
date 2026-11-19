@@ -86,7 +86,7 @@ cells = asCell(vals);
 if isempty(kind) || numel(cells) ~= 1
     spec.unplaced{end+1} = 'the observation does not state one number';
 else
-    value = numberOf(getIn(cells{1}, 'source_value'));
+    value = numberOf(cellSource(cells{1}));
 end
 subject = edgeIds(obs, 'entity_id');
 if isempty(subject); subject = {''}; end

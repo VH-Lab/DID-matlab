@@ -46,6 +46,14 @@ function report = silentLoss(docs, opts)
 %                                 family whose instance count falls outside the
 %                                 declared min_count/max_count. REPORT ONLY.
 %     family_violation_count      total occurrences
+%     cardinality_denominator     #63's own denominators (DID-matlab #399):
+%                                 docs_checked (documents whose class
+%                                 declares at least one numbered family),
+%                                 families_declared (distinct (class,
+%                                 family) pairs checked), family_checks
+%                                 ((document, family) pairs checked). At
+%                                 family_checks 0 the rule could not fire,
+%                                 and a zero violation count says only that.
 %     family_uniqueness_violation #52: struct array {class_name, edge_name,
 %                                 unique_by, key, count} -- two members of one
 %                                 numbered family referring to documents that
@@ -528,6 +536,10 @@ report = struct( ...
     'family_count_violation',    struct('class_name', {}, 'edge_name', {}, ...
                                         'declared', {}, 'found', {}, 'count', {}), ...
     'family_violation_count',    0, ...
+    'cardinality_denominator',   struct( ...
+        'docs_checked',          0, ...
+        'families_declared',     0, ...
+        'family_checks',         0), ...
     'family_uniqueness_violation', struct('class_name', {}, 'edge_name', {}, ...
                                         'unique_by', {}, 'key', {}, 'count', {}), ...
     'family_uniqueness_violation_count', 0, ...
@@ -656,6 +668,9 @@ for k = 1:numel(bodies)
     end
 end
 uniqueFamilySeen = {};   % (class|family) pairs that actually carry the rule
+% #63's denominator (DID-matlab #399): (class|family) pairs the cardinality
+% check looked at. A map, for the reason the nrSeen* maps above are maps.
+cardFamilySeen = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 
 % #72 memos. eaClassMemo: className -> what the SCHEMA says about that class
 % (is it an epoch, is it a time reference, does it declare the anchor edge,
@@ -759,8 +774,15 @@ for k = 1:numel(bodies)
         % REPORT ONLY: the counts have never been measured, and enforcing a
         % minimum before knowing them is how a gate turns red on real data.
         families = declaredFamilies(cache, className);
+        if ~isempty(families)
+            report.cardinality_denominator.docs_checked = ...
+                report.cardinality_denominator.docs_checked + 1;
+        end
         for f = 1:numel(families)
             fam = families(f);
+            cardFamilySeen(sprintf('%s|%s', className, fam.name)) = true;
+            report.cardinality_denominator.family_checks = ...
+                report.cardinality_denominator.family_checks + 1;
             found = countFamily(body, fam.name);
             bad = found < fam.min_count || ...
                   (~isnan(fam.max_count) && found > fam.max_count);
@@ -1024,6 +1046,7 @@ report.vacuous_field_count = sum(fldCounts);
 report.family_violation_count = sum(famCounts);
 report.family_uniqueness_violation_count = sum(uniCounts);
 report.uniqueness_denominator.families_declared = numel(uniqueFamilySeen);
+report.cardinality_denominator.families_declared = cardFamilySeen.Count;
 % #72, assigned HERE and for the third time for the same reason: an accumulator
 % that is never assigned reports a zero meaning "not reported". That bug has
 % shipped in this file once already (famKeys), and each of these three lines

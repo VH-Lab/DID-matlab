@@ -149,7 +149,9 @@ classdef document < handle
             %   written with EVERY dimension present: a 1xN row is [[a,b,c]],
             %   an Nx1 column [[a],[b],[c]], an n x 3 palette [[r,g,b],...], a
             %   scalar [[x]] -- and plain `jsondecode` reads each back at the
-            %   shape it was written. Numbers are written in the shortest
+            %   shape it was written. The exception is a single number in a
+            %   list item's `numeric` or `source_numeric`, which is written
+            %   plain ([numeric shape details] (3), Jess Haley, 2026-11-17). Numbers are written in the shortest
             %   decimal (15 to 17 significant digits) that reads back to the
             %   same double; a non-finite one is NaN, Infinity or -Infinity, as
             %   the rest of the text writes it (below).
@@ -366,7 +368,15 @@ classdef document < handle
                 if ~isfield(v, name)
                     return;
                 end
+                % a single number in a list item's new-shape `numeric` /
+                % `source_numeric` is written plain; an array keeps its
+                % dimensions ([numeric shape details] (3), Jess Haley,
+                % 2026-11-17, did-schema did_v2_numeric_shape_plan.md)
+                plainScalar = isscalar(path) && any(strcmp(name, {'numeric', 'source_numeric'}));
                 for k = 1:numel(v)
+                    if plainScalar && isscalar(v(k).(name))
+                        continue;
+                    end
                     [sub, texts] = did2.document.tokeniseMatrices( ...
                         v(k).(name), path(2:end), texts, base);
                     v(k).(name) = sub;

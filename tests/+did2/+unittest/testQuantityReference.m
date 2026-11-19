@@ -19,15 +19,17 @@ function tests = testQuantityReference
 %   so did-schema can drop the copies after this lands (CLAUDE.md sec. 3).
 %
 %   THE CANONICAL (Decided by Jess Haley, 2026-10-30 [canonical absent only
-%   as needs info]): a cell of a one-canonical class stating a unit and a
-%   finite source_value but no canonical fails unless the run's migration
-%   report lists it as a gap (testA*Canonical*; [gap accepted when the report
-%   lists it], Jess Haley, 2026-11-01). NOT TESTED, BECAUSE NOT BUILT:
-%   a cell with no unit, and a cell with several canonicals (concentration:
-%   "exactly one", G38): DID-matlab's own writers (neuron_extracellular,
-%   jMeasurementFold, resolveDeferredBaths, virus_injection's dilution)
-%   write those with no canonical today (did2.schema.cache
-%   validateQuantityCells' header).
+%   as needs info]): a cell of a one-canonical class stating a source_value
+%   (with a unit or without one, finite or not) but no canonical fails
+%   unless the run's migration report lists it as a gap (testA*Canonical*,
+%   testANumberWithNoUnit*, testANonFiniteNumber*; [gap accepted when the
+%   report lists it], Jess Haley, 2026-11-01); a value array is one gap
+%   ([waveform unit gap once], Jess Haley, 2026-11-03). A cell of SEVERAL
+%   canonicals (concentration) is checked the same way since [bath
+%   concentration prefixes convert to molar] (Jess Haley, 2026-11-12): it
+%   fails with none of its canonical slots unless the report lists a gap
+%   under it (testACellOfSeveralCanonicals*). INVERTED:
+%   testWhatTheCanonicalCheckLeavesAlone used to pass such a cell.
 %
 %   Each test points the shared schema cache at a throwaway directory (the
 %   pattern of testBuildSourceUnit): a `value` root, three value classes
@@ -268,18 +270,99 @@ verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
     'did2:validation:badGap', 'the cell is given: listing it is refused');
 end
 
-function testWhatTheCanonicalCheckLeavesAlone(testCase) %#ok<INUSD>
-% no unit, a non-finite number, or a class of several canonicals: not
-% checked here (the writers of today; validateQuantityCells' header)
-doc = lengthDoc();
-doc.length.value = struct('source_value', 100);
+function testANumberWithNoUnitAndNoCanonicalFails(testCase)
+doc = measuredDoc();
+doc.measured.reading = struct('source_value', 100);
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'no unit, not listed: refused');
+did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
+    'measured.reading.meters', 'unit not stated');
 did2.schema.cache.shared().validateDocument(doc);
-doc.length.value = struct('source_value', NaN, ...
+end
+
+function testANonFiniteNumberWithNoCanonicalFails(testCase)
+doc = measuredDoc();
+doc.measured.reading = struct('source_value', NaN, ...
     'source_unit', struct('node', 'om:millimetre', 'name', 'millimetre'));
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'NaN, not listed: refused');
+did2.convert.migrationReport('gap', doc.base.id, 'measured', ...
+    'measured.reading.meters', 'the source states no finite number');
 did2.schema.cache.shared().validateDocument(doc);
+end
+
+function testAValueArrayWithNoUnitIsOneGap(testCase)
+% [waveform unit gap once] (Jess Haley, 2026-11-03): one gap, with no index,
+% for a value of many cells; an indexed gap excuses its own cell only
+doc = did2.schema.cache.shared().buildBlankDocument('measured_series');
+doc.base.id = 'measured_series_1';
+doc.measured_series.readings = struct('source_value', {1, 2, 3});
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'not listed: refused');
+did2.convert.migrationReport('gap', doc.base.id, 'measured_series', ...
+    'measured_series.readings(2).meters', 'unit not stated');
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'one cell listed: the others refused');
+did2.convert.migrationReport('begin');
+did2.convert.migrationReport('gap', doc.base.id, 'measured_series', ...
+    'measured_series.readings.meters', 'unit not stated: 3 numbers');
+did2.schema.cache.shared().validateDocument(doc);
+end
+
+function testACellOfSeveralCanonicalsWithNoneFails(testCase)
+% [bath concentration prefixes convert to molar] (Jess Haley, 2026-11-12): a
+% concentration (several canonical slots) stating a number but none of its
+% canonicals is refused, by reference and hand-copied alike, with a unit or
+% without one; any ONE canonical slot is enough
+for u = {struct('node', '', 'name', 'dilution'), []}
+    doc = mixtureDoc();
+    doc.mixture.value.strength = struct('source_value', 1);
+    if ~isempty(u{1}); doc.mixture.value.strength.source_unit = u{1}; end
+    verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+        'did2:validation:quantityShape', 'a reference');
+    doc = mixtureDoc();
+    doc.mixture.value.copied = struct('source_value', 1);
+    if ~isempty(u{1}); doc.mixture.value.copied.source_unit = u{1}; end
+    verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+        'did2:validation:quantityShape', 'a hand-copied cell');
+end
 doc = mixtureDoc();
-doc.mixture.value.strength = struct('source_value', 1, ...
-    'source_unit', struct('node', '', 'name', 'dilution'));
+doc.mixture.value.strength = struct('grams_per_liter', 2, 'source_value', 2, ...
+    'source_unit', struct('node', '', 'name', 'g/L'));
+did2.schema.cache.shared().validateDocument(doc);
+end
+
+function testACellOfSeveralCanonicalsIsExcusedByAGap(testCase)
+% the gap names a field under the cell: '<cell>.canonical' (jDoseBodies,
+% nothing says which slot) or the slot itself (resolveDeferredBaths'
+% osmolarity names 'osmolar')
+doc = did2.schema.cache.shared().buildBlankDocument('dosed');
+doc.base.id = 'dosed_1';
+doc.dosed.strength = struct('source_value', 290, ...
+    'source_unit', struct('node', '', 'name', 'mOsm'));
+did2.convert.migrationReport('begin');
+testCase.addTeardown(@() did2.convert.migrationReport('end'));
+verifyError(testCase, @() did2.schema.cache.shared().validateDocument(doc), ...
+    'did2:validation:quantityShape', 'not listed: refused');
+for field = {'dosed.strength.canonical', 'dosed.strength.molar'}
+    did2.convert.migrationReport('begin');
+    did2.convert.migrationReport('gap', doc.base.id, 'dosed', field{1}, ...
+        'the unit has no conversion');
+    did2.schema.cache.shared().validateDocument(doc);
+end
+end
+
+function testWhatTheCanonicalCheckLeavesAlone(testCase) %#ok<INUSD>
+% a cell with no number at all
+doc = lengthDoc();
+doc.length.value = struct('source_unit', ...
+    struct('node', 'om:millimetre', 'name', 'millimetre'));
 did2.schema.cache.shared().validateDocument(doc);
 end
 
@@ -309,6 +392,11 @@ end
 
 function doc = lengthDoc()
 doc = did2.schema.cache.shared().buildBlankDocument('length');
+end
+
+function doc = measuredDoc()
+doc = did2.schema.cache.shared().buildBlankDocument('measured');
+doc.base.id = 'measured_1';
 end
 
 function d = subDef(raw, name)
@@ -391,6 +479,13 @@ writeClass(dirPath, 'oddities', {}, {leaf('reading', 'voltage'), leaf('other', '
 % class, for the canonical check
 writeClass(dirPath, 'base', {}, {leaf('id', 'char')});
 writeClass(dirPath, 'measured', {'base'}, {leaf('reading', 'length')});
+% ... and to a class of several canonicals
+writeClass(dirPath, 'dosed', {'base'}, {leaf('strength', 'concentration')});
+% ... and an array of them (a value of several cells: one gap, [waveform unit
+% gap once])
+readings = leaf('readings', 'length');
+readings.mustBeScalar = false;
+writeClass(dirPath, 'measured_series', {'base'}, {readings});
 did2.schema.cache.setSchemaPath(dirPath);
 end
 

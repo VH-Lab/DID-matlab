@@ -43,9 +43,16 @@ if isempty(obs)
     spec.unplaced{end+1} = 'no observation was emitted';
     return;
 end
-[~, vname] = termParts(getIn(obs, 'statement', 'variable'));
-if ~strcmpi(vname, 'electrode offset voltage')
-    spec.unplaced{end+1} = sprintf('the observation''s variable is "%s", not electrode offset voltage', vname);
+% [variable terms batch 1] (Jess Haley, 2026-11-19): EMPTY:0000056
+% "microelectrode voltage offset", by node; an observation migrated before
+% that decision has no node and the label 'electrode offset voltage'
+[vnode, vname] = termParts(getIn(obs, 'statement', 'variable'));
+vnode = strtrim(char(vnode));
+if ~(strcmpi(vnode, 'EMPTY:0000056') ...
+        || (isempty(vnode) && any(strcmpi(vname, {'electrode offset voltage', ...
+        'microelectrode voltage offset'}))))
+    spec.unplaced{end+1} = sprintf('the observation''s variable is "%s" (%s), not electrode offset voltage', ...
+        vname, vnode);
 end
 base = rebuildBase(obs);
 sid = base.session_id;
@@ -62,7 +69,7 @@ if numel(values) ~= 1
     spec.unplaced{end+1} = sprintf('the observation holds %d voltage values (the offset is one)', ...
         numel(values));
 else
-    offset = numberOf(getIn(values{1}, 'source_value'));
+    offset = numberOf(cellSource(values{1}));
     [unode, uname] = termParts(getIn(values{1}, 'source_unit'));
     if ~(sameCurie(unode, 'om:volt') || strcmp(uname, 'volt'))
         spec.unplaced{end+1} = sprintf('the voltage''s source unit is "%s", not the volt the migrator writes', ...
@@ -75,7 +82,7 @@ conds = asCell(getIn(obs, 'statement', 'conditions'));
 for k = 1:numel(conds)
     [~, cname] = termParts(getIn(conds{k}, 'variable'));
     if strcmpi(cname, 'temperature') && isempty(temperature)
-        temperature = numberOf(getIn(conds{k}, 'quantity', 'value'));
+        temperature = numberOf(itemNumbers(conds{k}));
     else
         spec.unplaced{end+1} = sprintf('condition %d ("%s") has no place in an electrode offset voltage', ...
             k, cname);

@@ -74,17 +74,19 @@ isBody = cellfun(@(b) strcmp(classNameOf(b), 'sampled_body'), bodies);
 isPValue = false(1, n);
 for k = find(~isBody)
     isPValue(k) = strcmp(classNameOf(bodies{k}), 'receptive_field_calculation') ...
-        && strcmpi(variableName(bodies{k}), P_VALUE);
+        && isVariable(bodies{k}, P_VALUE);
 end
 [v1, leaf, inputs, spec] = calcParts(bodies(~isBody & ~isPValue), 'receptive_field_calculation', ...
-    'hartley_calc', 'ndi.calc.vis.hartley');
+    'hartley_calc', 'ndi.calc.vis.hartley', ...
+    'ParameterNames', did2.convert.hartleyParameterNames());   % [term picks batch 3]
 if isempty(leaf)
     return;
 end
 leafId = char(getIn(leaf, 'base', 'id'));
-if ~strcmpi(variableName(leaf), STA)
-    spec.unplaced{end+1} = sprintf('the calculation''s variable is "%s", not "%s"', ...
-        variableName(leaf), STA);
+if ~isVariable(leaf, STA)
+    staTerm = STA;
+    spec.unplaced{end+1} = sprintf('the calculation''s variable is "%s", not %s "%s"', ...
+        variableName(leaf), staTerm.node, staTerm.name);
 end
 pLeafId = '';
 pIdx = find(isPValue);
@@ -215,7 +217,7 @@ end
 if ~isempty(spike)
     c = asCell(getIn(spike, 'data', 'covariates'));
     if isscalar(c)
-        hrc.spiketimes = column(getIn(c{1}, 'quantity', 'value'));
+        hrc.spiketimes = column(itemNumbers(c{1}));
     else
         spec.unplaced{end+1} = 'the spike-time body has no single time covariate';
     end
@@ -229,13 +231,21 @@ if ~isempty(numbers)
     hn = struct();
     covs = asCell(getIn(numbers, 'data', 'covariates'));
     for k = 1:numel(covs)
-        [~, label] = termParts(getIn(covs{k}, 'variable'));
-        ix = find(strcmpi(cols(:, 2), label), 1);
+        % [hartley column terms] (Jess Haley, 2026-11-19): by the variable's
+        % node first; a covariate migrated before the terms were decided has
+        % no node and its plain label ('hartley S'), read by name
+        [node, label] = termParts(getIn(covs{k}, 'variable'));
+        node = strtrim(char(node));
+        if ~isempty(node)
+            ix = find(strcmpi(cols(:, 2), node), 1);
+        else
+            ix = find(strcmpi(cols(:, 3), label) | strcmpi(cols(:, 4), label), 1);
+        end
         if isempty(ix) || isfield(hn, cols{ix, 1})
             spec.unplaced{end+1} = sprintf('hartley numbers covariate "%s" has no v1 field', label);
             continue;
         end
-        hn.(cols{ix, 1}) = column(getIn(covs{k}, 'quantity', 'value'));
+        hn.(cols{ix, 1}) = column(itemNumbers(covs{k}));
     end
     hrc.hartley_numbers = hn;
 end
@@ -303,7 +313,7 @@ for k = 1:numel(covs)
         bad{end+1} = sprintf('covariate %d is along no dimension', k); %#ok<AGROW>
         continue;
     end
-    vals{a + 1} = column(getIn(covs{k}, 'quantity', 'value'));
+    vals{a + 1} = column(itemNumbers(covs{k}));
 end
 for k = 1:numel(dims)
     if isempty(vals{k})
@@ -332,18 +342,36 @@ function name = variableName(b)
 [~, name] = termParts(getIn(b, 'statement', 'variable'));
 end
 
+function tf = isVariable(b, term)
+% [hartley plane terms] (Jess Haley, 2026-11-18): a plane's statement is found
+% by its variable's NODE; by its name only when the variable has no node (a
+% document migrated before the terms were decided, when it was a plain label)
+[node, name] = termParts(getIn(b, 'statement', 'variable'));
+if ~isempty(strtrim(char(node)))
+    tf = strcmpi(strtrim(char(node)), term.node);
+else
+    tf = strcmpi(strtrim(char(name)), term.name);
+end
+end
+
 function c = hartleyNumberColumns()
-% v1 field -> covariate label (did2.convert.migrators_j.hartley_calc's table)
-c = {'S', 'hartley S'; 'KXV', 'hartley KXV'; 'KYV', 'hartley KYV'; ...
-    'ORDER', 'hartley ORDER'};
+% v1 field -> covariate node, its name, and the plain label written before
+% [hartley column terms] (did2.convert.migrators_j.hartley_calc's table)
+c = { ...
+    'S',     'EMPTY:0000449', 'contrast polarity',                      'hartley S'; ...
+    'KXV',   'EMPTY:0000450', 'horizontal spatial frequency component', 'hartley KXV'; ...
+    'KYV',   'EMPTY:0000451', 'vertical spatial frequency component',   'hartley KYV'; ...
+    'ORDER', 'NCIT:C25390',   'Index',                                  'hartley ORDER'};
 end
 
 function s = STA()
-s = 'spike-triggered average';
+% [hartley plane terms] (Jess Haley, 2026-11-18)
+s = struct('node', 'wikidata:Q7577165', 'name', 'spike-triggered average');
 end
 
 function s = P_VALUE()
-s = 'null cumulative probability';
+% [hartley plane terms] (Jess Haley, 2026-11-18); minted in empty-ontology #49
+s = struct('node', 'EMPTY:0000448', 'name', 'null cumulative probability');
 end
 
 function n = bytesOf(dataType)

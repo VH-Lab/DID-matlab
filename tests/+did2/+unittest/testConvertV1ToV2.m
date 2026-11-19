@@ -125,8 +125,8 @@ function testShortCircuitOnAlreadyTargetBody(testCase)
 % the per-class migrators. The epochclocktimes block carries
 % v1-shaped fields (clocktype, t0_t1); under the short-circuit those
 % stay verbatim, and an unregistered class is not quarantined.
-% ensureClassBlocks still runs (rebuilds the chain) and the body
-% still becomes a did2.document.
+% Nothing pads or re-chains it ([early migration pieces fixed] (2)) and the
+% body still becomes a did2.document.
 target = makeTargetSkeleton('some_unregistered_class');
 target.some_unregistered_class = struct('foo', 'bar');
 target.epochclocktimes = struct('clocktype', 'dev_local_time', ...
@@ -340,6 +340,10 @@ d = notes.carried_as_v1.distinct_details{1};
 verifyTrue(testCase, startsWith(d, '[carry-106] awaiting_home: base.name "a named treatment"'), d);
 verifyEqual(testCase, notes.v1_name_statement_carried.count, 1, 'the count');
 verifyEqual(testCase, notes.v1_name_statement_carried.by_class.treatment, 1);
+verifyEqual(testCase, result.summary.v1_name.sources_inspected, 1, 'the denominator');
+verifyEqual(testCase, result.summary.v1_name.with_v1_name, 1);
+verifyEqual(testCase, result.summary.v1_name.statement_carried, 1);
+verifyEqual(testCase, result.summary.v1_name.not_kept, 0);
 % the same treatment with no name converts, and counts nothing
 v1.base.name = '';
 result = did2.convert.v1_to_v2(v1, 'Validate', false);
@@ -361,6 +365,8 @@ verifyEqual(testCase, char(result.migrated{1}.get('entity.name')), 'mouse_42@lab
 verifyFalse(testCase, isfield(result.summary, 'migration_notes') ...
     && isfield(result.summary.migration_notes, 'v1_name_not_kept'), ...
     'a name the entity holds is not counted as not kept');
+verifyEqual(testCase, result.summary.v1_name.with_v1_name, 1);
+verifyEqual(testCase, result.summary.v1_name.not_kept, 0);
 end
 
 function testTheRoutesReachTheBatchSummaryAndPartitionIt(testCase)
@@ -402,22 +408,23 @@ for f = {'bodies_carried_no_migrator', 'bodies_handed_to_later_step', ...
 end
 end
 
-function testClassBlockPaddingIsMeasuredWithItsDenominator(testCase)
-% [early migration pieces fixed] (2) (Jess Haley, 2026-10-26): before the
-% padding goes, the converted bodies it changes are counted by v1 class, with
-% the number of bodies padded as the denominator. A carried document is not
-% padded and not counted; zero is a measurement, not an absent field.
-result = did2.convert.v1_to_v2(makeSubject(), 'Validate', false);
-P = result.summary.class_blocks_padding;
-verifyGreaterThan(testCase, P.bodies_inspected, 0);
-verifyLessThanOrEqual(testCase, P.bodies_inspected, result.summary.migrated_count);
-verifyLessThanOrEqual(testCase, P.bodies_changed, P.bodies_inspected);
-verifyTrue(testCase, isstruct(P.changed_by_class));
-carried = makeV1Skeleton('projectvar');
-carried.projectvar = struct();
-result = did2.convert.v1_to_v2({carried}, 'Validate', false);
-verifyEqual(testCase, result.summary.class_blocks_padding.bodies_inspected, 0);
-verifyEqual(testCase, result.summary.class_blocks_padding.bodies_changed, 0);
+function testNoClassBlockPadding(testCase)
+% [early migration pieces fixed] (2) (Jess Haley, 2026-10-26): "`ensureClassBlocks`
+% padding goes: the builder produces a complete document". A body is emitted
+% exactly as built: a chain block it lacks is not manufactured, and its
+% superclass list is not rewritten. The padding's probe goes with it.
+% `observation` is a V_eta class whose chain is longer than `base`, so the
+% padding would have rewritten this list and added the chain's blocks.
+target = makeTargetSkeleton('observation');
+target.observation = struct();
+target.document_class.superclasses = struct('class_name', {'base'});
+result = did2.convert.v1_to_v2(target, 'Validate', false);
+verifyEqual(testCase, result.summary.migrated_count, 1);
+out = result.migrated{1}.toStruct();
+verifyEqual(testCase, {out.document_class.superclasses.class_name}, {'base'});
+verifyEqual(testCase, sort(setdiff(fieldnames(out), {'depends_on', 'files'}))', ...
+    sort(setdiff(fieldnames(target), {'depends_on', 'files'}))');
+verifyFalse(testCase, isfield(result.summary, 'class_blocks_padding'));
 end
 
 function testTheRoutingSeparatesTheIdempotencyShortCircuit(testCase)

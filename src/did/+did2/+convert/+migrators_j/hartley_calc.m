@@ -104,13 +104,18 @@ function bodies = hartley_calc(preBody)
 %   the null cumulative probability (a new id, did2.convert.mintId), each the
 %   owner of its plane body, with no "represented quantity" condition (the
 %   second is built by the same fold and shares the first's edges). Their
-%   variables are plain labels until the team approves the terms
-%   (docs/v2_working/UNREGISTERED_TERMS_PROPOSAL.md group D #5, #6).
+%   variables are the terms of [hartley plane terms] (Decided by Jess Haley,
+%   2026-11-18): wikidata:Q7577165 "spike-triggered average" and EMPTY:0000448
+%   "null cumulative probability" (planeVariables; plain labels until then).
 %
 %   THE HARTLEY NUMBERS ARE DATA ([hartley numbers stored, copies not], Decided
 %   by Jess Haley, 2026-11-03): S, KXV, KYV, ORDER as covariates of one body,
 %   dimension EMPTY:0000260 "frame", owned by the spike-triggered average
-%   (hartleyNumbersBody). `T` is not written when it is an exact copy of the
+%   (hartleyNumbersBody); the four covariates' variables are the terms of
+%   [hartley column terms] (Decided by Jess Haley, 2026-11-19): S EMPTY:0000449
+%   "contrast polarity", KXV EMPTY:0000450 "horizontal spatial frequency
+%   component", KYV EMPTY:0000451 "vertical spatial frequency component",
+%   ORDER NCIT:C25390 "Index" (hartleyNumberColumns). `T` is not written when it is an exact copy of the
 %   delay axis (batch 2). The same decision says the frame times and the spike
 %   times are not stored and the round trip rebuilds them; on the corpora the
 %   round trip has no document to rebuild them from (the presentation's timing
@@ -437,30 +442,50 @@ dropped = [dropped, unreadFields(preBody), numbersUnplaced];
 % 2026-10-29, did-schema V_eta_go_forward_class_audit.md): a retire class's v2
 % file is deleted once no v1 document passes through under it, so it is carried
 % whole as v1 with a note here ([passthrough stays v1], Jess Haley, 2026-10-24)
-% instead of passing through silently. Register row carry-138 covers it.
+% instead of passing through silently. Register row carry-138 covers it,
+% narrowed by [a fit is about its input's subject] (Decided by Jess Haley,
+% 2026-11-10): a hartley_calc with no element_id or subject_id of its own is
+% about what its input is about, so v1_to_v2's index
+% (did2.convert.fitInputSubjects) follows its input edge,
+% `stimulus_presentation_id`, to that document and takes its subject; never the
+% session. A v1 stimulus_presentation names only its stimulator
+% (`stimulus_element_id`, NDI's template and writer, decoder.m), not a subject,
+% so on a writer-shaped presentation the chain names none and the document is
+% carried as before. The resolved subject is handed to jCalculation as the
+% calculation's `subject_id` edge on the copy it reads (calcBody), never on
+% the v1 source.
 if isempty(jSubjectOf(preBody, {'element_id', 'subject_id'}))
-    % carry-register: carry-138
-    did2.convert.reportNote('carried_as_v1', 'hartley_calc', sourceId(preBody), ...
-        '[carry-138] awaiting_home: no element_id or subject_id, so no calculation subject ([passthrough stays v1])');
-    bodies = {preBody};
-    return;
+    [inputSubject, reason] = did2.convert.fitInputSubjects('get', preBody, ...
+        {'stimulus_presentation_id'});
+    if isempty(inputSubject)
+        % carry-register: carry-138
+        did2.convert.reportNote('carried_as_v1', 'hartley_calc', sourceId(preBody), ...
+            ['[carry-138] awaiting_home: no element_id or subject_id, so no ' ...
+             'calculation subject: its input names none (' reason ') ([a fit is ' ...
+             'about its input''s subject])']);
+        bodies = {preBody};
+        return;
+    end
+    calcBody = withSubjectEdge(calcBody, inputSubject);
 end
 calcOpts = {'ExtraParameters', extra, 'ExtraInputs', inputs, 'DataBody', true, ...
     'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
     'Dropped', dropped, 'AccountForEveryField', true, ...
+    'ParameterNames', did2.convert.hartleyParameterNames(), ...
     'OtherBlocks', {'files', 'hartley_reverse_correlation', 'ngrid', ...
     'reverse_correlation'}};
+planeVars = planeVariables();
 bodies = jCalculation(calcBody, 'receptive_field_calculation', 'rf', ...
-    'hartley_calc', 'spike-triggered average', 'ndi.calc.vis.hartley', calcOpts{:});
+    'hartley_calc', planeVars(1).name, 'ndi.calc.vis.hartley', calcOpts{:}, ...
+    'VariableTerm', planeVars(1));
 leaf = bodies{1};
 if isscalar(bodies) && strcmp(leaf.document_class.class_name, 'hartley_calc')
     bodies = {preBody};
     return;     % carried (or passed through): the untouched v1 source, no bodies
 end
 % the second statement: the same calculation, its value the null cumulative
-% probability plane. Its variable, like the first's, is a plain label until the
-% team approves the terms (docs/v2_working/UNREGISTERED_TERMS_PROPOSAL.md group
-% D #5, #6).
+% probability plane. Its variable is EMPTY:0000448 ([hartley plane terms],
+% planeVariables).
 % It is BUILT (the same fold, its own id and variable), not copied, so its
 % variable goes through did2.build's term check like every other term (the
 % registry check, the unregistered-term census). Its edges are then the
@@ -469,7 +494,8 @@ end
 pBody = calcBody;
 pBody.base.id = pValueId;
 pOut = jCalculation(pBody, 'receptive_field_calculation', 'rf', ...
-    'hartley_calc', 'null cumulative probability', 'ndi.calc.vis.hartley', calcOpts{:});
+    'hartley_calc', planeVars(2).name, 'ndi.calc.vis.hartley', calcOpts{:}, ...
+    'VariableTerm', planeVars(2));
 pValue = pOut{1};
 pValue.depends_on = leaf.depends_on;
 bodies{end+1} = pValue;
@@ -484,6 +510,17 @@ spikeBody = spikeTimesBody(preBody, hrc, leaf);
 if ~isempty(spikeBody)
     bodies{end+1} = spikeBody;
 end
+end
+
+function t = planeVariables()
+%PLANEVARIABLES The two planes' variables, in plane order ([hartley plane
+%   terms], Decided by Jess Haley, 2026-11-18): the spike-triggered average is
+%   the existing Wikidata term Q7577165; the significance plane is the EMPTY
+%   term minted for it (empty-ontology #49). Each is written as the schema's
+%   term registry names it (did2.convert.registeredTerm), and with its node
+%   where the registry does not hold it yet.
+t = [did2.convert.registeredTerm('wikidata:Q7577165', 'spike-triggered average'), ...
+    did2.convert.registeredTerm('EMPTY:0000448', 'null cumulative probability')];
 end
 
 function [planeDim, axisCoords, axisLabels] = planeAxes(preBody, hrc)
@@ -621,7 +658,8 @@ function [planeBodies, datumType, sourceDatumType] = planeSampledBodies( ...
 %   by STATEMENTIDS{k} (the spike-triggered average; the null cumulative
 %   probability) and carries no "represented quantity" condition.
 nPlanes = 2;
-planeNames = {'spike-triggered average', 'null cumulative probability'};
+planeVars = planeVariables();
+planeNames = {planeVars.name};
 planeBodies = cell(1, nPlanes);
 datumType = '';
 sourceDatumType = '';
@@ -800,8 +838,11 @@ function [body, unplaced] = hartleyNumbersBody(preBody, hrc, ownerId)
 %   [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03):
 %   computed by the stimulus program's hartleystim / hartleynumbers, code the
 %   database does not hold, so they are stored, one row per frame. The four
-%   column variables are NOT decided: they are written as plain labels
-%   ('hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'), pending terms.
+%   column variables are the nodes of [hartley column terms] (Decided by Jess
+%   Haley, 2026-11-19; hartleyNumberColumns), written through the term
+%   registry (did2.convert.registeredTerm); before that decision they were the
+%   plain labels 'hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER',
+%   which the round trip still reads.
 %
 %   Returns [] when the block holds no numbers (the current writer moves them to
 %   hartley_numbers.bin and leaves empty arrays). UNPLACED names why the block
@@ -847,7 +888,7 @@ for k = 1:size(COLUMNS, 1)
         continue;
     end
     vals{end+1} = v; %#ok<AGROW>
-    names{end+1} = COLUMNS{k, 2}; %#ok<AGROW>
+    names{end+1} = did2.convert.registeredTerm(COLUMNS{k, 2}, COLUMNS{k, 3}); %#ok<AGROW>
 end
 if ~isempty(unplaced) || isempty(vals)
     return;
@@ -856,9 +897,10 @@ dims = did2.build.list(did2.build.dimension( ...
     did2.convert.registeredTerm('EMPTY:0000260', 'frame'), n));
 covList = cell(1, numel(vals));
 for k = 1:numel(vals)
-    covList{k} = did2.build.composite('data', 'covariates', struct( ...
-        'variable', jLabel(names{k}), 'along', 0, ...
-        'quantity', struct('value', vals{k}, 'source_value', vals{k})));
+    % in the new numeric shape (did2.build.numericItem): numeric, source_numeric
+    covList{k} = did2.build.composite('data', 'covariates', did2.build.numericItem(struct( ...
+        'variable', names{k}, 'along', 0, ...
+        'quantity', struct('value', vals{k}, 'source_value', vals{k}))));
 end
 o = jOpts(preBody, 'Notes', ...
     ['the hartley numbers of each stimulus frame (S, KXV, KYV, ORDER: which ' ...
@@ -868,10 +910,21 @@ body = did2.build.sampledBody(ownerId, dims, 'Covariates', did2.build.list(covLi
 end
 
 function c = hartleyNumberColumns()
-%HARTLEYNUMBERCOLUMNS v1 field -> the plain label its covariate is written
-%   under (pending terms; the round trip reads the same table).
-c = {'S', 'hartley S'; 'KXV', 'hartley KXV'; 'KYV', 'hartley KYV'; ...
-    'ORDER', 'hartley ORDER'};
+%HARTLEYNUMBERCOLUMNS v1 field -> {node, name} of its covariate's variable,
+%   and the plain label written before the terms were decided.
+%
+%   [hartley column terms] (Decided by Jess Haley, 2026-11-19, did-schema
+%   did_v2_go_forward_class_audit.md): "S ... a new EMPTY term 'contrast
+%   polarity'"; "KXV a new EMPTY term 'horizontal spatial frequency
+%   component'"; "KYV a new EMPTY term 'vertical spatial frequency
+%   component'"; "ORDER ... NCIT:C25390 'Index'". The round trip
+%   (did2.convert.roundtrip.hartley_calc) reads the same table, by node first
+%   and then by either name.
+c = { ...
+    'S',     'EMPTY:0000449', 'contrast polarity',                      'hartley S'; ...
+    'KXV',   'EMPTY:0000450', 'horizontal spatial frequency component', 'hartley KXV'; ...
+    'KYV',   'EMPTY:0000451', 'vertical spatial frequency component',   'hartley KYV'; ...
+    'ORDER', 'NCIT:C25390',   'Index',                                  'hartley ORDER'};
 end
 
 function out = withoutRestatedLagSetting(preBody, hrc)
@@ -1054,4 +1107,26 @@ if isfield(preBody, 'base') && isstruct(preBody.base) ...
         && isfield(preBody.base, 'id') && ~isempty(preBody.base.id)
     id = char(preBody.base.id);
 end
+end
+
+function b = withSubjectEdge(b, subjectId)
+%WITHSUBJECTEDGE B with a `subject_id` edge naming SUBJECTID, for jCalculation
+%   to read as the calculation's subject ([a fit is about its input's
+%   subject]). Only the copy jCalculation reads gets it.
+entry = struct('name', 'subject_id', 'value', subjectId);
+if ~isfield(b, 'depends_on') || isempty(b.depends_on)
+    b.depends_on = entry;
+    return;
+end
+deps = b.depends_on;
+if ~isstruct(deps)
+    deps = [deps(:)', {entry}];
+    b.depends_on = deps;
+    return;
+end
+add = cell2struct(cell(numel(fieldnames(deps)), 1), fieldnames(deps), 1);
+add.name = 'subject_id';
+if isfield(add, 'value'); add.value = subjectId; end
+if isfield(add, 'document_id'); add.document_id = subjectId; end
+b.depends_on(end+1) = add;
 end

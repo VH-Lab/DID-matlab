@@ -32,6 +32,10 @@
 %     +build        - builders for V_eta documents that are right by
 %                     construction (statements, bodies, relations, time
 %                     references, methods). See +build/Contents.m.
+%     +read         - readers that return the same answer from either
+%                     numeric shape ([one shape for measured numbers], Jess
+%                     Haley, 2026-11-17): `numeric` (a list item's number)
+%                     and `canonical` (a value's number(s)).
 %     +database     - storage backends: `sqlitedb` (sqlite3 + JSON1, with
 %                     generated columns for queryable scalars and the
 %                     queryable_array_elem sidecar for array paths) and

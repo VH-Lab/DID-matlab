@@ -495,6 +495,329 @@ verifyEqual(testCase, refRep.orphan_count, 0, sprintf( ...
 end
 
 
+% ===================== a Copyright from another tool ======================
+%
+% Decided by Jess Haley, 2026-11-12 [copyright from another tool is emitted]
+% (did-schema did_v2_go_forward_class_audit.md): "a v1 openMINDS `Copyright`
+% document written by another tool is emitted, not consumed silently: its
+% year as the dataset's `schema:copyrightYear` date assertion (precision
+% `year`) and each holder as a `schema:copyrightHolder` relation from the
+% dataset to the holder's `Person` or `organization` entity, minted when the
+% dataset holds none." No corpus holds one, so these are fixtures. NDI's own
+% writer writes no Copyright; the shape is openMINDSobj2ndi_document's (omDoc).
+
+function testACopyrightYearIsADateAssertionOfPrecisionYear(testCase)
+[out, rep] = runPass(testCase, copyrightGraph(copyrightFields( ...
+    {'ndi://om_person', 'ndi://om_holder_org'}, 2021)));
+verifyEqual(testCase, rep.openminds_documents_seen, 14, 'DENOMINATOR');
+verifyEqual(testCase, rep.components_consumed, 1);
+verifyEqual(testCase, rep.documents_consumed, 14);
+verifyEqual(testCase, rep.copyright_years_emitted, 1);
+verifyEqual(testCase, rep.copyright_unplaced, 0);
+a = docWithIdIn(out, 'om_copyright');
+assertNotEmpty(testCase, a, 'no document keeps the Copyright''s id');
+verifyEqual(testCase, a.document_class.class_name, 'assertion');
+verifyEqual(testCase, char(a.statement.variable.node), 'schema:copyrightYear');
+verifyEqual(testCase, depOf(a, 'entity_id'), 'ds_01', 'about the dataset entity');
+verifyEqual(testCase, char(a.date.value.instant), '2021');
+verifyEqual(testCase, char(a.date.value.precision), 'year');
+end
+
+function testEachCopyrightHolderIsARelationFromTheDataset(testCase)
+% the author is a holder too: its person is not minted twice; the
+% organization holder is minted (it is no one's affiliation)
+[out, rep] = runPass(testCase, copyrightGraph(copyrightFields( ...
+    {'ndi://om_person', 'ndi://om_holder_org'}, 2021)));
+verifyEqual(testCase, rep.copyright_holders_emitted, 2);
+verifyEqual(testCase, rep.persons_emitted, 1, 'the author is not minted again');
+verifyEqual(testCase, rep.organizations_emitted, 3);
+verifyEqual(testCase, numel(idsOfClass(out, 'person')), 1);
+verifyTrue(testCase, any(strcmp(idsOfClass(out, 'organization'), 'om_holder_org')));
+verifyEqual(testCase, sort(copyrightHolderParents(out, 'ds_01')), ...
+    sort({'om_holder_org', 'om_person'}));
+end
+
+function testACopyrightHolderTheDatasetHoldsNoneOfIsMinted(testCase)
+[out, rep] = runPass(testCase, copyrightGraph(copyrightFields( ...
+    {'ndi://om_holder_person'}, 2020)));
+verifyEqual(testCase, rep.components_consumed, 1);
+verifyEqual(testCase, rep.persons_emitted, 2, 'the author and the holder');
+verifyEqual(testCase, sort(idsOfClass(out, 'person')), {'om_holder_person', 'om_person'});
+verifyEqual(testCase, copyrightHolderParents(out, 'ds_01'), {'om_holder_person'});
+end
+
+function testACopyrightWithAUsageClauseIsWithheldAndCarried(testCase)
+% customUsageClause has no v2 home (did-schema did_v2_openminds_crosswalk.json,
+% DatasetVersion.copyright.parts: "needs a decision"), so nothing of the
+% component is consumed ([partly placed is carried as v1])
+f = copyrightFields({'ndi://om_person'}, 2021);
+f.customUsageClause = {'ndi://om_holder_org'};
+[out, rep] = runPass(testCase, copyrightGraph(f));
+verifyEqual(testCase, rep.components_planned, 1, 'DENOMINATOR');
+verifyEqual(testCase, rep.components_consumed, 0);
+verifyEqual(testCase, rep.components_withheld_unplaced, 1);
+verifyEqual(testCase, rep.copyright_unplaced, 1);
+verifyEqual(testCase, rep.copyright_years_emitted, 0);
+verifyEqual(testCase, numel(classesOf(out, 'openminds')), 14, ...
+    'every openminds document is still in the batch');
+end
+
+function testACopyrightWithNoYearIsWithheldAndCarried(testCase)
+f = copyrightFields({'ndi://om_person'}, []);
+[out, rep] = runPass(testCase, copyrightGraph(f));
+verifyEqual(testCase, rep.components_planned, 1, 'DENOMINATOR');
+verifyEqual(testCase, rep.components_consumed, 0);
+verifyEqual(testCase, rep.copyright_unplaced, 1);
+verifyEqual(testCase, numel(classesOf(out, 'openminds')), 14);
+end
+
+function testTheCopyrightRoundTripsFromItsYearAndHolders(testCase)
+% did2.convert.roundtrip.openminds rebuilds the Copyright from the assertion
+% that keeps its id and the dataset's copyright_holder relations. NOT REBUILT:
+% the openMINDS instance id (no v2 document of the citation graph keeps one)
+bodies = copyrightGraph(copyrightFields({'ndi://om_person', 'ndi://om_holder_org'}, 2021));
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+[out, rep] = runPass(testCase, bodies);
+assertEqual(testCase, rep.copyright_years_emitted, 1, 'premise');
+v1 = [];
+for k = 1:numel(bodies)
+    if strcmp(bodies{k}.base.id, 'om_copyright'); v1 = bodies{k}; end
+end
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+a = docWithIdIn(out, 'om_copyright');
+r = did2.convert.roundtrip.check(v1, {a}, contextOf(docs));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds Copyright', ...
+    {'openminds.openminds_id'});
+verifyTrue(testCase, any(strcmp(r.matched, 'openminds.fields.year')), ...
+    'the year is not rebuilt');
+end
+
+function testCopyrightHoldersKeepTheirOrder(testCase)
+% [copyright round-trip losses] (Decided by Jess Haley, 2026-11-17, did-schema
+% did_v2_go_forward_class_audit.md) (3): "copyrightHolder becomes an ordered
+% relation, so several holders keep their order": each copyright_holder
+% relation states its holder's position (from 0), and the round trip rebuilds
+% the holders in that order whatever order the batch holds them in
+for holders = {{'ndi://om_person', 'ndi://om_holder_org'}, {'ndi://om_holder_org', 'ndi://om_person'}}
+    h = holders{1};
+    bodies = copyrightGraph(copyrightFields(h, 2021));
+    bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+    [out, rep] = runPass(testCase, bodies);
+    assertEqual(testCase, rep.copyright_holders_emitted, 2, 'premise');
+    want = cellfun(@(r) r(numel('ndi://') + 1:end), h, 'UniformOutput', false);
+    for k = 1:numel(out.migrated)
+        b = out.migrated{k}.toStruct();
+        if ~strcmp(b.document_class.class_name, 'directed_relation') || ...
+                ~strcmp(did2.build.vocabularyHandle('relation', b.directed_relation.relation), ...
+                'copyright_holder')
+            continue;
+        end
+        verifyEqual(testCase, double(b.directed_relation.order), ...
+            find(strcmp(want, depOf(b, 'parent_id'))) - 1, ...
+            'the holder relation states its position in the Copyright, from 0');
+    end
+    v1 = [];
+    for k = 1:numel(bodies)
+        if strcmp(bodies{k}.base.id, 'om_copyright'); v1 = bodies{k}; end
+    end
+    docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+    a = docWithIdIn(out, 'om_copyright');
+    for flip = [false true]
+        d = docs;
+        if flip; d = fliplr(d); end   % the batch order is not the holder order
+        r = did2.convert.roundtrip.check(v1, {a}, contextOf(d));
+        did2.unittest.helpers.verifyRoundTrip(testCase, r, ...
+            sprintf('Copyright holders %s (batch reversed %d)', strjoin(h, ', '), flip), ...
+            {'openminds.openminds_id'});
+    end
+end
+end
+
+function testAnotherOpenmindsTypeSpellingIsNotation(testCase)
+% [copyright round-trip losses] (2): "a different openMINDS type spelling is
+% notation" ([spelling is notation]): the other IRI vintage and the other
+% MATLAB namespace compare equivalent; a type that is not the Copyright's is
+% still lost
+bodies = copyrightGraph(copyrightFields({'ndi://om_person'}, 2021));
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+for k = 1:numel(bodies)
+    if strcmp(bodies{k}.base.id, 'om_copyright')
+        bodies{k}.openminds.openminds_type = 'https://openminds.ebrains.eu/core/Copyright';
+        bodies{k}.openminds.matlab_type = 'openminds.core.Copyright';
+        v1 = bodies{k};
+    end
+end
+[out, rep] = runPass(testCase, bodies);
+assertEqual(testCase, rep.copyright_years_emitted, 1, 'premise: the vintage is read');
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+a = docWithIdIn(out, 'om_copyright');
+r = did2.convert.roundtrip.check(v1, {a}, contextOf(docs));
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'Copyright, other type spellings', ...
+    {'openminds.openminds_id'});
+verifyTrue(testCase, any(strcmp(r.equivalent, 'openminds.openminds_type')), ...
+    'the IRI vintage is not equivalent');
+verifyTrue(testCase, any(strcmp(r.equivalent, 'openminds.matlab_type')), ...
+    'the MATLAB namespace is not equivalent');
+bad = v1;
+bad.openminds.matlab_type = 'openminds.core.License';
+r = did2.convert.roundtrip.check(bad, {a}, contextOf(docs));
+verifyTrue(testCase, any(strcmp({r.lost.path}, 'openminds.matlab_type')), ...
+    'another type is not a spelling of the Copyright''s');
+end
+
+function testTheCopyrightInstanceIdIsAnAcceptedLoss(testCase)
+% [copyright round-trip losses] (1): "its openMINDS instance id is an accepted
+% loss": the whole-batch round trip lists it by name and counts it, and the
+% Copyright round trips clean
+bodies = copyrightGraph(copyrightFields({'ndi://om_person', 'ndi://om_holder_org'}, 2021));
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+[out, rep] = runPass(testCase, bodies);
+assertEqual(testCase, rep.copyright_years_emitted, 1, 'premise');
+wb = did2.convert.roundtrip.wholeBatch(bodies, out);
+hits = wb.accepted_losses(strcmp({wb.accepted_losses.name}, 'openMINDS Copyright instance id'));
+verifyEqual(testCase, numel(hits), 1, 'the instance id is not listed as an accepted loss');
+if ~isempty(hits)
+    verifyEqual(testCase, hits(1).source_id, 'om_copyright');
+    verifyEqual(testCase, hits(1).path, 'openminds.openminds_id');
+    verifyEqual(testCase, hits(1).class_name, 'openminds');
+end
+% only the Copyright's: no other openminds source's instance id is accepted
+verifyFalse(testCase, any(strcmp({wb.accepted_losses.name}, 'openMINDS Copyright instance id') ...
+    & ~strcmp({wb.accepted_losses.source_id}, 'om_copyright')));
+end
+
+function testTheCopyrightDocumentsValidateAgainstTheRealVEtaSchema(testCase)
+if isempty(getenv('DID_SCHEMA_PATH'))
+    assumeFail(testCase, ...
+        'DID_SCHEMA_PATH not set; run under the quick gate (assembled V_eta schema).');
+end
+bodies = copyrightGraph(copyrightFields({'ndi://om_person', 'ndi://om_holder_org'}, 2021));
+out = did2.convert.v1_to_v2(bodies, 'Validate', true, 'TargetVersion', 'did_v2');
+verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
+[out, rep] = did2.convert.resolveOpenmindsCitations(out, ...
+    'Validate', true, 'TargetVersion', 'did_v2');
+verifyEqual(testCase, rep.components_reverted_on_validation, 0, ...
+    'a component reverted: an emitted body does not validate');
+verifyEqual(testCase, rep.bodies_quarantined, 0);
+verifyEqual(testCase, rep.components_consumed, 1);
+verifyEqual(testCase, rep.copyright_years_emitted, 1);
+verifyEqual(testCase, rep.copyright_holders_emitted, 2);
+refRep = did2.validate.references(out.migrated, ...
+    'KnownIds', did2.unittest.helpers.sessionKnownIds(out.migrated));
+verifyGreaterThan(testCase, refRep.edges_examined, 0);
+verifyEqual(testCase, refRep.orphan_count, 0);
+end
+
+function f = copyrightFields(holderRefs, year)
+f = struct();
+f.holder = holderRefs;
+f.year = year;
+end
+
+function bodies = copyrightGraph(cf)
+%COPYRIGHTGRAPH citationGraph plus a Copyright the DatasetVersion names, an
+%   Organization and a Person that may hold it.
+bodies = citationGraph();
+refs = {};
+for r = [ndiRefsOf(cf.holder), ndiRefsOf(getOr(cf, 'customUsageClause'))]
+    refs{end+1} = r{1}; %#ok<AGROW>
+end
+for k = 1:numel(bodies)
+    if strcmp(bodies{k}.base.id, 'om_dsv')
+        bodies{k}.openminds.fields.copyright = {'ndi://om_copyright'};
+        bodies{k}.depends_on(end+1) = struct('name', ...
+            sprintf('openminds_%d', numel(bodies{k}.depends_on) + 1), 'value', 'om_copyright');
+    end
+end
+cp = omDoc('om_copyright', 'openminds.core.data.Copyright', ...
+    'https://openminds.om-i.org/types/Copyright', cf, refs);
+cp.base.name = '';   % as ndi.document leaves it (NDI base.json)
+bodies = [bodies, {cp, ...
+    omDoc('om_holder_org', 'openminds.core.actors.Organization', ...
+        'https://openminds.om-i.org/types/Organization', ...
+        struct('fullName', 'A Copyright Holding Institute'), {})}];
+if any(strcmp(refs, 'om_holder_person'))
+    bodies{end+1} = omDoc('om_holder_person', 'openminds.core.actors.Person', ...
+        'https://openminds.om-i.org/types/Person', ...
+        struct('givenName', 'Grace', 'familyName', 'Hopper'), {});
+end
+end
+
+function ids = ndiRefsOf(v)
+ids = {};
+if ischar(v); v = {v}; end
+if ~iscell(v); return; end
+for k = 1:numel(v)
+    if ischar(v{k}) && startsWith(v{k}, 'ndi://'); ids{end+1} = v{k}(7:end); end %#ok<AGROW>
+end
+end
+
+function v = getOr(s, name)
+v = [];
+if isfield(s, name); v = s.(name); end
+end
+
+function b = docWithIdIn(out, id)
+b = [];
+for k = 1:numel(out.migrated)
+    if strcmp(char(out.migrated{k}.get('base.id')), id)
+        b = out.migrated{k}.toStruct();
+        return;
+    end
+end
+end
+
+function v = depOf(b, name)
+v = '';
+for j = 1:numel(b.depends_on)
+    if strcmp(b.depends_on(j).name, name); v = char(b.depends_on(j).document_id); end
+end
+end
+
+function p = copyrightHolderParents(out, datasetId)
+% the parents of the copyright_holder relations from DATASETID
+p = {};
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if ~strcmp(b.document_class.class_name, 'directed_relation'); continue; end
+    if ~strcmp(did2.build.vocabularyHandle('relation', b.directed_relation.relation), ...
+            'copyright_holder')
+        continue;
+    end
+    if strcmp(depOf(b, 'child_id'), datasetId)
+        p{end+1} = depOf(b, 'parent_id'); %#ok<AGROW>
+    end
+end
+end
+
+function ctx = contextOf(docs)
+% the shape of did2.convert.roundtrip's private batchContext
+ctx = struct('docs', {docs}, ...
+    'byId', containers.Map('KeyType', 'char', 'ValueType', 'double'), ...
+    'referrers', containers.Map('KeyType', 'char', 'ValueType', 'any'));
+for k = 1:numel(docs)
+    id = char(docs{k}.base.id);
+    if ~isempty(id) && ~isKey(ctx.byId, id); ctx.byId(id) = k; end
+    if ~isfield(docs{k}, 'depends_on'); continue; end
+    dd = docs{k}.depends_on;
+    for j = 1:numel(dd)
+        if strcmp(dd(j).name, 'session_id'); continue; end
+        t = '';
+        if isfield(dd(j), 'document_id') && ~isempty(dd(j).document_id)
+            t = char(dd(j).document_id);
+        elseif isfield(dd(j), 'value') && ~isempty(dd(j).value)
+            t = char(dd(j).value);
+        end
+        if isempty(t); continue; end
+        if isKey(ctx.referrers, t)
+            ctx.referrers(t) = [ctx.referrers(t), k];
+        else
+            ctx.referrers(t) = k;
+        end
+    end
+end
+end
+
 % ===================== helpers ============================================
 
 function [out, rep] = runPass(testCase, v1Bodies)
@@ -506,6 +829,51 @@ out = did2.convert.v1_to_v2(v1Bodies, 'Validate', false, 'TargetVersion', 'did_v
 verifyEmpty(testCase, out.quarantine, 'pass 1 quarantined a fixture');
 [out, rep] = did2.convert.resolveOpenmindsCitations(out, ...
     'Validate', false, 'TargetVersion', 'did_v2');
+end
+
+function testADatasetVersionWithNoIdGetsIdsFromItsContent(testCase)
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): a
+% DatasetVersion stating no id keys the ids minted for its component on its
+% content: two runs on the same input give the same ids, and another such
+% DatasetVersion mints others. (Its Dataset, which names it by id, is left
+% out: with no id there is nothing to name. Its session id stays: a document
+% with no session is refused by did2.build, so datasetIdOf's own content
+% fallback is not reached here.)
+bodies = idlessGraph('A Real Dataset');
+[out1, rep1] = runPass(testCase, bodies);
+[out2, ~] = runPass(testCase, bodies);
+verifyEqual(testCase, rep1.datasets_emitted, 1, 'DENOMINATOR: the dataset');
+ids1 = allIds(out1);
+ids2 = allIds(out2);
+verifyNotEmpty(testCase, ids1);
+verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a document with no id');
+verifyEqual(testCase, sort(ids1), sort(ids2), 'two runs on the same input');
+% another DatasetVersion with no id: another dataset id
+[out3, ~] = runPass(testCase, idlessGraph('Another Dataset'));
+verifyNotEmpty(testCase, setdiff(allIds(out3), ids1), ...
+    'two different id-less DatasetVersions mint the same ids');
+end
+
+function bodies = idlessGraph(fullName)
+bodies = citationGraph();
+keep = true(1, numel(bodies));
+for k = 1:numel(bodies)
+    switch char(bodies{k}.base.id)
+        case 'om_dataset'
+            keep(k) = false;
+        case 'om_dsv'
+            bodies{k}.base.id = '';
+            bodies{k}.openminds.fields.fullName = fullName;
+    end
+end
+bodies = bodies(keep);
+end
+
+function ids = allIds(out)
+ids = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    ids{k} = char(out.migrated{k}.get('base.id'));
+end
 end
 
 function r = emptyResult()

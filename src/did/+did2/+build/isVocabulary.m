@@ -8,7 +8,9 @@ function tf = isVocabulary(term, kind, handle)
 %   (prefix case ignored) -- or, for a TERM with no node (a document written
 %   before did-schema #88 gave the vocabulary nodes), when its name is the
 %   handle up to case, spaces, underscores and hyphens. When HANDLE has no
-%   node (culture), the name decides. Code compares relations and entity types
+%   node (a culture while the loaded schema binds it with none), the name
+%   decides; a name that is an alias of HANDLE ('cell culture' for culture,
+%   [culture renamed cell culture]) matches too. Code compares relations and entity types
 %   this way, never by the stored name alone (Jess Haley 2026-10-22
 %   [vocabulary nodes] L1, L2).
 %
@@ -41,6 +43,11 @@ if ~isempty(want) && ~isempty(node)
 end
 norm = @(s) lower(regexprep(char(s), '[\s_\-]', ''));
 tf = ~isempty(name) && strcmp(norm(name), norm(handle));
+if ~tf && ~isempty(name)
+    % another name for the handle ('cell culture' for culture: [culture
+    % renamed cell culture], Jess Haley, 2026-11-10; private/vocabularyAlias)
+    tf = strcmp(norm(vocabularyAlias(kind, name)), norm(handle));
+end
 if ~tf && ~isempty(want) && ~isempty(name)
     % a label with no node, e.g. "member of" for member_of
     tf = strcmpi(did2.build.vocabulary(kind, name), want);

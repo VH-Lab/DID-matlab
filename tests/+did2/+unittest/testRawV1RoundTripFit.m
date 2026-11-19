@@ -29,6 +29,15 @@ function tests = testRawV1RoundTripFit
 %     epochid.epochid (vmspikefit)               the calculation is anchored to
 %                                                the session ('during'), not
 %                                                the epoch
+%
+%   A FIT THAT NAMES NO SUBJECT is about what its input is about (Decided by
+%   Jess Haley, 2026-11-10 [a fit is about its input's subject]): the
+%   migration follows its input edge (`fit_example_data_id` for fitcurve,
+%   `fit_input_id` for vmspikefit) to that document and takes its subject
+%   (did2.convert.fitInputSubjects); when the chain names none it is carried
+%   as before (carry-136, carry-137), never given the session. The inputs here
+%   are fits built from the same templates, the first naming its subject in
+%   `element_id`.
 tests = functiontests(localfunctions);
 end
 
@@ -132,6 +141,100 @@ v1 = did2.unittest.helpers.setDependency(writerVmspikefit('vf_x', false), 'stimu
 verifyCarried(testCase, v1, 'depends_on(stimulus_presentation_id)');
 end
 
+% ===================== a fit about its input's subject =================
+
+function testAFitcurveWithNoSubjectIsAboutItsInputsSubject(testCase)
+a = writerFitcurve('fc_a');
+b = fitcurveAbout('fc_b', 'fc_a');
+out = runRaw({a, b});
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, entityOf(out, 'fc_b'), '41268b6f5c6a3d4e_fc000000000000e1', ...
+    'the fit is about the subject its input names');
+verifyWholeBatch(testCase, {a, b}, out, 'fc_b', ...
+    {'fitcurve.fit_data.output_number_examples'});
+end
+
+function testAVmspikefitWithNoSubjectIsAboutItsInputsSubject(testCase)
+a = writerFitcurve('fc_a');
+v = writerVmspikefit('vf_b', false);
+v = did2.unittest.helpers.setDependency(v, 'fit_input_id', 'fc_a');
+v = did2.unittest.helpers.setDependency(v, 'element_id', '');
+v = jsondecode(jsonencode(v));
+out = runRaw({a, v});
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, entityOf(out, 'vf_b'), '41268b6f5c6a3d4e_fc000000000000e1');
+verifyWholeBatch(testCase, {a, v}, out, 'vf_b', {'epochid.epochid'});
+end
+
+function testTheInputChainIsFollowed(testCase)
+% fc_c -> fc_b (names no subject) -> fc_a (names its element)
+a = writerFitcurve('fc_a');
+b = fitcurveAbout('fc_b', 'fc_a');
+c = fitcurveAbout('fc_c', 'fc_b');
+out = runRaw({a, b, c});
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, entityOf(out, 'fc_c'), '41268b6f5c6a3d4e_fc000000000000e1');
+verifyWholeBatch(testCase, {a, b, c}, out, 'fc_c', ...
+    {'fitcurve.fit_data.output_number_examples'});
+end
+
+function testAFitWhoseInputNamesNoSubjectIsCarried(testCase)
+% the input is not in the batch; the input names no subject and has no input
+% of its own; a cycle
+cases = { ...
+    {fitcurveAbout('fc_b', 'fc_missing')}, 'input_not_in_batch'; ...
+    {fitcurveAbout('fc_b', 'fc_n'), fitcurveAbout('fc_n', '')}, 'chain_names_none'; ...
+    {fitcurveAbout('fc_b', 'fc_y'), fitcurveAbout('fc_y', 'fc_b')}, 'cycle'};
+for k = 1:size(cases, 1)
+    [batch, why] = cases{k, :};
+    [carried, notes, out] = did2.unittest.helpers.carryNote(batch);
+    verifyEmpty(testCase, out.quarantine, why);
+    verifyTrue(testCase, carried, [why ': carried as the untouched v1 source']);
+    verifyTrue(testCase, contains(notes, '[carry-136] '), notes);
+    verifyTrue(testCase, contains(notes, ['(' why ')']), notes);
+end
+end
+
+function testAFitIsNeverAboutTheSession(testCase)
+% an input chain ending at a session gives no subject: carried
+sess = did2.unittest.helpers.ndiDocument('session', 'Id', 'sess_1');
+sess = jsondecode(jsonencode(sess));
+[carried, notes] = did2.unittest.helpers.carryNote({fitcurveAbout('fc_b', 'sess_1'), sess});
+verifyTrue(testCase, carried, 'carried as the untouched v1 source');
+verifyTrue(testCase, contains(notes, '(session)'), notes);
+end
+
+function testFitInputSubjectsReadsWhatTheInputIsAbout(testCase)
+% the index directly: an element or a subject is itself, a document naming a
+% subject gives it, a session gives none
+elem = struct('document_class', struct('class_name', 'element'), ...
+    'base', struct('id', 'el_1'), 'depends_on', struct('name', 'subject_id', 'value', 'sub_1'));
+subj = struct('document_class', struct('class_name', 'subject'), 'base', struct('id', 'sub_1'));
+sess = struct('document_class', struct('class_name', 'session'), 'base', struct('id', 'se_1'));
+other = struct('document_class', struct('class_name', 'stimulus_response_scalar'), ...
+    'base', struct('id', 'sr_1'), 'depends_on', struct('name', 'element_id', 'value', 'el_1'));
+onSession = struct('document_class', struct('class_name', 'stimulus_response_scalar'), ...
+    'base', struct('id', 'sr_2'), 'depends_on', struct('name', 'subject_id', 'value', 'se_1'));
+fits = {};
+for t = {'el_1', 'sub_1', 'se_1', 'sr_1', 'sr_2'}
+    fits{end+1} = struct('document_class', struct('class_name', 'vmspikefit'), ...
+        'base', struct('id', ['vf_' t{1}]), ...
+        'depends_on', struct('name', {'fit_input_id', 'element_id'}, 'value', {t{1}, ''})); %#ok<AGROW>
+end
+did2.convert.fitInputSubjects('reset');
+testCase.addTeardown(@() did2.convert.fitInputSubjects('reset'));
+did2.convert.fitInputSubjects('load', [{elem, subj, sess, other, onSession}, fits]);
+expect = {'el_1', ''; 'sub_1', ''; '', 'session'; 'el_1', ''; '', 'session'};
+for k = 1:numel(fits)
+    [s, why] = did2.convert.fitInputSubjects('get', fits{k}, {'fit_input_id'});
+    verifyEqual(testCase, s, expect{k, 1}, fits{k}.base.id);
+    verifyEqual(testCase, why, expect{k, 2}, fits{k}.base.id);
+end
+[s, why] = did2.convert.fitInputSubjects('get', fits{1}, {'fit_example_data_id'});
+verifyEqual(testCase, s, '');
+verifyEqual(testCase, why, 'no_input');
+end
+
 % ===================== both ============================================
 
 function testAChangedValueIsReportedLost(testCase)
@@ -211,7 +314,57 @@ v1 = did2.unittest.helpers.setDependency(v1, 'element_id', '41268b6f5c6a3d4e_fc0
 v1 = jsondecode(jsonencode(v1));
 end
 
+function v1 = fitcurveAbout(id, inputId)
+% data/fitcurve.json as the template has it (no subject edge), every fit field
+% set, its `fit_example_data_id` naming INPUTID
+v1 = did2.unittest.helpers.ndiDocument('fitcurve', 'Id', id);
+v1.fitcurve.fit_name = 'power law';
+v1.fitcurve.fit_equation = 'y=a+b*x.^c';
+v1.fitcurve.fit_parameters = [0.5 2 1.5];
+v1.fitcurve.fit_parameter_names = 'a b c';
+v1.fitcurve.fit_independent_variable_names = 'x';
+v1.fitcurve.fit_dependent_variable_names = 'y';
+v1.fitcurve.fit_sse = 12.5;
+v1.fitcurve.fit_constraints = struct('fit_constraint_name', 'c', 'fit_constraint_value', 1.5);
+v1.fitcurve.fit_data = struct('input_data_field', 'mydocumenttype.x', ...
+    'output_data_field', 'mydocumenttype.y', 'output_number_examples', 20);
+v1 = did2.unittest.helpers.setDependency(v1, 'fit_example_data_id', inputId);
+v1 = jsondecode(jsonencode(v1));
+end
+
 % ===================== helpers =========================================
+
+function id = entityOf(out, docId)
+id = '';
+for k = 1:numel(out.migrated)
+    s = out.migrated{k}.toStruct();
+    if ~strcmp(char(s.base.id), docId); continue; end
+    deps = did2.convert.v1read.readDependsOn(s, 'Name', '^entity_id$');
+    if ~isempty(deps); id = char(deps(1).document_id); end
+    return;
+end
+end
+
+function verifyWholeBatch(testCase, v1s, out, sourceId, expectedLost)
+% the source SOURCEID round trips through the whole-batch check (the inverse
+% reads its input from the final batch), losing exactly EXPECTEDLOST
+verifyEmpty(testCase, out.passthrough, [sourceId ': converted, not carried']);
+r = did2.convert.roundtrip.wholeBatch(v1s, out);
+verifyEqual(testCase, r.sources_compared, numel(v1s), 'every source compared');
+k = find(strcmp({r.failures.source_id}, sourceId));
+lost = {};
+invented = {};
+unplaced = {};
+if ~isempty(k)
+    lost = r.failures(k).lost;
+    invented = r.failures(k).invented;
+    unplaced = r.failures(k).unplaced;
+end
+verifyEqual(testCase, reshape(sort(lost), 1, []), reshape(sort(expectedLost), 1, []), ...
+    sprintf('%s: lost %s', sourceId, strjoin(lost, ', ')));
+verifyEmpty(testCase, invented, sprintf('%s: invented %s', sourceId, strjoin(invented, ', ')));
+verifyEmpty(testCase, unplaced, sprintf('%s: unplaced %s', sourceId, strjoin(unplaced, '; ')));
+end
 
 function out = runRaw(v1)
 if ~iscell(v1); v1 = {v1}; end

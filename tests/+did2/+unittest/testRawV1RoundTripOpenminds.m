@@ -34,7 +34,8 @@ function tests = testRawV1RoundTripOpenminds
 %   openminds_subject converts to one term assertion, as before; its
 %   `openminds_<n>` edges are read by NDI's subjectStrainAssembly from the v1
 %   input, so they do not carry it. openminds_element converts to one term
-%   assertion, or is carried with an id or a description (carry-128), as
+%   assertion (its description in the notes, its openminds_id not stored:
+%   [openMINDS element description in notes], 2026-11-10), as
 %   before. openminds_stimulus is carried whole as v1 for NDI's second pass
 %   (carry-165, since 2026-11-01). No known findings for the fixtures (a
 %   species' definition and synonym are accepted differences, [species text is
@@ -174,16 +175,23 @@ verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element', {});
 end
 
-function testAnElementTermWithAnIdIsCarriedUntouched(testCase)
+function testAnElementTermWithAnIdAndADescriptionConvertsAndRoundTrips(testCase)
+% INVERTED 2026-11-10 from testAnElementTermWithAnIdIsCarriedUntouched
+% (carry-128). Decided by Jess Haley, 2026-11-10 [openMINDS element
+% description in notes]: the description is the assertion's notes and the
+% openminds_id is not stored (an openMINDS export rebuilds it); the round trip
+% rebuilds both
 v1 = elementTerm('41268b6f5c6a3d4e_0e00000000000022', ...
     'CellType/dc2f5dd6-5cea-477c-a035-ca2dd3e6649d');
-[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+v1.openminds.fields.description = 'A type of neuron.';
+out = runRaw(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyTrue(testCase, carried, 'carried as the untouched v1 source');
-verifyTrue(testCase, contains(notes, '[carry-128] '), notes);
+verifyEmpty(testCase, out.passthrough, 'converted, not carried');
 r = did2.convert.roundtrip.check(v1, out.migrated);
-verifyTrue(testCase, r.carried);
-did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element (id)', {});
+verifyFalse(testCase, r.carried);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_element (id, description)', {});
+verifyTrue(testCase, any(strcmp(r.matched, 'openminds.fields.description')), 'description');
+verifyTrue(testCase, any(strcmp(r.equivalent, 'openminds.openminds_id')), 'openminds_id');
 end
 
 function testAFieldOutsideTheElementTemplateCarriesIt(testCase)

@@ -2,9 +2,10 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %DAQREADER_EPOCHDATA_INGESTED Brainstorm-J migrator: lift the epoch's clock
 %   extents out of `epochtable` into `relative_time_reference` documents.
 %
-%   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta', and
-%   also called directly by the sibling migrator
-%   daqreader_mfdaq_epochdata_ingested.m after it de-encodes the mfdaq subtype.
+%   Routed from did2.convert.v1_to_v2. The sibling migrator
+%   daqreader_mfdaq_epochdata_ingested.m called it after de-encoding the mfdaq
+%   subtype until it began handing its v1 document on unchanged ([retired
+%   classes leave V2], Jess Haley, 2026-10-25).
 %
 %   1 -> 1 + N. The source document is PRESERVED and N `relative_reference`
 %   documents are added, one per (clock, interval) pair in `epochtable`:
@@ -34,25 +35,28 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %   #65 and #30 land -- it decomposes into `relative_reference` documents AND a
 %   `sampled_body` on an observation".
 %
-%   That gate is load-bearing here, because the document is TWO TIERS FUSED and
-%   only one of them has a target today:
+%   The document is TWO TIERS FUSED, and each now has a target:
 %
-%     epochtable                     -> relative_reference     BUILT BELOW
-%     the attached recording archives -> sampled_body on a
-%                                        <modality>_observation  #30, NOT BUILT
+%     epochtable                      -> relative_reference     BUILT BELOW
+%     the attached recording archives -> opaque_body data bodies of the
+%                                        epoch's recording observations,
+%                                        BUILT by did2.convert.resolveEpochProbemap
 %
-%   "#30, NOT BUILT" IS TOO BROAD AND IS CORRECTED HERE, 2026-08-15. #30 is
-%   SIGNED (2026-08-10 and 2026-08-13) and its assembler is LIVE:
-%   `private/jRecordingObservation.m`, called from `element.m:118`, covered by
-%   `tests/+did2/+unittest/testMigratorsJRecordingObservation.m`. What is not
-%   built is the NARROWER thing this line is really about -- RE-POINTING THESE
-%   ARCHIVES onto such an observation -- and the reason is in the assembler's
-%   own signature: the subject is an INPUT it is handed, not something it
-%   resolves, so an ingested payload needs the epoch<->element join first, i.e.
-%   the second pass. `daqreader_image_epochdata_ingested.m` already carries this
-%   correction in its own header; `jRecordingObservation.m:118` QUOTES the stale
-%   line above as evidence, which is how a wrong claim in one file becomes a
-%   citation in another.
+%   (Until 2026-11-19 this table marked the archive tier as still to be built
+%   under did-schema OPEN_WORK #30; HISTORICAL-BUILD-CLAIM, corrected here.)
+%   What #30 became is in did-schema `did_v2_recording_observation_plan.md`:
+%   TEAM-SIGN-OFF [raw recording observation] (2026-08-10, 2026-08-13), amended
+%   by "Decided by Jess Haley, 2026-10-27 [Guard A amended]" (did-schema #104,
+%   closed 2026-10-29), and, for these archives, [epoch files as data bodies],
+%   [ingested epochs use the archive] and [ingested epoch documents retired]
+%   (Jess Haley, 2026-10-21). All of it is built: an element's recording
+%   observation is assembled by `private/jRecordingObservation.m` (called from
+%   `element.m`, covered by testMigratorsJRecordingObservation); the per-epoch
+%   observations, with this document's archive segments as their
+%   `opaque_body` data bodies, are minted by the batch post-pass
+%   did2.convert.resolveEpochProbemap (covered by testResolveEpochProbemap and
+%   testIngestedArchiveFiles), which does the epoch<->element join a
+%   per-document migrator cannot.
 %
 %   And for an INGESTED session those archives are the only copy of the
 %   recording. From the writer, attached under runtime-computed names the
@@ -63,12 +67,14 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %       916  d = d.add_file([fileprefix '_group' int2str(groups(g)) '_seg.nbf_' ...
 %       955  d = d.add_file(['evmktx_group' ...], [filename_here '.nbf.tgz']);
 %
-%   Retiring the document before #30 exists would drop those bytes on the floor.
-%   So this migrator is ADDITIVE and TRANSITIONAL: it lifts the half that has a
-%   home, changes nothing about the half that does not, and leaves the source
-%   class to be deleted by whoever builds #30 and can prove the bytes landed.
-%   Nothing is duplicated at the byte level -- only `epochtable`, which is cheap
-%   and which the retiring commit removes.
+%   So THIS migrator never retires the document: it lifts `epochtable` and
+%   preserves the source. The retirement is resolveEpochProbemap's, and it
+%   retires a `daqreader_*_epochdata_ingested` document only when every file it
+%   holds is carried by a surviving per-epoch data body and every clock it
+%   states with times is on an emitted time reference ([ingested epoch
+%   documents retired], [clock only on the time reference]); a document with an
+%   unowned file is kept and counted. Nothing is duplicated at the byte level --
+%   only `epochtable`, which is cheap.
 %
 %   ---------------------------------------------------------------------
 %   THE GUARD: NO EPOCH DOCUMENT => NO REFERENCE. Pass the document through.
@@ -110,9 +116,10 @@ function bodies = daqreader_epochdata_ingested(preBody, delegated)
 %   malformed], carry-100). did2.convert.roundtrip.daqreader_epochdata_ingested rebuilds the v1
 %   document; testRawV1RoundTripIngestedEpochs compares the two.
 %
-%   DELEGATED (the second argument, true): daqreader_mfdaq_epochdata_ingested
-%   hands its de-encoded body here after accounting for every raw field itself;
-%   the raw read is skipped for it.
+%   DELEGATED (the second argument, true): the raw read is skipped, for a
+%   caller that accounted for every raw field itself. No migrator delegates
+%   since daqreader_mfdaq_epochdata_ingested hands its v1 document on
+%   unchanged ([retired classes leave V2], Jess Haley, 2026-10-25).
 arguments
     preBody (1,1) struct
     delegated (1,1) logical = false
@@ -149,14 +156,14 @@ if isempty(refs)
     bodies = preBody;
     return;
 end
-% the document is kept beside its clock references, so it is emitted
-% complete: the superclass list of its class, from the schema
-% (did2.build.superclasses; [early migration pieces fixed] (2), Jess Haley,
-% 2026-10-26: "the builder produces a complete document"; before,
-% v1_to_v2's ensureClassBlocks rewrote v1's list)
-kept = preBody;
-kept.document_class.superclasses = did2.build.superclasses('daqreader_epochdata_ingested');
-bodies = [{kept}, refs];
+% The source is kept beside its clock references UNCHANGED, as the v1
+% document it is: v1_to_v2 hands it on stamped did_v1 (HAND_ON_CLASSES), never
+% as a V2 `daqreader_epochdata_ingested`, a retire class (Decided by Jess Haley,
+% 2026-10-25 [retired classes leave V2] (1): "the generic migration stops
+% writing retired classes as V2 documents"; [handed-on are v1 as written],
+% 2026-11-03). Until 2026-11-19 this branch re-stamped the source with the
+% retire class's superclass list and v1_to_v2 wrote it as that V2 class.
+bodies = [{preBody}, refs];
 end
 
 % ===================== small helpers =======================================

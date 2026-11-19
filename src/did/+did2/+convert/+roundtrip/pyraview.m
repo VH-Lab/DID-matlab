@@ -16,7 +16,9 @@ function [v1, spec] = pyraview(bodies)
 %     epochid.epochid                    the epoch entity's local_identifier
 %     epochclocktimes.clocktype          the anchor's clock
 %     epochclocktimes.t0_t1              [start; start + duration] of the anchor
-%     pyraview.label                     the observation's variable
+%     pyraview.label                     the observation's notes (its
+%                                        variable's name before [variable
+%                                        terms batch 1])
 %     pyraview.dataType                  value.source_data_type, else
 %                                        value.data_type
 %     pyraview.channels                  the level bodies' channel dimension
@@ -258,11 +260,23 @@ end
 v1.files = files;
 
 pv = struct();
-[~, label] = termParts(getIn(obs, 'statement', 'variable'));
-pv.label = label;
-if strcmp(label, 'signal')
-    spec.equivalents(end+1) = struct('path', 'pyraview.label', 'values', {{''}}, ...
-        'why', 'an empty label: the migrator names the signal ''signal''');
+% [variable terms batch 1] (Jess Haley, 2026-11-19): the variable is
+% AFO:AFR_0001916 "voltage" and the label is the observation's notes ('' when
+% it has none); an observation migrated before that decision has no node and
+% the label as its variable's name ('signal' for an empty label)
+[vnode, label] = termParts(getIn(obs, 'statement', 'variable'));
+if ~isempty(strtrim(char(vnode)))
+    if ~strcmpi(strtrim(char(vnode)), 'AFO:AFR_0001916')
+        spec.unplaced{end+1} = sprintf('the observation''s variable is %s "%s", not voltage', ...
+            vnode, label);
+    end
+    pv.label = fieldText(getIn(obs, 'statement'), 'notes');
+else
+    pv.label = label;
+    if strcmp(label, 'signal')
+        spec.equivalents(end+1) = struct('path', 'pyraview.label', 'values', {{''}}, ...
+            'why', 'an empty label: the migrator named the signal ''signal''');
+    end
 end
 dt = fieldText(getIn(obs, 'value'), 'source_data_type');
 if isempty(dt)
@@ -325,13 +339,25 @@ for k = 1:numel(covs)
         bad{end+1} = 'a level body has a covariate along a dimension other than time'; %#ok<AGROW>
         continue;
     end
-    o = num(getIn(c, 'origin'));
-    s = num(getIn(c, 'spacing'));
+    o = regularNumber(c, 'origin');
+    s = regularNumber(c, 'spacing');
     if ~isempty(o); start = o; end
     if ~isempty(s) && s > 0; rate = 1 / s; end
 end
 if isnan(rate) || isnan(start)
     bad{end+1} = 'a level body has no time origin and spacing';
+end
+end
+
+function v = regularNumber(c, which)
+% a covariate's origin or spacing (else what the source wrote) as a number:
+% the old {value, source_value} block or the new flat origin / spacing and
+% source_origin / source_spacing (itemRegular; [one shape for measured
+% numbers], Jess Haley, 2026-11-17)
+[x, src] = itemRegular(c, which);
+v = numberOf(x);
+if isempty(v)
+    v = num(struct('source_value', {src}));
 end
 end
 
@@ -395,9 +421,9 @@ for k = 1:numel(entries)
                 bad{end+1} = sprintf('the filter band "%s" has no v1 type', bnode); %#ok<AGROW>
             end
         case 'passband low edge'
-            edges.low = numberOf(getIn(e, 'quantity', 'value'));
+            edges.low = numberOf(itemNumbers(e));
         case 'passband high edge'
-            edges.high = numberOf(getIn(e, 'quantity', 'value'));
+            edges.high = numberOf(itemNumbers(e));
         case 'filter order'
             params.order = numberOf(getIn(e, 'count'));
         case 'passband ripple'
@@ -405,7 +431,7 @@ for k = 1:numel(entries)
         case 'stopband attenuation'
             params.stopbandAttentuation = quantityOf(e);
         case 'sample frequency'
-            sampleFrequency = numberOf(getIn(e, 'quantity', 'value'));
+            sampleFrequency = numberOf(itemNumbers(e));
             params.sampleFrequency = sampleFrequency;
         otherwise
             bad{end+1} = sprintf('the method parameter "%s" has no v1 place', vname); %#ok<AGROW>
@@ -439,7 +465,7 @@ end
 
 function v = quantityOf(e)
 % a parameter's quantity value; a NaN the source stated stays NaN
-v = getIn(e, 'quantity', 'value');
+v = itemNumbers(e);
 if iscell(v); v = v{1}; end
 if ~(isnumeric(v) && isscalar(v))
     v = NaN;

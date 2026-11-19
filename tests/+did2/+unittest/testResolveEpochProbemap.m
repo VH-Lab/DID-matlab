@@ -44,7 +44,7 @@ function [out, rep] = decompose(v1)
 % [sorted units are cells or groups] (Jess Haley, 2026-10-26); an unlabelled
 % one is carried ([unlabelled units need a map])
 labels = {'el_neuron', 'single', 'el_neuron_x', 'single', 'el_neuron_u', 'single', ...
-    'el_neuron_u2', 'single', 'el_neuron_q', 'single'};
+    'el_neuron_u2', 'single', 'el_neuron_q', 'single', 'el_neuron2', 'single'};
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', labels);
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
@@ -307,7 +307,7 @@ end
 verifyEqual(testCase, sort(fmts), sort({'EDAM:format_2333', 'EDAM:format_2330'}));
 ch1 = channelsOf(out, obs{1}); ch2 = channelsOf(out, obs{2});
 verifyNotEmpty(testCase, ch1); verifyNotEmpty(testCase, ch2);
-verifyNotEqual(testCase, double(ch1(1).matrix(:))', double(ch2(1).matrix(:))');
+verifyNotEqual(testCase, double(ch1(1).numeric(:))', double(ch2(1).numeric(:))');
 end
 
 function testAnIngestedEpochTakesItsArchiveAsAttached(testCase)
@@ -486,6 +486,50 @@ end
 
 % ===================== spike trains (2026-10-21) ========================
 
+function testIdsFromContentWhenV1StatesNone(testCase)
+% [ids from content when v1 states none] (Jess Haley, 2026-11-12): a
+% jrclust_clusters and a pyraview that state no v1 id get ids derived from
+% their content (pass 1: jrclust_clusters.m, pyraview.m), and this pass mints
+% from them, so two runs on the same input give the same ids, and a different
+% id-less pyraview gets other ids. (did-schema #453's determinism covered
+% every source with a v1 id.) NOT COVERED: an epochfiles_ingested stating no
+% id. This pass finds what it renames, replaces and retires by source id, and
+% skips a source with none, so such an epoch is kept unchanged as v1;
+% mkIngestionManifest's content-derived id is not reached.
+[ids1, ~, rep1] = idlessRun('high');
+[ids2, ~, ~] = idlessRun('high');
+verifyEqual(testCase, rep1.epochfiles_ingested_seen, 1, 'DENOMINATOR: the ingested epoch');
+verifyEqual(testCase, rep1.sorter_calculations_seen, 1, 'DENOMINATOR: the sorter');
+verifyEqual(testCase, rep1.pyraview_observations_seen, 1, 'DENOMINATOR: the pyraview');
+verifyFalse(testCase, any(cellfun(@isempty, ids1)), 'a document with no id');
+verifyEqual(testCase, numel(unique(ids1)), numel(ids1), 'two documents share an id');
+verifyEqual(testCase, sort(ids1), sort(ids2), 'two runs on the same input');
+% another pyraview with no id (another label): other ids
+ids3 = idlessRun('low');
+verifyNotEmpty(testCase, setdiff(ids3, ids1), ...
+    'two different id-less pyraviews mint the same ids');
+end
+
+function [ids, out, rep] = idlessRun(label)
+subj = subjectBody('spec_n', 'sess_n', 'L');
+el   = elementBody('el_n', 'sess_n', 'p', '1', 'n-trode', 1, 'spec_n');
+daq  = daqsystemBody('acqsys_n', 'sess_n', 'intan1');
+ing  = ingestedWithDeviceRows('ing_n', 'sess_n', 't0n1', { ...
+    {'p', '1', 'n-trode', 'intan1:ai1-2', 'L'}});
+jc = jrclustV1('jc_n', 'sess_n', 'el_n');
+jc.base.id = '';
+pv = pyraviewV1('pv_n', 'sess_n', 'el_n', 't0n1');
+pv.base.id = '';
+pv.pyraview.label = label;
+[out, rep] = decompose({sessionBody('sd_n', 'sess_n', 'ref'), subj, el, daq, ing, jc, pv});
+ids = cell(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    s = out.migrated{k}.toStruct();
+    ids{k} = '';
+    if isfield(s, 'base') && isfield(s.base, 'id'); ids{k} = char(s.base.id); end
+end
+end
+
 function v1 = elementEpochBody(docId, sessionId, elementId, epochId, withFile)
 %ELEMENTEPOCHBODY A did_v1 element_epoch, as NDI's writer makes it
 %   (+ndi/element.m:367-378: newdocument('element_epoch', 'element_epoch.
@@ -554,7 +598,7 @@ verifyEqual(testCase, char(b{1}.files.file_info(1).locations.location), '/data/t
 % F1 (Jess Haley, 2026-10-22 [epoch dissolution before merge]): the observation
 % IS the v1 element_epoch, id preserved, and the acquisition_epoch is gone
 verifyEqual(testCase, char(o.base.id), 'ee_1', 'the element_epoch id is preserved on its observation');
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'), 'the acquisition_epoch dissolved');
+verifyEmpty(testCase, sliceBodies(out), 'the acquisition_epoch dissolved');
 verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
 verifyEqual(testCase, rep.acquisition_epoch_dissolved, 1);
 end
@@ -587,7 +631,7 @@ verifyEqual(testCase, char(ep.entity.local_identifier), 't00sx');
 did2.unittest.helpers.verifyClock(testCase, ref.relative_time_reference.value.clock, 'dev_local_time');   % by node [clock terms get nodes]
 verifyEqual(testCase, ref.relative_time_reference.value.start.seconds, 2, 'AbsTol', 1e-12);
 verifyEqual(testCase, ref.relative_time_reference.value.end.seconds, 579.85, 'AbsTol', 1e-9);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+verifyEmpty(testCase, sliceBodies(out));
 verifyEmpty(testCase, out.quarantine);
 end
 
@@ -605,7 +649,9 @@ ing  = ingestedWithRows('ing_sp2', 'sess_sp2', 't00sp2', {{'cam', '1', 'camera',
 daq  = daqsystemBody('daq_sp2', 'sess_sp2', 'vhspike2');
 [out, rep] = decompose({sessionBody('sd_sp2', 'sess_sp2', 'ref'), subj, elP, elN, ee, ing, daq});
 verifyEqual(testCase, rep.acquisition_epoch_seen, 0);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+% [retired classes leave V2]: the carried element_epoch stays in the batch as
+% its v1 source; no slice that pass 1 did NOT carry is left
+verifyEmpty(testCase, uncarriedSlices(out));
 carried = carriedIds(out);
 for id = {'el_probe_p', 'el_lfp', 'ee_p'}
     verifyTrue(testCase, any(strcmp(carried, id{1})), [id{1} ' is not carried']);
@@ -672,7 +718,9 @@ patch = subjectBody('patch_1', sid, 'patch 1');
 [els, ees, dm] = jhWorm(sid, 'N2_x_midpoint', 'worm_1', 'patch_1');
 [out, rep] = decompose([{sessionBody('sd_jh', sid, 'ref'), worm, patch}, els, ees, {dm}]);
 verifyEqual(testCase, rep.acquisition_epoch_seen, 0);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_epoch'));
+% [retired classes leave V2]: the carried element_epoch stays in the batch as
+% its v1 source; no slice that pass 1 did NOT carry is left
+verifyEmpty(testCase, uncarriedSlices(out));
 carried = carriedIds(out);
 for b = [els, ees, {dm}]
     verifyTrue(testCase, any(strcmp(carried, b{1}.base.id)), [b{1}.base.id ' is not carried']);
@@ -700,21 +748,252 @@ verifyEqual(testCase, rep.acquisition_epoch_seen, 1);
 verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 0);
 end
 
-function testUntiedExtentsFromTwoSourcesKeepTheirAcquisitionEpochs(testCase)
-% [untied epochs keep the session anchor]: "Extents that come from several
-% sources ... still carry it." Two untied acquisition_epochs of one epoch are
-% both carried and kept whole: no spike train is built from either.
+function testTwoAgreeingUntiedSourcesDissolveAndEmitSpikeTrains(testCase)
+% INVERTS testUntiedExtentsFromTwoSourcesKeepTheirAcquisitionEpochs. [agreeing
+% untied sources count as one] (Jess Haley, 2026-11-12, amending [untied epochs
+% keep the session anchor]): two untied acquisition_epochs of one epoch that
+% state the same clocks in the same order with identical t0/t1 keep the
+% session anchor, so neither is carried: both dissolve and each spike epoch
+% gets its spike train (the spike-train step skips only carried epochs).
+[out, rep] = decompose(twoUntiedSources([0 10]));
+verifyEqual(testCase, out.epoch_mint.epoch_extent_untied_several_sources_anchored, 1);
+verifyEmpty(testCase, out.epoch_mint.epoch_extent_carried_source_ids);
+verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 0);
+verifyEqual(testCase, rep.spike_trains_emitted, 2);
+verifyEmpty(testCase, sliceBodies(out));
+end
+
+function testUntiedSourcesThatDisagreeKeepTheirAcquisitionEpochs(testCase)
+% [agreeing untied sources count as one]: "any difference still carries all of
+% them." The second source states a different t1: both acquisition_epochs are
+% carried and kept whole; no spike train is built from either.
+[out, rep] = decompose(twoUntiedSources([0 10.5]));
+verifyEqual(testCase, out.epoch_mint.epoch_extent_untied_epochs_carried, 1);
+verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
+verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 2);
+verifyEqual(testCase, rep.spike_trains_emitted, 0);
+verifyEqual(testCase, numel(sliceBodies(out)), 2);
+end
+
+function batch = twoUntiedSources(secondT0T1)
+%TWOUNTIEDSOURCES Two untied spike acquisition_epochs of one epoch; the second
+%   states SECONDT0T1 (the first states [0 10]).
 subj = subjectBody('specimen_su', 'sess_su', 'L');
 elP  = elementBody('el_probe_u', 'sess_su', 'tet', '1', 'n-trode', 1, 'specimen_su');
 elN  = derivedElementBody('el_neuron_u', 'sess_su', 'n1', 'spikes', 'el_probe_u', 'specimen_su');
 elN2 = derivedElementBody('el_neuron_u2', 'sess_su', 'n2', 'spikes', 'el_probe_u', 'specimen_su');
 ee   = elementEpochBody('ee_u', 'sess_su', 'el_neuron_u', 't00su', true);
 ee2  = elementEpochBody('ee_u2', 'sess_su', 'el_neuron_u2', 't00su', true);
-[out, rep] = decompose({sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, elN2, ee, ee2});
-verifyEqual(testCase, rep.acquisition_epoch_seen, 2);
-verifyEqual(testCase, rep.acquisition_epoch_kept_extent_carried, 2);
-verifyEqual(testCase, rep.spike_trains_emitted, 0);
-verifyEqual(testCase, numel(bodiesOfClass(out, 'acquisition_epoch')), 2);
+ee2.element_epoch.t0_t1 = secondT0T1;
+batch = {sessionBody('sd_su', 'sess_su', 'ref'), subj, elP, elN, elN2, ee, ee2};
+end
+
+% ===================== the dissolution round trips ======================
+% [lossless means round trip] and [whole-batch round trip] (Jess Haley,
+% 2026-10-26 and 2026-10-27, did-schema did_v2_go_forward_class_audit.md):
+% lossless is measured on the FINAL batch, so a dissolved element_epoch is
+% rebuilt from what replaced it -- its observation (which keeps its id), its
+% time reference onto the epoch, the epoch entity and its data body
+% (did2.convert.roundtrip.element_epoch, AFTER THE DISSOLUTION).
+
+function testADissolvedTiedElementEpochRoundTrips(testCase)
+% the epoch is tied to its acquisition system (an ingested epoch and its rig)
+[bodies, out, rep] = dissolvedBatch('tied');
+verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+
+function testADissolvedUntiedElementEpochRoundTrips(testCase)
+% the epoch is untied: epochMint anchors it on the session ([untied epochs
+% keep the session anchor])
+[bodies, out, rep] = dissolvedBatch('untied');
+verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+
+function testAChangedValueOfADissolvedElementEpochFails(testCase)
+% every v1 value the dissolution moved is compared: a v1 document that states
+% another value than the batch holds fails on that field, tied and untied
+edits = { ...
+    'element_epoch.t0_t1', @(v) setfield(v, 'element_epoch', ...
+        struct('epoch_clock', 'dev_local_time', 't0_t1', [0 11])); ...
+    'element_epoch.epoch_clock', @(v) setfield(v, 'element_epoch', ...
+        struct('epoch_clock', 'utc', 't0_t1', [0 10])); ...
+    'epochid.epochid', @(v) setfield(v, 'epochid', struct('epochid', 't00other')); ...
+    'depends_on(1).value', @(v) setfield(v, 'depends_on', ...
+        struct('name', 'element_id', 'value', 'el_other')); ...
+    'files.file_info.locations.location', @changedLocation; ...
+    'files.file_list', @(v) setfield(v, 'files', setfield(v.files, 'file_list', ...
+        {'other.vhsb'}))};
+for how = {'tied', 'untied'}
+    [bodies, out] = dissolvedBatch(how{1});
+    k = find(cellfun(@(b) strcmp(b.base.id, 'ee_rt'), bodies));
+    for e = 1:size(edits, 1)
+        [path, edit] = edits{e, :};
+        changed = bodies;
+        changed{k} = edit(bodies{k});
+        r = did2.convert.roundtrip.wholeBatch(changed, out);
+        label = sprintf('%s, %s', how{1}, path);
+        verifyTrue(testCase, isfield(r.failures_by_class, 'element_epoch'), label);
+        f = r.failures(arrayfun(@(x) strcmp(x.source_id, 'ee_rt'), r.failures));
+        if ~isempty(f)
+            verifyTrue(testCase, any(strcmp(f(1).lost, path)), ...
+                sprintf('%s: lost %s', label, strjoin(f(1).lost, ', ')));
+        else
+            verifyFail(testCase, [label ': the element_epoch is not among the failures']);
+        end
+    end
+end
+end
+
+function testADissolvedElementEpochWithoutItsBodyLosesItsFiles(testCase)
+% the batch holds no data body for the observation: its files are not
+% rebuilt, and are named lost (the inverse says why), never matched
+[bodies, out] = dissolvedBatch('untied');
+keep = true(1, numel(out.migrated));
+for k = 1:numel(out.migrated)
+    b = out.migrated{k};
+    if isa(b, 'did2.document'); b = b.toStruct(); end
+    keep(k) = ~(strcmp(char(b.document_class.class_name), 'opaque_body') ...
+        && any(strcmp(depVals(b, 'owner_id'), 'ee_rt')));
+end
+assertEqual(testCase, sum(~keep), 1, 'one spike-train body removed');
+out.migrated = out.migrated(keep);
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+f = r.failures(arrayfun(@(x) strcmp(x.source_id, 'ee_rt'), r.failures));
+assertNotEmpty(testCase, f, 'the element_epoch did not fail');
+verifyTrue(testCase, any(strcmp(f(1).lost, 'files.file_list')), strjoin(f(1).lost, ', '));
+verifyTrue(testCase, any(contains(f(1).unplaced, 'data bodies')), strjoin(f(1).unplaced, '; '));
+end
+
+% ---- several clocks: [device clocks on one epoch] (Jess Haley, 2026-10-26) --
+% A JH-style element_epoch states two clocks (dev_local_time,exp_global_time).
+% The observation's reference states dev_local_time; the other clock is the
+% epoch's own extent (did2.convert.epochMint, #60 option A), so the inverse
+% rebuilds epoch_clock and t0_t1 from both, in the source's order.
+
+function testADissolvedTwoClockTiedElementEpochRoundTrips(testCase)
+[bodies, out, rep] = dissolvedBatch('tied', TWO_CLOCKS(), TWO_CLOCK_T0T1());
+verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+
+function testADissolvedTwoClockUntiedElementEpochRoundTrips(testCase)
+[bodies, out, rep] = dissolvedBatch('untied', TWO_CLOCKS(), TWO_CLOCK_T0T1());
+verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+
+function testADissolvedElementEpochKeepsItsClockOrder(testCase)
+% the source lists exp_global_time first: rebuilt in that order, tied and untied
+for how = {'tied', 'untied'}
+    [bodies, out, rep] = dissolvedBatch(how{1}, 'exp_global_time,dev_local_time', ...
+        fliplr(TWO_CLOCK_T0T1()));
+    verifyDissolvedRoundTrip(testCase, bodies, out, rep, 'ee_rt');
+end
+end
+
+function testTwoAgreeingUntiedTwoClockSourcesBothRoundTrip(testCase)
+% [agreeing untied sources count as one] (Jess Haley, 2026-11-12): the
+% session-anchored extents derive from the first source and are every agreeing
+% source's, so the second rebuilds whole too
+[bodies, out, rep] = dissolvedBatch('untied', TWO_CLOCKS(), TWO_CLOCK_T0T1(), 2);
+assertEqual(testCase, rep.acquisition_epoch_dissolved, 2, 'both element_epochs dissolve');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+for id = {'ee_rt', 'ee_rt2'}
+    verifyFalse(testCase, failedSource(r, id{1}), [id{1} ': ' failureText(r, id{1})]);
+end
+verifyFalse(testCase, isfield(r.failures_by_class, 'element_epoch'));
+end
+
+function testASecondTiedSourceRestatingTheFirstIsNotMatched(testCase)
+% Two tied sources on one system state the same two clocks: epochMint keeps
+% one reference per (clock, system), derived from the first. The references
+% do not record which clocks the second stated, so its epoch_clock and t0_t1
+% are reported lost, never matched (the inverse's THE CLOCKS); the first
+% rebuilds whole.
+[bodies, out, rep] = dissolvedBatch('tied', TWO_CLOCKS(), TWO_CLOCK_T0T1(), 2);
+assertEqual(testCase, rep.acquisition_epoch_dissolved, 2, 'both element_epochs dissolve');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyFalse(testCase, failedSource(r, 'ee_rt'), failureText(r, 'ee_rt'));
+f = r.failures(arrayfun(@(x) strcmp(x.source_id, 'ee_rt2'), r.failures));
+assertNotEmpty(testCase, f, 'the second element_epoch did not fail');
+verifyEqual(testCase, sort(f(1).lost(:))', {'element_epoch.epoch_clock', 'element_epoch.t0_t1'});
+end
+
+function testAChangedSecondClockT1FailsOnT0T1(testCase)
+% the v1 document states another t1 for exp_global_time than the epoch holds:
+% it fails on element_epoch.t0_t1 and nothing else, tied and untied
+for how = {'tied', 'untied'}
+    [bodies, out] = dissolvedBatch(how{1}, TWO_CLOCKS(), TWO_CLOCK_T0T1());
+    k = find(cellfun(@(b) strcmp(b.base.id, 'ee_rt'), bodies));
+    changed = bodies;
+    changed{k}.element_epoch.t0_t1(2, 2) = changed{k}.element_epoch.t0_t1(2, 2) + 1;
+    r = did2.convert.roundtrip.wholeBatch(changed, out);
+    f = r.failures(arrayfun(@(x) strcmp(x.source_id, 'ee_rt'), r.failures));
+    assertNotEmpty(testCase, f, [how{1} ': the element_epoch did not fail']);
+    verifyEqual(testCase, f(1).lost(:)', {'element_epoch.t0_t1'}, how{1});
+    verifyEmpty(testCase, f(1).unplaced, how{1});
+end
+end
+
+function c = TWO_CLOCKS()
+c = 'dev_local_time,exp_global_time';
+end
+
+function t = TWO_CLOCK_T0T1()
+% [t0; t1] per clock, as JH's element_epochs state them
+t = [2 739081.594; 579.85 739081.636];
+end
+
+function v = changedLocation(v)
+v.files.file_info.locations.location = '/data/elsewhere.vhsb';
+end
+
+function [bodies, out, rep] = dissolvedBatch(how, clocks, t0t1, nSources)
+%DISSOLVEDBATCH A spike-sorted neuron's one element_epoch, dissolved: HOW
+%   'tied' (its epoch's ingested manifest and rig are in the batch) or
+%   'untied' (only the element_epoch states the epoch). CLOCKS and T0T1 (the
+%   v1 epoch_clock and t0_t1; default the one dev_local_time clock) and
+%   NSOURCES (default 1: ee_rt; 2 adds a second neuron on the same probe whose
+%   element_epoch ee_rt2 states the same clocks and times, for the same epoch).
+if nargin < 2; clocks = 'dev_local_time'; end
+if nargin < 3; t0t1 = [2; 579.85]; end
+if nargin < 4; nSources = 1; end
+subj = subjectBody('specimen_rt', 'sess_rt', 'L');
+elP  = elementBody('el_probe_rt', 'sess_rt', 'tet', '1', 'n-trode', 1, 'specimen_rt');
+bodies = {sessionBody('sd_rt', 'sess_rt', 'ref'), subj, elP};
+ids = {'ee_rt', 'ee_rt2'};
+for s = 1:nSources
+    elName = sprintf('el_neuron%d', s);
+    if s == 1; elName = 'el_neuron'; end
+    elN = derivedElementBody(elName, 'sess_rt', sprintf('n%d', s), 'spikes', ...
+        'el_probe_rt', 'specimen_rt');
+    ee  = elementEpochBody(ids{s}, 'sess_rt', elName, 't00rt', true);
+    ee.element_epoch = struct('epoch_clock', clocks, 't0_t1', t0t1);
+    if s > 1   % its own file
+        ee.files.file_info.locations.uid = sprintf('vhsb_%d', s);
+        ee.files.file_info.locations.location = sprintf('/data/t00sp/neuron%d.vhsb', s);
+    end
+    ee = jsondecode(jsonencode(ee));   % through JSON, as a corpus holds it
+    bodies = [bodies, {elN, ee}]; %#ok<AGROW>
+end
+if strcmp(how, 'tied')
+    bodies = [bodies, {ingestedWithRows('ing_rt', 'sess_rt', 't00rt', {{'tet', '1', 'n-trode', 'L'}}), ...
+        daqsystemBody('daq_rt', 'sess_rt', 'vhspike2')}];
+end
+[out, rep] = decompose(bodies);
+end
+
+function verifyDissolvedRoundTrip(testCase, bodies, out, rep, id)
+assertEqual(testCase, rep.acquisition_epoch_dissolved, 1, 'the element_epoch did not dissolve');
+assertEqual(testCase, rep.spike_trains_emitted, 1);
+assertEmpty(testCase, sliceBodies(out));
+o = docById(out, id);
+assertNotEmpty(testCase, o, 'the observation keeps the element_epoch id');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyFalse(testCase, failedSource(r, id), failureText(r, id));
+verifyFalse(testCase, isfield(r.failures_by_class, 'element_epoch'), failureText(r, id));
+verifyFalse(testCase, isfield(r.changed_by_class, 'element_epoch'));
+verifyFalse(testCase, isfield(r.no_inverse_by_class, 'element_epoch'));
+verifyFalse(testCase, any(strcmp(r.ids_lost_ids, id)), 'the element_epoch id is lost');
 end
 
 function testASpikeEpochWithNoVhsbFileEmitsNoObservation(testCase)
@@ -851,7 +1130,7 @@ for i = 1:numel(levels)
     k = did2.unittest.helpers.axesOf(levels{i});
     names = arrayfun(@(a) char(a.term.name), k, 'UniformOutput', false);
     t = k(strcmp(names, 'time'));
-    verifyEqual(testCase, double(t.cov.origin.value), 2, 'the start offset is the time covariate''s origin');
+    verifyEqual(testCase, double(t.cov.origin), 2, 'the start offset is the time covariate''s origin');
 end
 end
 
@@ -1055,6 +1334,14 @@ end
 function testStimManipulationsEmittedOne(testCase)
 [~, rep, ~] = stimDecompose(); verifyEqual(testCase, rep.manipulations_emitted, 1);
 end
+function testStimRowWithNoWiringKeepsItsManipulation(testCase)
+% [stimulator manipulation dropped] (Jess Haley, 2026-11-09): a row with no
+% devicestring has no wiring relation to be read back from, so it is one of
+% the rows that carry something the wiring and the element do not
+[~, rep, ~] = stimDecompose();
+verifyEqual(testCase, rep.stimulator_manipulations_kept_no_wiring, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_not_written, 0);
+end
 function testStimNoObservationBody(testCase)
 [out, ~, ~] = stimDecompose();
 verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_observation'));
@@ -1231,9 +1518,9 @@ verifyEqual(testCase, depVal(w, 'time_reference_id'), depVal(obs{1}, 'time_refer
 ch = w.directed_relation.conditions;
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai ([channel types])
-verifyEqual(testCase, double(ch(1).matrix(:))', [27 28 45]);
+verifyEqual(testCase, double(ch(1).numeric(:))', [27 28 45]);
 verifyEqual(testCase, char(ch(2).variable.node), 'EMPTY:0000372');   % di
-verifyEqual(testCase, double(ch(2).matrix(:))', [0 1 2]);
+verifyEqual(testCase, double(ch(2).numeric(:))', [0 1 2]);
 % every row decomposed, so the source is renamed to the manifest
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
@@ -1268,16 +1555,19 @@ verifyEqual(testCase, depVal(w, 'parent_id'), 'acqsys_m');
 ch = w.directed_relation.conditions;
 verifyEqual(testCase, numel(ch), 2);
 verifyEqual(testCase, char(ch(1).variable.node), 'EMPTY:0000370');   % ai
-verifyEqual(testCase, double(ch(1).matrix(:))', [2 1], 'row order, never sorted');
+verifyEqual(testCase, double(ch(1).numeric(:))', [2 1], 'row order, never sorted');
 verifyEqual(testCase, char(ch(2).variable.node), 'EMPTY:0000372');   % di
-verifyEqual(testCase, double(ch(2).matrix(:))', 4);
+verifyEqual(testCase, double(ch(2).numeric(:))', 4);
 % every row has its home, so the source is renamed to the manifest
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 verifyEmpty(testCase, bodiesOfClass(out, 'epochfiles_ingested'));
 end
 
-function testAStimulatorOncePerMarkerChannelIsOneManipulationAndOneWiring(testCase)
+function testAStimulatorOncePerMarkerChannelIsOneWiringAndNoManipulation(testCase)
 % B and Dab: a stimulator listed once per channel (mk1, mk2, mk3, e1, md1).
+% [stimulator manipulation dropped] (Jess Haley, 2026-11-09): its rows are one
+% wiring relation and write no manipulation; the wiring and its epoch anchor
+% are kept for them, and the source is renamed (every row has its home)
 subj = subjectBody('spec_k', 'sess_k', 'L');
 stim = elementBody('stim_k', 'sess_k', 'vis', '1', 'stimulator', 1, 'spec_k');
 daq  = daqsystemBody('acqsys_k', 'sess_k', 'vis');
@@ -1291,26 +1581,53 @@ ing  = ingestedWithDeviceRows('ing_k', 'sess_k', 't0k', { ...
 verifyEqual(testCase, rep.probe_rows_total, 5, 'denominator');
 verifyEqual(testCase, rep.wiring_several_rows_merged, 1);
 verifyEqual(testCase, rep.wiring_several_rows_folded, 4);
-verifyEqual(testCase, rep.manipulations_emitted, 1);
-m = bodiesNamed(out, 'migrated_probemap_manipulation');
-verifyEqual(testCase, numel(m), 1);
-verifyEqual(testCase, depVal(m{1}, 'acquisition_system_id'), 'acqsys_k');
-w = wiringOf(out, m{1});
-verifyNotEmpty(testCase, w);
-ch = w.directed_relation.conditions;
+verifyEqual(testCase, rep.rows_stimulator, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_not_written, 1);
+verifyEqual(testCase, rep.manipulations_emitted, 0);
+verifyEmpty(testCase, bodiesNamed(out, 'migrated_probemap_manipulation'));
+w = wiringsOfChild(out, 'stim_k');
+assertEqual(testCase, numel(w), 1, 'the stimulator''s one wiring relation is kept');
+verifyEqual(testCase, depVal(w{1}, 'parent_id'), 'acqsys_k');
+anchor = docById(out, depVal(w{1}, 'time_reference_id'));
+verifyNotEmpty(testCase, anchor, 'the wiring''s epoch anchor is kept');
+ch = w{1}.directed_relation.conditions;
 verifyEqual(testCase, arrayfun(@(c) char(c.variable.node), ch, 'UniformOutput', false), ...
     {'EMPTY:0000377', 'EMPTY:0000376', 'NCIT:C52095'});   % mk, e, md
-verifyEqual(testCase, double(ch(1).matrix(:))', [1 2 3]);
+verifyEqual(testCase, double(ch(1).numeric(:))', [1 2 3]);
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
+end
+
+function testAStimulatorRowNamingAnotherSubjectKeepsItsManipulation(testCase)
+% [stimulator manipulation dropped]: "except for a row that carries something
+% the wiring and the element do not, such as the 12 Dab epochs whose bath rows
+% name another subject". The element's subject is spec_m1; the row names
+% spec_m2, which only the manipulation says.
+subjA = subjectBody('spec_m1', 'sess_m', 'L');
+subjB = subjectBody('spec_m2', 'sess_m', 'R');
+stim = elementBody('stim_m', 'sess_m', 'vis', '1', 'stimulator', 1, 'spec_m1');
+daq  = daqsystemBody('acqsys_m', 'sess_m', 'vis');
+ing  = ingestedWithDeviceRows('ing_m', 'sess_m', 't0m', { ...
+    {'vis', '1', 'stimulator', 'vis:mk1', 'R'}});
+[out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subjA, subjB, stim, daq, ing});
+verifyEqual(testCase, rep.rows_stimulator, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_kept_other_subject, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_not_written, 0);
+verifyEqual(testCase, rep.manipulations_emitted, 1);
+m = bodiesNamed(out, 'migrated_probemap_manipulation');
+assertEqual(testCase, numel(m), 1);
+verifyEqual(testCase, depVal(m{1}, 'entity_id'), 'spec_m2');
+verifyEqual(testCase, depVal(m{1}, 'instrument_id'), 'stim_m');
+verifyNotEmpty(testCase, wiringOf(out, m{1}));
 end
 
 function testTheStimulatorRowRebuildsFromTheWiringAndTheElement(testCase)
 % [stimulator manipulation dropped] and [probe map rows compared as a set]
 % (Jess Haley, 2026-11-09, did-schema did_v2_standing_wiring_plan.md): the
-% round trip rebuilds a stimulator row from its wiring relation and its
-% element (name, reference, type, the rig's channels, the subject the element
-% observes), and compares the probe map's rows as an unordered set. The
-% stimulator is the FIRST v1 row; rebuilt from the wiring it comes back last.
+% pass writes no manipulation for a stimulator row its wiring relation and
+% element hold, and the round trip rebuilds the row from them (name,
+% reference, type, the rig's channels, the subject the element observes),
+% comparing the probe map's rows as an unordered set. The stimulator is the
+% FIRST v1 row; rebuilt from the wiring it comes back last.
 subj = subjectBody('spec_w', 'sess_w', 'L');
 stim = elementBody('stim_w', 'sess_w', 'vis', '1', 'stimulator', 1, 'spec_w');
 rec  = elementBody('rec_w', 'sess_w', 'cortex', '1', 'n-trode', 1, 'spec_w');
@@ -1323,24 +1640,106 @@ ing  = ingestedWithDeviceRows('ing_w', 'sess_w', 't0w', { ...
 ing.depends_on = struct('name', 'filenavigator_id', 'value', 'nav_acqsys_w');
 bodies = {sessionBody('sd_w', 'sess_w', 'ref'), subj, stim, rec, daq, ing};
 [out, rep] = decompose(bodies);
-assertEqual(testCase, rep.manipulations_emitted, 1);
+assertEqual(testCase, rep.stimulator_manipulations_not_written, 1);
+assertEqual(testCase, rep.manipulations_emitted, 0);
 assertEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
-% with the manipulation: the manifest round trips
-r = did2.convert.roundtrip.wholeBatch(bodies, out);
-verifyFalse(testCase, failedSource(r, 'ing_w'), failureText(r, 'ing_w'));
-% without it: the stimulator row comes from the wiring and the element
-keep = true(1, numel(out.migrated));
+nManip = 0;
 for k = 1:numel(out.migrated)
     b = out.migrated{k};
     if isa(b, 'did2.document'); b = b.toStruct(); end
-    keep(k) = ~strcmp(char(b.document_class.class_name), 'manipulation');
+    nManip = nManip + strcmp(char(b.document_class.class_name), 'manipulation');
 end
-assertEqual(testCase, sum(~keep), 1, 'one stimulator manipulation removed');
-out2 = out;
-out2.migrated = out.migrated(keep);
-r2 = did2.convert.roundtrip.wholeBatch(bodies, out2);
-verifyFalse(testCase, failedSource(r2, 'ing_w'), failureText(r2, 'ing_w'));
-verifyGreaterThan(testCase, r2.sources_compared, 0);
+assertEqual(testCase, nManip, 0, 'no manipulation is written');
+assertEqual(testCase, numel(wiringsOfChild(out, 'stim_w')), 1, ...
+    'the stimulator''s wiring relation is kept');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyFalse(testCase, failedSource(r, 'ing_w'), failureText(r, 'ing_w'));
+verifyGreaterThan(testCase, r.sources_compared, 0);
+end
+
+function testAStimulatorSubjectCarriedInTheReportRoundTripsTheWholeBatch(testCase)
+% [stimulator subject carried as needing information], [one-field carry in
+% the migration report] (Decided by Jess Haley, 2026-11-19, did-schema
+% docs/plans/did_v2_standing_wiring_plan.md): NDI-matlab's second pass
+% removes the `observes` of a stimulator no presentation, bath manipulation
+% or Stimulator manipulation names, and holds its v1 subject in the run's
+% migration report as a carried field (carry-172,
+% did2.convert.carryElementSubject). The whole-batch round trip reads it
+% there: the stimulator's subject_id and direct, and the subjectstring of
+% the probe-map row rebuilt from its wiring (manifestProbemap). Without the
+% entry (the control) the element and the manifest both fail. The run is
+% held by a run writer, as NDI-matlab's ndi.migrate.local holds it, so the
+% batch passes' own v1_to_v2 calls do not replace it.
+for withEntry = [true false]
+    did2.convert.migrationReport('begin');
+    cleanup = onCleanup(@() did2.convert.migrationReport('end'));
+    subj = subjectBody('spec_c', 'sess_c', 'L');
+    stim = elementBody('stim_c', 'sess_c', 'vis', '1', 'stimulator', 1, 'spec_c');
+    % the stimulator is compared field by field here, so it has the shape
+    % ndi.element/newdocument writes (element.json at the locked NDI-matlab
+    % `main`): underlying_element_id then subject_id, a numeric reference
+    stim.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+        'value', {'', 'spec_c'});
+    stim.element.reference = 1;
+    rec  = elementBody('rec_c', 'sess_c', 'cortex', '1', 'n-trode', 1, 'spec_c');
+    daq  = daqsystemBody('acqsys_c', 'sess_c', 'vis');
+    ing  = ingestedWithDeviceRows('ing_c', 'sess_c', 't0c', { ...
+        {'vis', '1', 'stimulator', 'vis:mk1', 'L'}, ...
+        {'cortex', '1', 'n-trode', 'vis:ai1-4', 'L'}});
+    ing.depends_on = struct('name', 'filenavigator_id', 'value', 'nav_acqsys_c');
+    bodies = {sessionBody('sd_c', 'sess_c', 'ref'), subj, stim, rec, daq, ing};
+    [out, rep] = decompose(bodies);
+    assertEqual(testCase, rep.stimulator_manipulations_not_written, 1, 'premise');
+    % what NDI's second pass does: the stimulator's `observes` goes, and
+    % (with the entry) its v1 subject is carried in the report
+    [out, nRemoved] = withoutObserves(out, 'stim_c');
+    assertEqual(testCase, nRemoved, 1, 'premise: pass 1 wrote one observes for the stimulator');
+    label = 'without the entry (control)';
+    if withEntry
+        label = 'with the entry';
+        did2.convert.carryElementSubject('stim_c', 'spec_c', ...
+            'no stimulus presentation, bath manipulation or Stimulator manipulation names it');
+    end
+    r = did2.convert.roundtrip.wholeBatch(bodies, out);
+    verifyGreaterThan(testCase, r.sources_compared, 0, label);
+    verifyEqual(testCase, failedSource(r, 'stim_c'), ~withEntry, ...
+        sprintf('%s: the stimulator: %s', label, failureText(r, 'stim_c')));
+    verifyEqual(testCase, failedSource(r, 'ing_c'), ~withEntry, ...
+        sprintf('%s: the manifest: %s', label, failureText(r, 'ing_c')));
+    clear cleanup
+end
+end
+
+function [result, n] = withoutObserves(result, childId)
+% RESULT with every `observes` directed_relation whose child is CHILDID
+% removed (what NDI-matlab's second pass does for a stimulator no statement
+% names), and how many were removed
+keep = true(1, numel(result.migrated));
+for k = 1:numel(result.migrated)
+    d = result.migrated{k};
+    if isa(d, 'did2.document'); d = d.toStruct(); end
+    if strcmp(char(d.document_class.class_name), 'directed_relation') ...
+            && strcmp(depVal(d, 'child_id'), childId) ...
+            && strcmp(did2.build.vocabularyHandle('relation', d.directed_relation.relation), 'observes')
+        keep(k) = false;
+    end
+end
+n = nnz(~keep);
+result.migrated = result.migrated(keep);
+end
+
+function w = wiringsOfChild(result, childId)
+% every `connected to` relation whose child is CHILDID
+w = {};
+for k = 1:numel(result.migrated)
+    d = result.migrated{k}.toStruct();
+    if ~strcmp(char(d.document_class.class_name), 'directed_relation'); continue; end
+    rel = d.directed_relation.relation;
+    if ~isstruct(rel) || ~isfield(rel, 'node') || ~strcmp(char(rel.node), 'RO:0002170'); continue; end
+    if strcmp(depVal(d, 'child_id'), childId)
+        w{end+1} = d; %#ok<AGROW>
+    end
+end
 end
 
 function tf = failedSource(r, id)
@@ -1386,9 +1785,9 @@ for i = 1:numel(obs)
     end
     verifyEqual(testCase, numel(rels), 1);
     if strcmp(sys{i}, 'acqsys_ta')
-        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).matrix(:))', [3 2]);
+        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).numeric(:))', [3 2]);
     else
-        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).matrix(:))', 1);
+        verifyEqual(testCase, double(rels{1}.directed_relation.conditions(1).numeric(:))', 1);
     end
 end
 end
@@ -1464,7 +1863,12 @@ function testTheModeOfAProbeThatNeverRecordedIsDropped(testCase)
 % Decided by Jess Haley, 2026-11-03 [clamp mode of unrecorded probe dropped]:
 % a patch element of an ingested session that no probe-map row names keeps
 % its device kind (EMPTY:0000411 patch electrode) and loses its `element
-% type` statement; a patch element a row names keeps it.
+% type` statement. INVERTED 2026-11-10 for the patch element a row names,
+% which kept it: [recording mode terms] (Jess Haley, 2026-11-01), its Build
+% pending line, "the `element type` assertion stops for these types": its
+% recording observation carries the mode (current clamp, OBI:0002185), and
+% kind plus mode rebuild `patch-Vm`, so the statement is dropped too
+% (mode_statements_dropped_recorded).
 subj = subjectBody('spec_c', 'sess_c', 'L');
 rec  = elementBody('el_crec', 'sess_c', 'pv', '1', 'patch-Vm', 1, 'spec_c');
 idle = elementBody('el_cidle', 'sess_c', 'pi', '1', 'patch-I', 1, 'spec_c');
@@ -1474,11 +1878,40 @@ ing  = ingestedWithDeviceRows('ing_c', 'sess_c', 't0c', { ...
 [out, rep] = decompose({sessionBody('sd_c', 'sess_c', 'ref'), subj, rec, idle, daq, ing});
 verifyEqual(testCase, rep.mode_statements_seen, 2, 'denominator');
 verifyEqual(testCase, rep.mode_statements_dropped_unrecorded, 1);
-verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 1);
+verifyEqual(testCase, rep.mode_statements_dropped_recorded, 1);
+verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 0);
 verifyEqual(testCase, rep.mode_statements_kept_session_not_ingested, 0);
 verifyEqual(testCase, assertionsAbout(out, 'el_cidle', 'element type'), {});
 verifyEqual(testCase, assertionsAbout(out, 'el_cidle', 'equipment type'), {'EMPTY:0000411'});
-verifyEqual(testCase, numel(assertionsAbout(out, 'el_crec', 'element type')), 1);
+verifyEqual(testCase, assertionsAbout(out, 'el_crec', 'element type'), {});
+verifyEqual(testCase, assertionsAbout(out, 'el_crec', 'equipment type'), {'EMPTY:0000411'});
+end
+
+function testTheModeIsKeptWhereTheRecordingsDoNotRebuildTheWord(testCase)
+% [recording mode terms]: the statement of a recorded probe is dropped only
+% where its kind and its observations' modes rebuild its word. A patch-I
+% element whose one row says patch-Vm (current clamp) would read back as
+% patch-Vm, so its statement is kept (mode_statements_kept_named_in_probemap);
+% a bare `patch` element recorded by a `patch` row (no mode) reads back as
+% its general type, `patch`, so its statement is dropped.
+subj = subjectBody('spec_k', 'sess_k', 'L');
+odd  = elementBody('el_kodd', 'sess_k', 'pk', '1', 'patch-I', 1, 'spec_k');
+bare = elementBody('el_kbare', 'sess_k', 'pb', '1', 'patch', 1, 'spec_k');
+daq  = daqsystemBody('acqsys_k', 'sess_k', 'intan1');
+ing  = ingestedWithDeviceRows('ing_k', 'sess_k', 't0k', { ...
+    {'pk', '1', 'patch-Vm', 'intan1:ai1', 'L'}, ...
+    {'pb', '1', 'patch', 'intan1:ai2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_k', 'sess_k', 'ref'), subj, odd, bare, daq, ing});
+verifyEqual(testCase, rep.mode_statements_seen, 2, 'denominator');
+verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 1);
+verifyEqual(testCase, rep.mode_statements_dropped_recorded, 1);
+verifyEqual(testCase, numel(assertionsAbout(out, 'el_kodd', 'element type')), 1);
+verifyEqual(testCase, assertionsAbout(out, 'el_kbare', 'element type'), {});
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000411', {'OBI:0002185'}), 'patch-Vm');
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000412', {'OBI:0002182'}), 'sharp-Im');
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000411', {'OBI:0002185', 'OBI:0002182'}), '');
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('OBI:0400169', {'', 'NCIT:C16856'}), 'one-photon-imaging');
+verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000411', {}), '');
 end
 
 function testTheModeIsKeptInASessionWithNoIngestedEpoch(testCase)
@@ -1748,6 +2181,31 @@ for k = 1:numel(result.migrated)
         ids{end+1} = char(b.base.id); %#ok<AGROW>
     end
 end
+end
+
+function out = uncarriedSlices(result)
+%UNCARRIEDSLICES The element-epoch slices left in the batch (sliceBodies) whose
+%   source pass 1 did not carry as v1 (result.source_outputs `carried`).
+carried = {};
+if isfield(result, 'source_outputs') && isfield(result.source_outputs, 'carried')
+    so = result.source_outputs([result.source_outputs.carried]);
+    carried = {so.id};
+end
+out = {};
+for b = sliceBodies(result)
+    if ~any(strcmp(carried, char(b{1}.base.id)))
+        out{end+1} = b{1}; %#ok<AGROW>
+    end
+end
+end
+
+function out = sliceBodies(result)
+%SLICEBODIES The element-epoch slices left in the batch: v1 element_epoch
+%   documents pass 1 handed on ([retired classes leave V2], Decided by Jess
+%   Haley, 2026-10-25, step (1)) and, from a batch written before,
+%   acquisition_epoch documents. Both are counted, so a dissolution test cannot
+%   pass because the class it looked for is no longer written.
+out = [bodiesOfClass(result, 'element_epoch'), bodiesOfClass(result, 'acquisition_epoch')];
 end
 
 function out = bodiesOfClass(result, className)

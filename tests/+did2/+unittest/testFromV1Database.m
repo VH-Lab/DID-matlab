@@ -132,8 +132,9 @@ body = db.get(rec.report_id);
 verifyEqual(testCase, body.className(), 'opaque_body');
 verifyEqual(testCase, char(body.get('data_body.format').node), 'EDAM:format_3464');
 report = jsondecode(fileread(db.filePath(rec.report_id, 'body_data_0')));
-verifyTrue(testCase, all(isfield(report, {'gaps', 'carried_as_v1', 'counts'})));
+verifyTrue(testCase, all(isfield(report, {'gaps', 'carried_as_v1', 'known_v1_defects', 'counts'})));
 verifyEqual(testCase, report.counts.documents, 2);
+verifyEqual(testCase, report.counts.known_v1_defects, 0);
 end
 
 function testTwoSessionsWriteOneMigrationRecordEach(testCase)

@@ -160,8 +160,9 @@ verifyEmpty(testCase, depValues(cfg, 'acquisition_channels_id'));
 verifyNotEmpty(testCase, depValue(cfg, 'software_id'));
 verifyEmpty(testCase, depValue(cfg, 'resolved_acquisition_system_id'));
 % The rigs are ROLE-NAMED: daqsystem1 is from, daqsystem2 is to.
-verifyEqual(testCase, depValue(cfg, 'from_acquisition_system_id'), 'sys_1');
-verifyEqual(testCase, depValue(cfg, 'to_acquisition_system_id'), 'sys_2');
+[inEdge, outEdge] = did2.unittest.helpers.syncEdgeNames();   % [sync configuration edges are input and output]
+verifyEqual(testCase, depValue(cfg, inEdge), 'sys_1');
+verifyEqual(testCase, depValue(cfg, outEdge), 'sys_2');
 % number_fullpath_matches and syncfilename are DECLARED method.parameters.
 m = cfg.get('clock_alignment_configuration.method');
 entries = asEntries(m.parameters);
@@ -224,6 +225,26 @@ verifyEqual(testCase, countOf(out, 'syncrule'), 0);
 end
 
 
+function testTheEdgesFollowTheSchemaThatNamesThemInputAndOutput(testCase)
+% [sync configuration edges are input and output] (Decided by Jess Haley,
+% 2026-11-10): on a schema copy declaring input_id / output_id, the folded
+% configuration names daqsystem1's system input_id and daqsystem2's
+% output_id, and writes no from / to edge
+did2.unittest.helpers.syncEdgeSchema(testCase);
+result = migrate({ ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')});
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+cfg = firstOf(out, 'clock_alignment_configuration');
+assertNotEmpty(testCase, cfg);
+verifyEqual(testCase, depValue(cfg, 'input_id'), 'sys_1');
+verifyEqual(testCase, depValue(cfg, 'output_id'), 'sys_2');
+verifyEmpty(testCase, depValue(cfg, 'from_acquisition_system_id'));
+verifyEmpty(testCase, depValue(cfg, 'to_acquisition_system_id'));
+end
+
+
 function testTheDirectionFollowsTheRuleNotTheBatchOrder(testCase)
 % daqsystem1 names the SECOND system in the batch: from is still daqsystem1's.
 result = migrate({ ...
@@ -233,8 +254,9 @@ result = migrate({ ...
 out = did2.convert.resolveClockAlignment(result, 'Validate', false);
 cfg = firstOf(out, 'clock_alignment_configuration');
 verifyNotEmpty(testCase, cfg);
-verifyEqual(testCase, depValue(cfg, 'from_acquisition_system_id'), 'sys_2');
-verifyEqual(testCase, depValue(cfg, 'to_acquisition_system_id'), 'sys_1');
+[inEdge, outEdge] = did2.unittest.helpers.syncEdgeNames();   % [sync configuration edges are input and output]
+verifyEqual(testCase, depValue(cfg, inEdge), 'sys_2');
+verifyEqual(testCase, depValue(cfg, outEdge), 'sys_1');
 end
 
 
@@ -381,12 +403,17 @@ verifyEqual(testCase, countOf(out, 'syncrule'), 0);
 verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
 cfg = firstOf(out, 'clock_alignment_configuration');
 verifyEqual(testCase, cfg.get('base.id'), 'rule_ct');
-verifyEqual(testCase, depValue(cfg, 'from_acquisition_system_id'), 'sys_1');
-verifyEqual(testCase, depValue(cfg, 'to_acquisition_system_id'), 'sys_2');
+[inEdge, outEdge] = did2.unittest.helpers.syncEdgeNames();   % [sync configuration edges are input and output]
+verifyEqual(testCase, depValue(cfg, inEdge), 'sys_1');
+verifyEqual(testCase, depValue(cfg, outEdge), 'sys_2');
 verifyEmpty(testCase, depValues(cfg, 'acquisition_channels_id'));
 entries = asEntries(cfg.get('clock_alignment_configuration.method').parameters);
-chFrom = entryNamed(entries, 'from trigger channel');
-chTo = entryNamed(entries, 'to trigger channel');
+% the registry's labels for EMPTY:0000433 / EMPTY:0000434 ('input trigger
+% channel' / 'output trigger channel' once did-schema renames them, [sync
+% configuration edges are input and output])
+[~, ~, inLabel, outLabel] = did2.unittest.helpers.syncEdgeNames();
+chFrom = entryNamed(entries, inLabel);
+chTo = entryNamed(entries, outLabel);
 assertNotEmpty(testCase, chFrom);
 assertNotEmpty(testCase, chTo);
 verifyEqual(testCase, char(chFrom.text), 'dep1');   % v1 daqsystem_ch1, on sys_1 (from)

@@ -54,10 +54,17 @@ end
 function testOnTheTermShapeATermIsWritten(testCase)
 useShape(testCase, 'term');
 mm = did2.build.term('om:millimetre', 'millimetre');
-v = did2.build.valueCell('length', [0.001 0.002], 'SourceValue', [1 2], 'SourceUnit', mm);
+% the old numeric shape: one cell per reading, each with the term
+v = did2.build.valueCell('length', [0.001 0.002], 'SourceValue', [1 2], 'SourceUnit', mm, ...
+    'Shape', 'old');
 verifyEqual(testCase, size(v), [1 2]);
 verifyEqual(testCase, v(1).source_unit, mm);
 verifyEqual(testCase, v(2).source_unit, mm, 'one term for all cells');
+% the new shape (the default since step 2 of did-schema
+% did_v2_numeric_shape_plan.md): one cell, one source_unit for the series
+v = did2.build.valueCell('length', [0.001 0.002], 'SourceValue', [1 2], 'SourceUnit', mm);
+verifyEqual(testCase, size(v), [1 1]);
+verifyEqual(testCase, v.source_unit, mm);
 % a {node, name} struct is the same thing
 v = did2.build.valueCell('length', 0.001, 'SourceUnit', struct('node', 'om:millimetre', 'name', 'millimetre'));
 verifyEqual(testCase, v.source_unit, mm);
@@ -66,9 +73,15 @@ end
 function testOnTheTermShapeOneTermPerCell(testCase)
 useShape(testCase, 'term');
 units = did2.build.term({'om:millimetre', 'om:metre'}, {'millimetre', 'metre'});
-v = did2.build.valueCell('length', [0.001 2], 'SourceValue', [1 2], 'SourceUnit', units);
+% one cell per reading is the old numeric shape
+v = did2.build.valueCell('length', [0.001 2], 'SourceValue', [1 2], 'SourceUnit', units, ...
+    'Shape', 'old');
 verifyEqual(testCase, v(1).source_unit.node, 'om:millimetre');
 verifyEqual(testCase, v(2).source_unit.node, 'om:metre');
+% the new shape's series has ONE source_unit ([one shape for measured
+% numbers], plan section 8, answer 4): two that differ are refused
+verifyError(testCase, @() did2.build.valueCell('length', [0.001 2], 'SourceValue', [1 2], ...
+    'SourceUnit', units, 'Shape', 'new'), 'did2:build:sizeMismatch');
 end
 
 function testOnTheTermShapeTextIsRefused(testCase)
@@ -102,8 +115,11 @@ end
 function testOnTheCharShapeATermWritesItsName(testCase)
 useShape(testCase, 'char');
 v = did2.build.valueCell('length', [0.001 0.002], 'SourceUnit', ...
-    did2.build.term('om:millimetre', 'millimetre'));
+    did2.build.term('om:millimetre', 'millimetre'), 'Shape', 'old');   % one cell per reading
 verifyEqual(testCase, {v.source_unit}, {'millimetre', 'millimetre'});
+v = did2.build.valueCell('length', [0.001 0.002], 'SourceUnit', ...
+    did2.build.term('om:millimetre', 'millimetre'));   % the new shape: one cell
+verifyEqual(testCase, v.source_unit, 'millimetre');
 c = did2.build.composite('length', 'value', ...
     struct('meters', 0.001, 'source_unit', struct('node', 'om:millimetre', 'name', 'millimetre')));
 verifyEqual(testCase, c.source_unit, 'millimetre');

@@ -58,6 +58,11 @@ function [v1, spec] = tuningInverse(bodies, leafClass, v1Class, methodName, fami
 %                 writes no '<V2 name> selection' = 'best' parameter, so the
 %                 best variables are read from the setting; such a parameter
 %                 in a batch migrated before must name the same variables;
+%     [tuning stated value is a condition] (2026-11-11)   the conditions of
+%                 the properties the v1 `selection` setting fixes at a number
+%                 (exact_number) are not stim_property_list: that setting,
+%                 written back unchanged, holds them; each must be the number
+%                 it states (did2.convert.tuningStatedValues);
 %     [tuning stimids rebuild]   rawCurveBlock rebuilds stimid and
 %                 stimulus_presentation_number (did2.convert.tuningStimids).
 
@@ -75,6 +80,54 @@ switch family
         responseId = '';
         if ~isempty(ins); responseId = ins{1}; end
         [blk, bad] = rawCurveBlock(leaf, own, responseId);
+        % [depends on name not written when it equals the edge] (Decided by
+        % Jess Haley, 2026-11-12): input_parameters.depends_on.name is left
+        % out when it names the curve's own response edge, so it is the
+        % same as that edge's name ([restated values checked], as the
+        % calculator block's inner depends_on copy below)
+        if ~strcmp(v1Class, resultBlock) && ischar(inputs) ...
+                && strcmp(inputs, 'stimulus_response_scalar_id') && ~isempty(ins)
+            whyName = ['input_parameters.depends_on.name restates the curve''s ' ...
+                'stimulus_response_scalar_id edge ([depends on name not written when ' ...
+                'it equals the edge], Jess Haley, 2026-11-12)'];
+            for pth = {'.input_parameters.depends_on.name', '.input_parameters.depends_on(1).name'}
+                spec.equivalents(end+1) = struct('path', [v1Class pth{1}], ...
+                    'values', {{'stimulus_response_scalar_id'}}, 'why', whyName);
+            end
+        end
+        % [display label compared loosely] (Decided by Jess Haley,
+        % 2026-11-10, did-schema did_v2_go_forward_class_audit.md): the
+        % migration does not write v1 input_parameters.independent_label; it
+        % is rebuilt from the curve's registered variable name(s), the label
+        % rawCurveBlock rebuilds, unless the configuration (migrated before)
+        % still holds it as a parameter. Only a calculator's own block holds
+        % it (tuningcurve_calc); a bare stimulus_tuningcurve (the
+        % tuning_response app's) has no input_parameters
+        if ~strcmp(v1Class, resultBlock) ...
+                && ~(isfield(own, 'input_parameters') && isstruct(own.input_parameters) ...
+                && isfield(own.input_parameters, 'independent_label')) ...
+                && isfield(blk, 'independent_variable_label')
+            lbl = blk.independent_variable_label;
+            if iscell(lbl) && isscalar(lbl); lbl = lbl{1}; end
+            if ischar(lbl) && ~isempty(lbl)
+                if ~isfield(v1, v1Class) || ~isstruct(v1.(v1Class)); v1.(v1Class) = struct(); end
+                if ~isfield(v1.(v1Class), 'input_parameters') ...
+                        || ~isstruct(v1.(v1Class).input_parameters)
+                    v1.(v1Class).input_parameters = struct();
+                end
+                v1.(v1Class).input_parameters.independent_label = lbl;
+            end
+        end
+        whyLabel = ['a display label rebuilt from the registered variable name is ' ...
+            'the same when it differs from v1''s only in letter case or in ''_'' ' ...
+            'versus space, part by part at the '','' the writer splits at ' ...
+            '([display label compared loosely], Jess Haley, 2026-11-10)'];
+        if ~strcmp(v1Class, resultBlock)
+            spec.same(end+1) = struct('path', [v1Class '.input_parameters.independent_label'], ...
+                'fn', @sameDisplayLabel, 'why', whyLabel);
+        end
+        spec.same(end+1) = struct('path', [resultBlock '.independent_variable_label'], ...
+            'fn', @sameDisplayLabel, 'why', whyLabel);
     case 'csf'
         [blk, bad] = csfBlock(leaf);
     otherwise
@@ -228,10 +281,18 @@ function [own, bad] = curveOwnBlock(leaf, ownV1)
 %   from the v1 `selection` setting ([tuning selection rule stated once],
 %   Jess Haley, 2026-11-09: the rule is stated once, there); a '<V2 name>
 %   selection' = 'best' method parameter (written before that decision) must
-%   name the same variables.
+%   name the same variables. The conditions of an exact_number selection's
+%   property ([tuning stated value is a condition], Jess Haley, 2026-11-11)
+%   are not in stim_property_list either: each must be the number the
+%   `selection` setting states (did2.convert.tuningStatedValues).
 own = struct();
 bad = {};
 notes = getIn(leaf, 'statement', 'notes');
+if ischar(notes) || isstring(notes)
+    % the v1 label's line, when the notes end with one, is not the log
+    % ([tuning axes named from the varied property], did2.convert.tuningLabelNote)
+    notes = did2.convert.tuningLabelNote('read', notes);
+end
 if (ischar(notes) || isstring(notes)) && ~isempty(char(notes))
     own.log = char(notes);
 end
@@ -251,6 +312,22 @@ if ~isempty(rules) && ~isequal(sort(lower(rules)), sort(lower(best)))
     bad{end+1} = sprintf(['the method''s best-selection parameters (%s) are not the ' ...
         'setting''s best selections (%s)'], strjoin(rules, ', '), strjoin(best, ', '));
 end
+% [tuning stated value is a condition] (Jess Haley, 2026-11-11): the
+% conditions of the properties an exact_number selection fixes at a number are
+% not stim_property_list either; each must be the number the setting states
+[sprops, svalues, whyStated] = did2.convert.tuningStatedValues(getIn(ownV1, 'input_parameters'));
+stated2 = cell(1, numel(sprops));
+for k = 1:numel(sprops)
+    [stated2{k}, found] = did2.convert.tuningNames('v2', sprops{k});
+    if ~found
+        bad{end+1} = sprintf('exact_number selection of "%s": no v2 name in the table', sprops{k}); %#ok<AGROW>
+        stated2{k} = sprops{k};
+    end
+end
+if ~isempty(whyStated)
+    bad{end+1} = sprintf('exact_number selection: %s', whyStated);
+end
+statedSeen = nan(1, numel(stated2));
 bestSeen = nan(1, numel(best));
 conds = asCell(getIn(leaf, 'statement', 'conditions'));
 names = {};
@@ -258,7 +335,7 @@ values = [];
 for k = 1:numel(conds)
     [~, v2] = termParts(getIn(conds{k}, 'variable'));
     [v1Name, found] = did2.convert.tuningNames('v1', v2);
-    q = numberOf(getIn(conds{k}, 'quantity', 'value'));
+    q = numberOf(itemNumbers(conds{k}));
     if ~found || isempty(q)
         bad{end+1} = sprintf('condition "%s" is not a tuning property', v2); %#ok<AGROW>
         continue;
@@ -271,11 +348,30 @@ for k = 1:numel(conds)
         bestSeen(ix) = q;
         continue;
     end
+    ix = find(strcmpi(v2, stated2), 1);
+    if ~isempty(ix)
+        if ~isnan(statedSeen(ix))
+            bad{end+1} = sprintf('two conditions of the exact_number-selected "%s"', v2); %#ok<AGROW>
+        end
+        statedSeen(ix) = q;
+        continue;
+    end
     names{end+1, 1} = v1Name; %#ok<AGROW>
     values(end+1, 1) = q; %#ok<AGROW>
 end
 if ~isempty(names)
     own.stim_property_list = struct('names', {names}, 'values', values);
+end
+if isempty(whyStated)
+    for k = 1:numel(stated2)
+        if isnan(statedSeen(k))
+            bad{end+1} = sprintf('the exact_number selection of "%s" has no condition', ...
+                stated2{k}); %#ok<AGROW>
+        elseif svalues(k) ~= statedSeen(k)
+            bad{end+1} = sprintf('condition %s = %.17g is not the %.17g the selection states', ...
+                stated2{k}, statedSeen(k), svalues(k)); %#ok<AGROW>
+        end
+    end
 end
 if isempty(best)
     return;
@@ -312,4 +408,27 @@ for k = 1:numel(entries)
         best{end+1} = t{1}; %#ok<AGROW>
     end
 end
+end
+
+function tf = sameDisplayLabel(a, b)
+%SAMEDISPLAYLABEL True when two display labels differ only in letter case or
+%   in '_' versus space ([display label compared loosely], Decided by Jess
+%   Haley, 2026-11-10), part by part: each is text or a cell of text, split at
+%   ',' and each part trimmed, as NDI's tuningcurve calculator reads its
+%   independent_label (+ndi/+calc/+stimulus/tuningcurve.m: split, strtrim).
+pa = labelParts(a);
+pb = labelParts(b);
+tf = ~isempty(pa) && numel(pa) == numel(pb) && isequal(pa, pb);
+end
+
+function p = labelParts(x)
+p = {};
+if isstring(x); x = cellstr(x); end
+if iscell(x)
+    if ~all(cellfun(@ischar, x(:))); return; end
+    x = strjoin(reshape(x, 1, []), ',');
+end
+if ~ischar(x) || isempty(strtrim(x)); return; end
+p = strtrim(strsplit(x, ','));
+p = cellfun(@(c) lower(regexprep(c, '[_\s]+', ' ')), p, 'UniformOutput', false);
 end

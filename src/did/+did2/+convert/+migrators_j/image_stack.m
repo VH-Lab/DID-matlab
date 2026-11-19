@@ -402,7 +402,12 @@ src = preBody;
 if isRaw
     src = jRawBody(preBody, srcClass);
 end
-stackId   = baseField(src, 'id', did.ido.unique_id());
+stackId   = baseField(src, 'id', '');
+if isempty(stackId)
+    % no v1 id: derived from the document's content ([ids from content when
+    % v1 states none], Jess Haley, 2026-11-12)
+    stackId = did2.convert.contentId('image_stack', src);
+end
 dataType = getCharField(params, 'data_type');
 % [no invented values] (Jess Haley, 2026-10-25): a dimension order or data type
 % the source does not state is not assumed. No order means no honest key, so
@@ -447,7 +452,9 @@ if strcmp(srcClass, 'image')
     end
 end
 obs = jStatement(src, 'observation', subjectId, ...
-    jLabel('image intensity'), [], ...
+    ... % NCIT:C221750 "Imaging Signal Intensity", by node: [variable terms
+    ... % batch 1] (Jess Haley, 2026-11-19; 'image intensity' before)
+    did2.convert.registeredTerm('NCIT:C221750', 'Imaging Signal Intensity'), [], ...
     'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
     'Conditions', conds, 'Notes', notes, 'Gaps', gaps, ...
     'TimeReferenceIds', {anchor.base.id}, 'Id', stackId, extra{:}, 'ValueKind', 'intensity');
@@ -559,16 +566,28 @@ if strcmp(clk, 'utc')
     why = 'which no ISO-8601 UTC instant can hold (a year outside 0000-9999)';
 end
 anchor = jSessionAnchor(src, 'during', clockOpts{:});
-conds = did2.build.composite('statement', 'conditions', struct( ...
-    'variable', did2.convert.registeredTerm('AFO:AFR_0001158', 'acquisition time'), ...
-    'source_unit', day, ...
-    'quantity', struct('source_value', sprintf('%.17g', ts))));
+% the datenum as v1 stored it: a number in the new numeric shape's
+% source_numeric ([numeric shape details] (1), Jess Haley, 2026-11-17), its
+% canonical a gap; the old shape kept it as text in quantity.source_value
+if strcmp(did2.build.numericShape(), 'new')
+    acq = struct( ...
+        'variable', did2.convert.registeredTerm('AFO:AFR_0001158', 'acquisition time'), ...
+        'source_numeric', ts, 'source_unit', day);
+    gapField = 'statement.conditions(1).numeric';
+else
+    acq = struct( ...
+        'variable', did2.convert.registeredTerm('AFO:AFR_0001158', 'acquisition time'), ...
+        'source_unit', day, ...
+        'quantity', struct('source_value', sprintf('%.17g', ts)));
+    gapField = 'statement.conditions(1).quantity.value';
+end
+conds = did2.build.composite('statement', 'conditions', acq);
 if isempty(raw)
     onClock = 'on no named clock';
 else
     onClock = sprintf('on clock ''%s''', raw);
 end
-gaps = struct('field', 'statement.conditions(1).quantity.value', ...
+gaps = struct('field', gapField, ...
     'reason', sprintf(['v1 states the acquisition time as a MATLAB datenum %s, ' ...
     '%s ([acquisition time on its clock])'], onClock, why));
 did2.convert.reportNote('gap', noteClass, baseField(src, 'id', ''), ...

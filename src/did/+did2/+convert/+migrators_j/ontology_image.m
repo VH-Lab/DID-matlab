@@ -1,15 +1,21 @@
 function v2Body = ontology_image(preBody)
 %ONTOLOGY_IMAGE Brainstorm-J migrator: did_v1 ontology_image, dispatched ON SHAPE.
 %   The current NDI shape (`ontology_nodes` + an `ontologyTableRow_id` edge + the
-%   `ngrid` raster) is a GUARDED PASSTHROUGH deferred to the NDI second pass: a table
-%   row is not a subject, so pass 1 cannot fill a statement's `entity_id` edge without
-%   minting the husk the image_stack guard exists to stop. The legacy
+%   `ngrid` raster) is CARRIED WHOLE AS v1, `needs_mapping`, carry-124 (Decided by
+%   Jess Haley, 2026-10-29, [ngrid with no statement carried] and [vintage-B
+%   ontologyImage cases], did-schema `did_v2_go_forward_class_audit.md`): a table
+%   row is not a subject, so no generic pass can fill a statement's `entity_id`
+%   edge without minting the husk the image_stack guard exists to stop. carry-124
+%   is resolved by each dataset's import, which names the statement the image's
+%   values belong to (did-schema carry register: `resolved_by` "each dataset's
+%   import"); no generic pass, in DID-matlab or in NDI's second pass, builds the
+%   raster for this shape. The legacy
 %   `ontology_name` + `ontology_region` shape (which the correction below shows has
 %   never existed in NDI) would migrate 1 -> 2 to an `observation` with value kind
 %   `term` about the element's entity + a session anchor (with an `ngrid` raster,
 %   1 -> 3: an `observation` with value kind `intensity` + a sampled_body + the
 %   anchor). Any third shape ERRORS rather than emitting.
-%   The raster and the provenance edge are deferred with the passthrough (#47).
+%   The raster and the provenance edge are carried with the document (#47).
 %
 %   THIS SUMMARY LINE READ ONLY "did_v1 ontology_image." until 2026-08-12 -- a
 %   placeholder that said nothing, in a file whose whole point is that the dispatch
@@ -123,7 +129,10 @@ function v2Body = ontology_image(preBody)
 %                  as +migrators_j/ontology_label.m), and `element_id` supplies
 %                  the subject. 1 -> 2 (the observation + the session anchor).
 %
-%     VINTAGE B -> DEFERRED TO THE NDI SECOND PASS; passed through UNCHANGED.
+%     VINTAGE B -> CARRIED WHOLE AS v1 (carry-124, or carry-150 when malformed;
+%                  see the 2026-10-29 and 2026-10-30 notes at the top: the text
+%                  below said "deferred to the NDI second pass", which the
+%                  decisions replaced -- each dataset's import resolves it).
 %                  The terms are resolvable here, but the SUBJECT is not: the
 %                  document's only edge is `ontologyTableRow_id`, and a table
 %                  row is not a subject (subject_statement.subject_id declares
@@ -132,22 +141,23 @@ function v2Body = ontology_image(preBody)
 %                  migrated-id graph that a single-document migrator cannot
 %                  see. Emitting an `observation` with value kind `term` with an empty subject_id
 %                  is exactly the husk this fix exists to stop -- so we do not
-%                  emit one. The document is left intact so the second pass can
-%                  decompose it with the graph in hand (the same strategy
-%                  stimulus_presentation uses: no pass-1 migrator, assembled
-%                  entirely in the second pass).
+%                  emit one. The document is left intact, so a dataset's import
+%                  can decompose it once it names the statement.
 %
 %                  A passthrough MUST validate, so V_eta's `ontology_image`
 %                  schema declares vintage B faithfully (ngrid superclass,
 %                  ontology_nodes, ontology_table_row_id). See build_v_eta.py (deleted 2026-10-21).
 %
-%                  Deferred with it: the raster itself (the ngrid block + the
+%                  Carried with it: the raster itself (the ngrid block + the
 %                  .ngrid file) and the ontologyTableRow_id provenance edge.
 %                  Under R6 the natural target is an image_observation (pre-#88) beside
 %                  the term observations; that is part of the ngrid work, not
 %                  this fix.
 %
 %   #47 UPDATE, 2026-08-10 -- THE RASTER'S HOME, AND WHAT CHANGED UNDERNEATH.
+%   (History. Superseded 2026-10-29: the vintage-B raster is carried whole as
+%   v1, carry-124, and resolved by each dataset's import, not by a second
+%   pass; see the decisions at the top.)
 %   The R6 home is confirmed and it is a SECOND-PASS target, not a pass-1 one:
 %   an `image_observation` (pre-#88) (+ a data_body) beside the term observations. It
 %   cannot be minted here for the same reason the term observation cannot --
@@ -248,7 +258,10 @@ function v2Body = ontology_image(preBody)
 %   the thing a future subject-minting decision switches on -- not a claim that
 %   the fold has happened. The remaining options are the same three the E. coli
 %   lawn plates got (mint a subject for what the image is of; resolve it in the
-%   NDI second pass; accept the deferral), and they are a team call.
+%   NDI second pass; accept the deferral), and they are a team call. (The team
+%   decided 2026-10-29: carry it whole as v1, carry-124, for each dataset's
+%   import to resolve; [ngrid with no statement carried], [vintage-B
+%   ontologyImage cases].)
 %
 %   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
 %   2026-10-26 [migrators read raw v1], did-schema
@@ -313,7 +326,8 @@ isVintageA = hasText(block, 'ontology_name') || hasText(block, 'ontology_region'
     || hasText(block, 'ontologyName') || hasText(block, 'ontologyRegion');
 
 if isVintageB
-    % Deferred to the NDI second pass -- pass the document through intact.
+    % Carried whole as v1 (carry-124 / carry-150, below) -- the document is
+    % handed on intact; each dataset's import resolves carry-124.
     % Deliberately NOT emitting an `observation` with value kind `term`: see the header. Vintage B
     % wins when both are somehow present, because its terms are authoritative.
     %
@@ -395,7 +409,9 @@ if ~(isfield(preBody, 'ngrid') && isstruct(preBody.ngrid))
     % No raster: the vintage-A term observation, unchanged. [ontology image is
     % an observation of its region] decides the RASTER's shape only.
     obs = jStatement(preBody, 'observation', subjectId, ...
-        jLabel('imaged region'), jOntologyTerm(node, regionName), ...
+        ... % NCIT:C13717 "Anatomic Site", by node: [variable terms batch 1]
+        ... % (Jess Haley, 2026-11-19; 'imaged region' before)
+        did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), jOntologyTerm(node, regionName), ...
         'ValueKind', 'term', ...
         'TimeReferenceIds', {anchor.base.id}, 'Id', char(preBody.base.id));
     v2Body = {obs, anchor};

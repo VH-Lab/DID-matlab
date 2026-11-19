@@ -45,6 +45,21 @@ function [out, found] = tuningNames(direction, name)
 %   measured 2026-10-27 by a MATLAB scratch run of this branch): an earlier
 %   writer's copy of its input edge, kept under the same labels.
 %
+%   [term picks batch 3] (Jess Haley, 2026-11-09, did-schema
+%   did_v2_go_forward_class_audit.md): three settings take registered terms:
+%     independent_parameter  'Independent Variable', NCIT:C191277
+%     best_algorithm         'Algorithm', NCIT:C16275 (the value, e.g.
+%                            empirical_maximum, is text)
+%     selection              'selection criterion', OBI:0001755 (a
+%                            `selection` array, one text entry; a nested
+%                            `selection`'s three fields keep their names,
+%                            which the decision does not cover)
+%   `independent_label` keeps its row, for a document migrated before it
+%   stopped being written: [display label compared loosely] (Decided by Jess
+%   Haley, 2026-11-10) -- the tuningcurve_calc migration no longer writes it,
+%   and the round trip rebuilds it from the curve's registered variable name
+%   (+roundtrip/private/tuningInverse.m).
+%
 %   TWO ROWS NAME REGISTERED TERMS (Jess Haley, 2026-11-03, "Ok" to Claude's
 %   answers on docs/V2_PLAN.md G96; did-schema term registry rows):
 %     angle          'Direction', NCIT:C42677: the 0-360 direction of motion
@@ -54,6 +69,11 @@ function [out, found] = tuningNames(direction, name)
 %                    are binned into a train
 %   The names resolve to their nodes through the registry
 %   (did2.convert.registeredTerm by name).
+%   `isspike` keeps its row, for a method no converted response uses: since
+%   [response computed from the spike times] (Jess Haley, 2026-11-12) it is
+%   not written when the responses using the method are converted, and the
+%   round trip rebuilds it from their spike-times input
+%   (did2.convert.resolveResponseParameters).
 %
 %   See also did2.convert.tuningStimids, did2.convert.resolveResponseParameters.
 
@@ -116,9 +136,9 @@ stimulus = { ...
     'stimnum',        'stimulus number'};
 settings = { ...
     'independent_label',          'independent label'; ...
-    'independent_parameter',      'independent parameter'; ...
-    'best_algorithm',             'best algorithm'; ...
-    'selection',                  'selection'; ...
+    'independent_parameter',      'Independent Variable'; ...
+    'best_algorithm',             'Algorithm'; ...
+    'selection',                  'selection criterion'; ...
     'selection.property',         'selection.property'; ...
     'selection.operation',        'selection.operation'; ...
     'selection.value',            'selection.value'; ...

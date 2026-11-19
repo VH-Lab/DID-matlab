@@ -2,9 +2,10 @@ function tests = testRawV1RoundTripGene
 %TESTRAWV1ROUNDTRIPGENE The spatial-transcriptomics family read as raw v1,
 %   and its round trip: cellTypeLabels, geneExpression, geneList,
 %   geneListMapping, spatialGeneExpressionCells, spatialGeneExpressionPyramid,
-%   spatialGeneExpressionTiles (migrators cell_type_labels, gene_expression,
-%   gene_list, gene_list_mapping, spatial_gene_expression_cells, _pyramid,
-%   _tiles, joined by did2.convert.rawV1Classes' table).
+%   spatialGeneExpressionTiles, spatialGeneExpressionROI (migrators
+%   cell_type_labels, gene_expression, gene_list, gene_list_mapping,
+%   spatial_gene_expression_cells, _pyramid, _tiles, _roi, joined by
+%   did2.convert.rawV1Classes' table).
 %
 %   Decided by Jess Haley, 2026-10-26 (did-schema
 %   V_eta_go_forward_class_audit.md): [migrators read raw v1], [migration
@@ -18,7 +19,10 @@ function tests = testRawV1RoundTripGene
 %   files storeDoc attaches, through jsonencode/jsondecode. geneExpression (a
 %   superclass block in NDI's writers) and geneListMapping have no writer at
 %   that `main`: their fixtures are the templates' own values, edges set. No
-%   corpus of the four zips holds any of the seven.
+%   corpus of the four zips holds any of the seven. spatialGeneExpressionROI is
+%   built from its template at the locked NDI-matlab `main` 73f46d19 (the
+%   class is newer than 3cb19a8) in the shape +ndi/+fun/+doc/+gene/makeROI.m
+%   gives it, as fromGEFbyROI calls it (both edges set); it has no files.
 %
 %   geneList CONVERTS (Decided by Jess Haley, 2026-11-01 [gene list as a term,
 %   file kept]): a standalone `term`, its genes.tsv the term's opaque_body
@@ -31,7 +35,8 @@ function tests = testRawV1RoundTripGene
 %   mapping.tsv as its opaque_body (testGeneListMapping* below, on a schema
 %   copy that declares both until did-schema does). THE OTHER FIVE PASS
 %   THROUGH pass 1 unchanged, as before. The one difference the
-%   switch makes: the raw passthrough keeps v1's class name, under which V_eta
+%   switch makes: the raw passthrough keeps v1's class name (the ROI, which
+%   had no route at all and quarantined, now passes through the same way), under which V_eta
 %   keeps no class, so it is counted as a passthrough with no schema where the
 %   renamed one was validated against the snake_case class (a `retire` class);
 %   NDI's last step stores the v1 source either way. No known findings.
@@ -88,6 +93,24 @@ verifyCarried(testCase, v1, 'geneExpression.normalisation');
 v1 = cellTypeLabels();
 v1.app = struct('name', 'scanpy');
 verifyCarried(testCase, v1, 'unplaced: app');
+v1 = roi();
+v1.spatialGeneExpressionROI.area = 12;
+verifyCarried(testCase, v1, 'spatialGeneExpressionROI.area');
+v1 = did2.unittest.helpers.setDependency(roi(), 'subject_id', '41268b6f5c6a3d4e_6e00000000000001');
+verifyCarried(testCase, v1, 'depends_on(subject_id)');
+end
+
+function testTheROIIsNoLongerQuarantined(testCase)
+% before spatial_gene_expression_roi, no route named the class: a v1 ROI was
+% quarantined (did2:convert:noMigrator). It now passes through unchanged.
+v1 = roi();
+out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.passthrough), 1);
+verifyEqual(testCase, out.passthrough(1).id, v1.base.id);
+got = out.migrated{1}.toStruct();
+verifyEqual(testCase, double(got.spatialGeneExpressionROI.vertices_x(:)'), [3088 3200 3150]);
+verifyEqual(testCase, double(got.spatialGeneExpressionROI.vertices_y(:)'), [36362 36362 36500]);
 end
 
 function testADifferentSourceIsReportedLost(testCase)
@@ -484,7 +507,9 @@ f = { ...
         'spatial_gene_expression_cells'; ...
     'cellTypeLabels, makeCellTypeLabels', cellTypeLabels(), 'cellTypeLabels', 'cell_type_labels'; ...
     'geneExpression, template', geneExpression(), 'geneExpression', 'gene_expression'; ...
-    'geneListMapping, template', geneListMapping(), 'geneListMapping', 'gene_list_mapping'};
+    'geneListMapping, template', geneListMapping(), 'geneListMapping', 'gene_list_mapping'; ...
+    'spatialGeneExpressionROI, makeROI', roi(), 'spatialGeneExpressionROI', ...
+        'spatial_gene_expression_roi'};
 end
 
 function fl = storedFiles(names)
@@ -557,6 +582,21 @@ d.cellTypeLabels = struct('label', 'types', 'label_name', 'cell_type', 'taxonomy
     'is_unsupervised', 1);
 d = did2.unittest.helpers.setDependency(d, 'cells_document_id', '41268b6f5c6a3d4e_6e0000000000000d');
 d.files = storedFiles({'labels.tsv'});
+d = jsondecode(jsonencode(d));
+end
+
+function d = roi()
+% makeROI as fromGEFbyROI calls it: the pyramid built from the records inside
+% the polygon and the shared source file, both edges set; no files
+d = did2.unittest.helpers.ndiDocument('spatialGeneExpressionROI', ...
+    'Id', '41268b6f5c6a3d4e_6e00000000000012');
+polygon = [3088 36362; 3200 36362; 3150 36500];
+d.spatialGeneExpressionROI = struct('label', 'subject 1', 'n_vertices', size(polygon, 1), ...
+    'vertices_x', polygon(:, 1), 'vertices_y', polygon(:, 2), ...
+    'coord_space', 'gef_base_pixel', 'coord_units', 'pixel', 'n_records_in', 5821, ...
+    'roi_format_version', 1);
+d = did2.unittest.helpers.setDependency(d, 'spatialGeneExpressionPyramid_id', '41268b6f5c6a3d4e_6e0000000000000b');
+d = did2.unittest.helpers.setDependency(d, 'source_file_id', '41268b6f5c6a3d4e_6e00000000000013');
 d = jsondecode(jsonencode(d));
 end
 

@@ -37,6 +37,12 @@ function c = condition(variable, options)
 %                      where the schema declares source_unit a term, text
 %                      where it declares char (see did2.build.valueCell)
 %     'Approximate'    logical, for the whole condition
+%     'Tolerance'    [minus plus] in 'Unit', on a number (new shape only)
+%     'Shape'        'old' or 'new' (default did2.build.numericShape(), 'new'
+%                    since step 2 of did-schema did_v2_numeric_shape_plan.md
+%                    [one shape for measured numbers]). 'new' writes the flat
+%                    entry: numeric, unit, source_numeric, source_unit,
+%                    tolerance (private/oneValueEntry).
 %     'SchemaCache'    a did2.schema.cache; default the shared one.
 %
 %   Join several with did2.build.list. A variable appears at most once across
@@ -58,6 +64,8 @@ arguments
     options.Unit = []
     options.SourceUnit = ''
     options.Approximate = []
+    options.Tolerance = []
+    options.Shape (1,:) char = ''
     options.SchemaCache = []
 end
 

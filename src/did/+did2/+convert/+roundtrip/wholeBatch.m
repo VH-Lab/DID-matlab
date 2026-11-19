@@ -38,7 +38,30 @@ function report = wholeBatch(v1Bodies, result)
 %   did2.convert.resolveEpochProbemap retires once a recording observation
 %   carries the same pair (did2.convert.roundtrip.element reads it there).
 %   Test code run 41322059537 counted element CHANGED BY A BATCH PASS in B
-%   (143) and Dab (547).
+%   (143) and Dab (547). And `daqreader_mfdaq_epochdata_ingested`, the v1
+%   ingested archive did2.convert.resolveEpochProbemap RETIRES once its files
+%   and clocks have new owners ([segment length is the time chunk], Jess
+%   Haley, 2026-10-29): NONE of its documents remains, so it is compared on
+%   the documents that pass made of it, found here (LOCATED AFTER A BATCH
+%   PASS: the `opaque_body` documents whose file_info holds a location uid of
+%   the archive's, which resolveEpochProbemap carries verbatim), and
+%   roundtrip.daqreader_mfdaq_epochdata_ingested reads the rest from CTX. Its
+%   id is released ([a rebuilt document may lose its id]), so the rebuilt
+%   document's base.id, which nothing could rebuild, is not counted against
+%   it: it is in ids_released already. Test code run 43077600408 (DID-matlab
+%   299fa0f2) counted it CHANGED BY A BATCH PASS in B (1,242) and Dab (2,846).
+%
+%   AN ID A BATCH PASS MOVED. A source whose v1 id a batch pass gave to the
+%   document that replaces it is compared on that document like any other,
+%   and its inverse reads the rest from CTX. `element_epoch`: its pass-1
+%   acquisition_epoch is dissolved by did2.convert.resolveEpochProbemap into
+%   an observation that keeps the element_epoch's id, its own time reference
+%   onto the epoch, and the .vhsb as the observation's data body ([epoch
+%   dissolution before merge]); roundtrip.element_epoch rebuilds the v1
+%   document from the four, for a tied and an untied (session-anchored)
+%   epoch alike. Before that inverse, DID-matlab PR #459 (which dissolves
+%   20211116's 252 untied element_epochs) read 252 element_epoch failures
+%   there, each "no acquisition_epoch was emitted".
 %
 %   STORED AS ITS v1 SOURCE. A source pass 1 passed through unchanged is in
 %   RESULT.passthrough with the body pass 1 emitted for it. When the final
@@ -66,7 +89,20 @@ function report = wholeBatch(v1Bodies, result)
 %                              like any other. Until 2026-11-01 these were
 %                              skipped, so on Test code run 41322059537 Dab's
 %                              1,605 deferred baths were neither id-checked
-%                              nor compared.
+%                              nor compared. A pass that re-migrates
+%                              a deferred source through v1_to_v2 records
+%                              every document the re-run made of it in
+%                              RESULT.batch_pass_outputs ({id, pass,
+%                              output_ids, context_ids}; today
+%                              did2.convert.epochMint for a deferred
+%                              pyraview), and the source is compared on
+%                              all of them plus its context_ids (the epoch
+%                              its anchor names). Without that record it
+%                              was compared on the one document holding
+%                              its id: PRED's pyraview, on Test code run
+%                              43169466173, read "no level body was
+%                              emitted" while its level bodies were
+%                              in the batch.
 %       sources_still_quarantined  no final document holds its id
 %     ids_kept / ids_lost      sources whose v1 id some final document holds,
 %                              or does not ([every v1 id survives]);
@@ -93,6 +129,20 @@ function report = wholeBatch(v1Bodies, result)
 %                              accepted loss covers (counted apart from
 %                              ids_lost and ids_released, and in
 %                              accepted_losses)
+%       NOT MIGRATED BY A DECISION. A source a batch pass did not migrate by
+%                              a decision is in RESULT.not_migrated ({id,
+%                              class_name, reason, decision, ...}; today
+%                              did2.convert.resolveResponseParameters, an
+%                              orphaned parameters document with an
+%                              identical used twin, [orphaned response
+%                              settings are an accepted loss], Jess Haley,
+%                              2026-11-12). An accepted loss marked LISTED
+%                              covers only such a source: its id is counted
+%                              in ids_accepted_lost (after the id check
+%                              below) and the source is not compared, as
+%                              there is no document of it to compare: the
+%                              whole document is the accepted loss. One
+%                              whose id is referenced is counted lost.
 %       accepted_id_check      the check an accepted id loss needs first
 %                              ([v1 session document id not kept]: "the
 %                              build first checks that no v1 document in the
@@ -111,8 +161,29 @@ function report = wholeBatch(v1Bodies, result)
 %     sources_stored_as_v1, stored_as_v1_by_class   of the compared, the
 %                              passthroughs still unchanged at the end, so
 %                              stored as their v1 source (see above)
+%     DEFERRED TO THE SECOND PASS  a v1 value this batch cannot hold because
+%                              NDI-matlab's second pass writes it, as the
+%                              class's inverse declares it (spec.deferred,
+%                              did2.convert.roundtrip.check): listed by field
+%                              and counted, never silently, and never lost.
+%                              First case: an ingested archive's
+%                              sample_analog_segment and
+%                              sample_digital_segment ([archive segment
+%                              lengths measured after the second pass], Jess
+%                              Haley, 2026-11-12). A source whose only
+%                              difference is such a value is clean at the DID
+%                              stage: it counts in sources_ok, and in
+%                              deferred_to_second_pass.sources_ok.
+%       deferred_to_second_pass  struct, its denominator first:
+%                              sources_compared (as above), sources (of those,
+%                              with at least one deferred value), sources_ok
+%                              (of those, clean at the DID stage), values
+%                              (deferred values in all), fields (struct array
+%                              {class_name, path, sources, decision}, one per
+%                              class and field)
 %     sources_compared_after_batch_pass, compared_after_batch_pass_by_class
-%                              of the compared, those some of whose documents
+%                              of the compared, those some (or, for a class
+%                              locatedAfterPass finds, all) of whose documents
 %                              a batch pass removed, read by an inverse for
 %                              that pass (BATCH_PASS_INVERSES)
 %     sources_changed_by_batch_pass, changed_by_class
@@ -122,7 +193,8 @@ function report = wholeBatch(v1Bodies, result)
 %     failures_total, failures_by_class   compared sources that are not
 %                              clean, counted exactly
 %     failures                 struct array {source_id, class_name, lost,
-%                              lost_values, invented, unplaced}: in batch
+%                              lost_values, invented, unplaced, deferred
+%                              (the paths deferred to the second pass)}: in batch
 %                              order, at most CLASS_CAP (5) per class and
 %                              FAILURE_CAP (200) in all (a sample of every
 %                              failing class; the counts above are exact).
@@ -156,7 +228,9 @@ for k = 1:numel(final)
     finalIds{k} = idOf(finalBodies{k});
 end
 ctx = batchContext(finalBodies);
+notMigrated = notMigratedIds(result);
 passBody = passthroughBodies(result);
+passOutputs = batchPassOutputs(result);
 
 report = struct('sources_inspected', numel(bodies), 'final_documents', numel(final), ...
     'sources_quarantined', 0, 'sources_resolved_by_batch_pass', 0, ...
@@ -170,16 +244,21 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
         'class_name', {}, 'path', {}), ...
     'accepted_id_check', struct(), 'sources_without_id', 0, ...
     'sources_compared', 0, 'sources_ok', 0, ...
+    'deferred_to_second_pass', struct('sources_compared', 0, 'sources', 0, ...
+        'sources_ok', 0, 'values', 0, 'fields', struct('class_name', {}, ...
+        'path', {}, 'sources', {}, 'decision', {})), ...
     'sources_stored_as_v1', 0, 'stored_as_v1_by_class', struct(), ...
     'sources_compared_after_batch_pass', 0, 'compared_after_batch_pass_by_class', struct(), ...
     'sources_changed_by_batch_pass', 0, 'changed_by_class', struct(), ...
     'sources_no_inverse', 0, 'no_inverse_by_class', struct(), ...
     'unattributed_documents', 0, 'failures_total', 0, 'failures_by_class', struct(), ...
     'failures', struct('source_id', {}, 'class_name', {}, 'lost', {}, ...
-        'lost_values', {}, 'invented', {}, 'unplaced', {}), 'ok', false);
+        'lost_values', {}, 'invented', {}, 'unplaced', {}, 'deferred', {}), 'ok', false);
 accepted = ACCEPTED_LOSSES();
-[report.accepted_id_check, idReferenced] = acceptedIdCheck(bodies, rows, accepted, ctx);
+[report.accepted_id_check, idReferenced] = acceptedIdCheck(bodies, rows, accepted, ctx, notMigrated);
 sampled = struct();
+uidIndex = [];   % bodyUidIndex, built on first use (uidIndexBuilt)
+uidIndexBuilt = false;
 attributed = false(1, numel(final));
 for r = 1:numel(rows)
     row = rows(r);
@@ -187,6 +266,7 @@ for r = 1:numel(rows)
         continue;
     end
     v1 = bodies{row.input_index};
+    contextIds = {};
     cls = row.class_name;
     if isempty(cls); cls = v1ClassName(v1); end
     if isempty(row.id)
@@ -205,8 +285,17 @@ for r = 1:numel(rows)
         report.sources_resolved_by_batch_pass = report.sources_resolved_by_batch_pass + 1;
         report.resolved_by_batch_pass_by_class = bump(report.resolved_by_batch_pass_by_class, cls);
         row.output_ids = {row.id};
+        if isKey(passOutputs, row.id)
+            % the pass recorded every document its re-run made of the source
+            % (RESULT.batch_pass_outputs; see sources_resolved_by_batch_pass)
+            rec = passOutputs(row.id);
+            row.output_ids = rec.output_ids;
+            contextIds = rec.context_ids;
+        end
     end
     % [every v1 id survives]
+    released = false;
+    listed = ~isempty(row.id) && isKey(notMigrated, row.id);
     if isempty(row.id)
         report.sources_without_id = report.sources_without_id + 1;
     elseif any(strcmp(finalIds, row.id))
@@ -214,11 +303,15 @@ for r = 1:numel(rows)
     elseif any(strcmp(cls, RELEASED_ID_CLASSES())) && isempty(ctxReferrers(ctx, row.id))
         report.ids_released = report.ids_released + 1;
         report.ids_released_by_class = bump(report.ids_released_by_class, cls);
-    elseif ~isempty(acceptedIdLoss(accepted, cls)) && ~isKey(idReferenced, row.id)
-        a = acceptedIdLoss(accepted, cls);
+        released = true;
+    elseif ~isempty(acceptedIdLoss(accepted, cls, listed)) && ~isKey(idReferenced, row.id)
+        a = acceptedIdLoss(accepted, cls, listed);
         report.ids_accepted_lost = report.ids_accepted_lost + 1;
         report.ids_accepted_lost_by_class = bump(report.ids_accepted_lost_by_class, cls);
         report = noteAccepted(report, a, row.id, cls, '(the v1 id)');
+        if a.listed
+            continue;   % NOT MIGRATED BY A DECISION: nothing of it to compare
+        end
     else
         report.ids_lost = report.ids_lost + 1;
         report.ids_lost_by_class = bump(report.ids_lost_by_class, cls);
@@ -229,8 +322,17 @@ for r = 1:numel(rows)
     [present, where] = ismember(outs, finalIds);
     attributed(where(present)) = true;
     afterPass = false;
+    located = [];
     if ~all(present)
-        if ~any(strcmp(cls, BATCH_PASS_INVERSES())) || ~any(present)
+        if any(strcmp(cls, BATCH_PASS_INVERSES())) && ~any(present)
+            % none remains: what the pass made of it (LOCATED AFTER A BATCH PASS)
+            if ~uidIndexBuilt
+                uidIndex = bodyUidIndex(finalBodies);
+                uidIndexBuilt = true;
+            end
+            located = locatedAfterPass(cls, v1, uidIndex);
+        end
+        if ~any(strcmp(cls, BATCH_PASS_INVERSES())) || (~any(present) && isempty(located))
             report.sources_changed_by_batch_pass = report.sources_changed_by_batch_pass + 1;
             report.changed_by_class = bump(report.changed_by_class, cls);
             continue;
@@ -241,8 +343,18 @@ for r = 1:numel(rows)
         continue;   % a source that became nothing (its migrator wrote none)
     end
     docs = finalBodies(where(present));
+    if ~isempty(located)
+        docs = finalBodies(located);
+    end
+    if ~isempty(contextIds)
+        % documents the inverse reads that the source did not become (the
+        % epoch a deferred pyraview names); one gone is not supplied, and the
+        % inverse says what it could not rebuild
+        [cPresent, cWhere] = ismember(contextIds, finalIds);
+        docs = [docs, finalBodies(cWhere(cPresent))];
+    end
     storedAsV1 = false;
-    if isscalar(outs) && isKey(passBody, outs{1})
+    if isempty(located) && isscalar(outs) && isKey(passBody, outs{1})
         rec = passBody(outs{1});
         if rec.input_index == row.input_index && isequaln(docs{1}, rec.body)
             % the pipeline stores the v1 source in its place (see HOW)
@@ -263,8 +375,16 @@ for r = 1:numel(rows)
         rethrow(err);
     end
     % an ACCEPTED LOSS is listed and counted, and is not a failure
-    [c, report] = takeAcceptedLosses(c, report, accepted, row.id, cls, v1, docs, ctx, idReferenced);
+    [c, report] = takeAcceptedLosses(c, report, accepted, row.id, cls, v1, docs, ctx, idReferenced, listed);
+    if released && ~isempty(c.lost)
+        % a RELEASED id ([a rebuilt document may lose its id]) is counted in
+        % ids_released; the rebuilt document cannot hold it, and that is the
+        % same fact, not a second loss
+        c.lost = c.lost(~strcmp({c.lost.path}, 'base.id'));
+        c.ok = isempty(c.lost) && isempty(c.invented) && isempty(c.unplaced);
+    end
     report.sources_compared = report.sources_compared + 1;
+    report.deferred_to_second_pass = noteDeferred(report.deferred_to_second_pass, c, cls);
     if afterPass
         report.sources_compared_after_batch_pass = report.sources_compared_after_batch_pass + 1;
         report.compared_after_batch_pass_by_class = bump(report.compared_after_batch_pass_by_class, cls);
@@ -275,6 +395,10 @@ for r = 1:numel(rows)
     end
     if c.ok
         report.sources_ok = report.sources_ok + 1;
+        if isfield(c, 'deferred') && ~isempty(c.deferred)
+            report.deferred_to_second_pass.sources_ok = ...
+                report.deferred_to_second_pass.sources_ok + 1;
+        end
     else
         report.failures_total = report.failures_total + 1;
         report.failures_by_class = bump(report.failures_by_class, cls);
@@ -287,16 +411,38 @@ for r = 1:numel(rows)
             if ~isempty(c.lost); lostPaths = {c.lost.path}; end
             report.failures(end+1) = struct('source_id', row.id, 'class_name', cls, ...
                 'lost', {lostPaths}, 'lost_values', {lostValues(c.lost, 5)}, ...
-                'invented', {c.invented}, 'unplaced', {c.unplaced});
+                'invented', {c.invented}, 'unplaced', {c.unplaced}, ...
+                'deferred', {deferredPaths(c)});
         end
     end
 end
 report.unattributed_documents = nnz(~attributed);
+report.deferred_to_second_pass.sources_compared = report.sources_compared;
 report.ok = report.sources_ok == report.sources_compared && report.ids_lost == 0 ...
     && report.sources_changed_by_batch_pass == 0 && report.sources_no_inverse == 0;
 end
 
 % ===================== helpers =========================================
+
+function m = batchPassOutputs(result)
+% v1 id -> {output_ids, context_ids} of each source a batch pass re-migrated
+% (RESULT.batch_pass_outputs; did2.convert.epochMint's
+% resolveDeferredPyraviews). A source recorded twice keeps its last record.
+m = containers.Map('KeyType', 'char', 'ValueType', 'any');
+if ~isfield(result, 'batch_pass_outputs') || ~isstruct(result.batch_pass_outputs)
+    return;
+end
+for k = 1:numel(result.batch_pass_outputs)
+    r = result.batch_pass_outputs(k);
+    if isempty(r.id); continue; end
+    o = r.output_ids;
+    if ischar(o); o = {o}; end
+    c = r.context_ids;
+    if ischar(c); c = {c}; end
+    m(char(r.id)) = struct('output_ids', {reshape(o, 1, [])}, ...
+        'context_ids', {reshape(c, 1, [])});
+end
+end
 
 function id = v1Id(v1)
 % the base.id a v1 body states ('' when none)
@@ -319,7 +465,99 @@ end
 function c = BATCH_PASS_INVERSES()
 % the classes whose inverse reads, from the whole batch, what a batch pass did
 % to their documents (AN INVERSE FOR A BATCH PASS, above)
-c = {'element'};   % resolveEpochProbemap retires `observes`; roundtrip.element
+c = {'element', ...   % resolveEpochProbemap retires `observes`; roundtrip.element
+    'daqreader_mfdaq_epochdata_ingested'};   % resolveEpochProbemap retires the archive
+end
+
+function idx = locatedAfterPass(cls, v1, uidIndex)
+%LOCATEDAFTERPASS The positions, in batch order, of the final documents a
+%   batch pass made of a source NONE of whose own documents remains ([] when
+%   none, or when the class has no such lookup). A
+%   `daqreader_mfdaq_epochdata_ingested`: the opaque_body documents
+%   resolveEpochProbemap built from its attached files, which hold its
+%   location uids verbatim (UIDINDEX, bodyUidIndex), or the sampled_body
+%   documents NDI-matlab's second pass made of them.
+idx = [];
+if ~strcmp(cls, 'daqreader_mfdaq_epochdata_ingested') || ~isstruct(v1) ...
+        || ~isfield(v1, 'files') || ~isstruct(v1.files) || ~isfield(v1.files, 'file_info')
+    return;
+end
+for u = fileUids(v1.files.file_info)
+    if isKey(uidIndex, u{1})
+        idx = [idx, uidIndex(u{1})]; %#ok<AGROW>
+    end
+end
+idx = unique(idx);
+end
+
+function m = bodyUidIndex(finalBodies)
+% location uid -> the positions of every final opaque_body or sampled_body
+% whose file_info holds it (NDI-matlab's second pass turns pass 1's
+% opaque_body documents into sampled_body documents, the files unchanged)
+m = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for k = 1:numel(finalBodies)
+    b = finalBodies{k};
+    if ~any(strcmp(classNameOf(b), {'opaque_body', 'sampled_body'})) || ~isfield(b, 'files') ...
+            || ~isstruct(b.files) || ~isfield(b.files, 'file_info')
+        continue;
+    end
+    for u = fileUids(b.files.file_info)
+        if isKey(m, u{1})
+            m(u{1}) = [m(u{1}), k];
+        else
+            m(u{1}) = k;
+        end
+    end
+end
+end
+
+function uids = fileUids(fileInfo)
+% every location uid a files.file_info list holds, in order (1xN cellstr)
+uids = {};
+infos = fileInfo;
+if isstruct(infos); infos = num2cell(reshape(infos, 1, [])); end
+if ~iscell(infos); return; end
+for i = 1:numel(infos)
+    if ~isstruct(infos{i}) || ~isscalar(infos{i}) || ~isfield(infos{i}, 'locations')
+        continue;
+    end
+    locs = infos{i}.locations;
+    if isstruct(locs); locs = num2cell(reshape(locs, 1, [])); end
+    if ~iscell(locs); continue; end
+    for j = 1:numel(locs)
+        if isstruct(locs{j}) && isscalar(locs{j}) && isfield(locs{j}, 'uid') ...
+                && ~isempty(locs{j}.uid) && (ischar(locs{j}.uid) || isstring(locs{j}.uid))
+            uids{end+1} = char(locs{j}.uid); %#ok<AGROW>
+        end
+    end
+end
+end
+
+function d = noteDeferred(d, c, cls)
+% count C's values deferred to the second pass (DEFERRED TO THE SECOND PASS)
+if ~isfield(c, 'deferred') || isempty(c.deferred)
+    return;
+end
+d.sources = d.sources + 1;
+d.values = d.values + numel(c.deferred);
+for k = 1:numel(c.deferred)
+    p = c.deferred(k).path;
+    j = find(strcmp({d.fields.class_name}, cls) & strcmp({d.fields.path}, p), 1);
+    if isempty(j)
+        d.fields(end+1) = struct('class_name', cls, 'path', p, 'sources', 1, ...
+            'decision', c.deferred(k).why);
+    else
+        d.fields(j).sources = d.fields(j).sources + 1;
+    end
+end
+end
+
+function p = deferredPaths(c)
+% the paths C deferred to the second pass (cellstr)
+p = {};
+if isfield(c, 'deferred') && ~isempty(c.deferred)
+    p = {c.deferred.path};
+end
 end
 
 function a = ACCEPTED_LOSSES()
@@ -330,7 +568,12 @@ function a = ACCEPTED_LOSSES()
 %   (the round-trip paths it covers; '(the v1 id)' for the source's own id in
 %   the id check), ID (true when the source's v1 id itself may be gone: the id
 %   is first checked, acceptedIdCheck) and WHEN (@(v1, docs, ctx) -> true when
-%   the loss applies to this source; [] for always).
+%   the loss applies to this source; [] for always). LISTED (true: only for a
+%   source RESULT.not_migrated lists, NOT MIGRATED BY A DECISION) is set
+%   false on every entry but those that say otherwise, at the end. PATHSOF
+%   (@(v1, docs, ctx) -> cellstr: more paths the loss covers for this
+%   source, where they depend on the source, such as an entry of a list) is
+%   [] on every entry but those that say otherwise.
 a = struct('name', {}, 'decision', {}, 'classes', {}, 'paths', {}, 'id', {}, 'when', {});
 % [v1 session document id not kept] (Decided by Jess Haley, 2026-11-03): the
 % own base.id of a v1 `session` and of a v1 `dataset_remote` document is not
@@ -359,6 +602,172 @@ a(end+1) = struct('name', 'mode of a probe that never recorded', ...
     'decision', '[clamp mode of unrecorded probe dropped] (Jess Haley, 2026-11-03)', ...
     'classes', {{'element'}}, 'paths', {{'element.type'}}, ...
     'id', false, 'when', @unrecordedModeDropped);
+% [unlinked device is not an element] (Decided by Jess Haley, 2026-11-11): a
+% migrated v1 probe whose device has no recording observation (`instrument_id`)
+% and no wiring (`connected to`, RO:0002170) in the final batch is not an
+% element ([element recognised by its links]); it keeps its device entity
+% (type, subject link), and no "ndi element class" assertion is kept for it,
+% so its v1 ndi_element_class is not rebuilt: a known difference from v1 (a
+% probe with no epochs reads back as a device, not an element). Accepted only
+% for such a device (unlinkedDevice). This batch is the one before
+% NDI-matlab's second pass, which mints the recordings of an epoch with no
+% ingested cache; a device that pass links is an element in NDI-matlab.
+a(end+1) = struct('name', 'device with no links is not an element', ...
+    'decision', '[unlinked device is not an element] (Jess Haley, 2026-11-11)', ...
+    'classes', {{'element'}}, 'paths', {{'element.ndi_element_class'}}, ...
+    'id', false, 'when', @unlinkedDevice);
+% [jrclust settings-file name dropped] (Decided by Jess Haley, 2026-11-11,
+% replacing [one-reading quick answers] Q5): the settings-file name a
+% `jrclust_clusters` holds -- base.name, which NDI-matlab's writer
+% (+ndi/+fun/+probe/+import/+jrclust/probe.m) sets from its `prmName` option,
+% and the Soph vintage's ndi_document.name ('jrclust.prm'), which
+% did2.convert.roundtrip.check compares as base.name ([ndi_document read as
+% base]) -- is not carried: the document migrates to its decided shape, and
+% the name is a recorded difference from v1, whatever its value
+% (did2.convert.jrclustSettingsNameDropped; roundtrip.jrclust_clusters does
+% not rebuild it)
+a(end+1) = struct('name', 'jrclust settings file name', ...
+    'decision', '[jrclust settings-file name dropped] (Jess Haley, 2026-11-11)', ...
+    'classes', {{'jrclust_clusters'}}, 'paths', {{'base.name'}}, ...
+    'id', false, 'when', []);
+% [copyright round-trip losses] (Decided by Jess Haley, 2026-11-17) (1): a
+% migrated v1 openMINDS `Copyright` ([copyright from another tool is
+% emitted]) does not keep its openMINDS instance id; "its openMINDS instance
+% id is an accepted loss". Accepted only for a Copyright that was emitted
+% (its documents are the one schema:copyrightYear assertion that keeps its id,
+% copyrightEmitted); any other openminds document's instance id is lost
+a(end+1) = struct('name', 'openMINDS Copyright instance id', ...
+    'decision', '[copyright round-trip losses] (Jess Haley, 2026-11-17)', ...
+    'classes', {{'openminds'}}, 'paths', {{'openminds.openminds_id'}}, ...
+    'id', false, 'when', @copyrightEmitted);
+[a.listed] = deal(false);
+[a.pathsOf] = deal([]);
+% [removed file locations are an accepted loss] (Decided by Jess Haley,
+% 2026-11-18): "when NDI's second pass rebuilds `channel_list.bin` or an
+% `evmktx` events file exactly from v2 documents and removes it, the v1 epoch
+% document's record of that file, its uid and its location in NDI's file
+% store ... the removed file's v1 storage record is an accepted loss".
+% Accepted only for the file_info entry of a file the rebuild says the second
+% pass removed (removedFileLocations): channel_list.bin when the channel list
+% is rebuilt from the documents, an evmktx file whose body is gone.
+% [removed time segment locations are an accepted loss] (Decided by Jess
+% Haley, 2026-11-19: "yes, accept the loss for the time segments too"):
+% a removed evenly spaced time segment's (`ti_group<g>_seg.nbf_<m>`) v1
+% storage record is an accepted loss as well, again only when the segment is
+% removed (no time body remains and the documents rebuild it, R.time_segments)
+a(end+1) = struct('name', 'removed archive file location', ...
+    'decision', ['[removed file locations are an accepted loss] (Jess Haley, 2026-11-18); ' ...
+        '[removed time segment locations are an accepted loss] (Jess Haley, 2026-11-19)'], ...
+    'classes', {{'daqreader_mfdaq_epochdata_ingested'}}, 'paths', {{}}, ...
+    'id', false, 'when', [], 'listed', false, 'pathsOf', @removedFileLocations);
+% [orphaned response settings are an accepted loss] (Decided by Jess Haley,
+% 2026-11-12): an orphaned stimulus_response_scalar_parameters_basic (referred
+% to by no document) with an identical used twin in its session is not
+% migrated; it is listed in known_v1_defects and its loss is accepted here.
+% LISTED: only a source did2.convert.resolveResponseParameters recorded in
+% RESULT.not_migrated; any other parameters document whose id is gone is lost
+a(end+1) = struct('name', 'orphaned response settings', ...
+    'decision', '[orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12)', ...
+    'classes', {{'stimulus_response_scalar_parameters_basic'}}, 'paths', {{'base.id'}}, ...
+    'id', true, 'when', [], 'listed', true, 'pathsOf', []);
+end
+
+function paths = removedFileLocations(v1, docs, ctx)
+% the leaf paths of V1's files.file_info entries ([removed file locations are
+% an accepted loss]) whose file NDI-matlab's second pass removed after
+% rebuilding it from the v2 documents: `channel_list.bin` when
+% did2.convert.roundtrip.ingestedArchiveFiles rebuilds the channel list
+% (state 'rebuilt': no body of it remains, and the converted groups and
+% unpacked channels give its rows), an `evmktx_group<g>_seg.nbf_<m>` whose
+% events are rebuilt from the unpacked channels and whose body is gone
+% (carried false), and ([removed time segment locations are an accepted
+% loss]) a `ti_group<g>_seg.nbf_<m>` the rebuild lists in R.time_segments
+% (no time body remains: the evenly spaced time is the groups' covariate).
+% Only the entry's `locations` (uid, location, ...); its name is still
+% compared
+paths = {};
+if isempty(ctx) || ~isstruct(v1) || ~isfield(v1, 'files') || ~isstruct(v1.files) ...
+        || ~isfield(v1.files, 'file_info') || ~isstruct(v1.files.file_info)
+    return;
+end
+R = did2.convert.roundtrip.ingestedArchiveFiles(docs, ctx);
+removed = {};
+if strcmp(R.channel_list_state, 'rebuilt'); removed{end+1} = 'channel_list.bin'; end
+for e = 1:numel(R.evmktx)
+    if ~R.evmktx(e).carried; removed{end+1} = R.evmktx(e).name; end %#ok<AGROW>
+end
+removed = [removed, reshape(R.time_segments, 1, [])];
+if isempty(removed); return; end
+fi = v1.files.file_info;
+leaves = flattenLeaves(struct('files', struct('file_info', fi)));
+for k = 1:numel(fi)
+    if ~isfield(fi(k), 'name') || ~any(strcmp(char(fi(k).name), removed))
+        continue;
+    end
+    if isscalar(fi)
+        stem = 'files.file_info.locations';
+    else
+        stem = sprintf('files.file_info(%d).locations', k);
+    end
+    for j = 1:numel(leaves)
+        p = leaves(j).path;
+        if strcmp(p, stem) || startsWith(p, [stem '.']) || startsWith(p, [stem '('])
+            paths{end+1} = p; %#ok<AGROW>
+        end
+    end
+end
+end
+
+function tf = copyrightEmitted(~, docs, ~)
+% DOCS is the one schema:copyrightYear assertion
+% did2.convert.resolveOpenmindsCitations writes for a Copyright
+tf = false;
+if ~isscalar(docs) || ~strcmp(classNameOf(docs{1}), 'assertion')
+    return;
+end
+[node, ~] = termParts(getIn(docs{1}, 'statement', 'variable'));
+tf = sameCurie(node, 'schema:copyrightYear');
+end
+
+function m = notMigratedIds(result)
+% v1 id -> true for each source RESULT.not_migrated lists (NOT MIGRATED BY A
+% DECISION)
+m = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if ~isfield(result, 'not_migrated') || ~isstruct(result.not_migrated)
+    return;
+end
+for k = 1:numel(result.not_migrated)
+    id = result.not_migrated(k).id;
+    if ischar(id) || (isstring(id) && isscalar(id))
+        if ~isempty(char(id)); m(char(id)) = true; end
+    end
+end
+end
+
+function tf = unlinkedDevice(v1, docs, ctx)
+% DOCS' entity is a `device` (by node), CTX holds no recording observation
+% and no `connected to` wiring of it (deviceLinks), and its documents keep
+% no "ndi element class" assertion (one that is kept wins: [assertion wins
+% while written])
+tf = false;
+if isempty(ctx) || ~isstruct(v1) || ~isfield(v1, 'base') || ~isstruct(v1.base) ...
+        || ~isfield(v1.base, 'id')
+    return;
+end
+id = char(v1.base.id);
+isDevice = false;
+for k = 1:numel(docs)
+    b = docs{k};
+    if isEntityOfType(b, 'device') && strcmp(idOf(b), id)
+        isDevice = true;
+    elseif strcmp(classNameOf(b), 'assertion')
+        [~, variable] = termParts(getIn(b, 'statement', 'variable'));
+        if strcmpi(variable, 'ndi element class')
+            return;
+        end
+    end
+end
+tf = isDevice && isempty(deviceLinks(ctx, id));
 end
 
 function tf = foldedIntoDataset(~, docs, ~)
@@ -367,10 +776,22 @@ function tf = foldedIntoDataset(~, docs, ~)
 tf = isscalar(docs) && isEntityOfType(docs{1}, 'dataset');
 end
 
-function tf = unrecordedModeDropped(v1, docs, ~)
-% V1's element.type is a type of a shared device kind, and DOCS state that
-% kind and no `element type`
+function tf = unrecordedModeDropped(v1, docs, ctx)
+% V1's element.type is a type of a shared device kind, DOCS state that kind
+% and no `element type`, and no observation in CTX names the element as its
+% instrument: the probe never recorded. A RECORDED probe whose statement was
+% dropped ([recording mode terms]) rebuilds its word from its observations'
+% modes, so a difference there is a failure, not this accepted loss.
 tf = false;
+if ~isempty(ctx) && isfield(v1, 'base') && isstruct(v1.base) && isfield(v1.base, 'id')
+    id = char(v1.base.id);
+    for k = ctxReferrers(ctx, id)
+        b = ctx.docs{k};
+        if strcmp(classNameOf(b), 'observation') && any(strcmp(edgeIds(b, 'instrument_id'), id))
+            return;
+        end
+    end
+end
 if ~isstruct(v1) || ~isfield(v1, 'element') || ~isstruct(v1.element) ...
         || ~isfield(v1.element, 'type')
     return;
@@ -400,10 +821,14 @@ end
 tf = hasKind;
 end
 
-function a = acceptedIdLoss(accepted, cls)
-% the accepted loss that lets a source of class CLS lose its own v1 id ([] if none)
+function a = acceptedIdLoss(accepted, cls, listed)
+% the accepted loss that lets a source of class CLS lose its own v1 id ([] if
+% none); one marked LISTED only when the source is (LISTED true)
 a = [];
 for k = 1:numel(accepted)
+    if accepted(k).listed && ~listed
+        continue;
+    end
     if accepted(k).id && any(strcmp(accepted(k).classes, cls))
         a = accepted(k);
         return;
@@ -418,7 +843,7 @@ report.accepted_losses(end+1) = struct('name', a.name, 'decision', a.decision, .
     'source_id', sourceId, 'class_name', cls, 'path', path);
 end
 
-function [c, report] = takeAcceptedLosses(c, report, accepted, sourceId, cls, v1, docs, ctx, idReferenced)
+function [c, report] = takeAcceptedLosses(c, report, accepted, sourceId, cls, v1, docs, ctx, idReferenced, listed)
 % move the lost fields an accepted loss covers out of C.lost into the report's
 % accepted list, and recompute C.ok
 if isempty(c.lost)
@@ -427,7 +852,7 @@ end
 keep = true(1, numel(c.lost));
 for k = 1:numel(accepted)
     a = accepted(k);
-    if ~any(strcmp(a.classes, cls))
+    if ~any(strcmp(a.classes, cls)) || (a.listed && ~listed)
         continue;
     end
     if a.id && isKey(idReferenced, sourceId)
@@ -436,8 +861,12 @@ for k = 1:numel(accepted)
     if ~isempty(a.when) && ~a.when(v1, docs, ctx)
         continue;
     end
+    covered = a.paths;
+    if ~isempty(a.pathsOf)
+        covered = [covered, a.pathsOf(v1, docs, ctx)]; %#ok<AGROW>
+    end
     for j = find(keep)
-        if any(strcmp(c.lost(j).path, a.paths))
+        if any(strcmp(c.lost(j).path, covered))
             keep(j) = false;
             if a.id && strcmp(c.lost(j).path, 'base.id') && ~isempty(report.accepted_losses) ...
                     && strcmp(report.accepted_losses(end).source_id, sourceId) ...
@@ -452,7 +881,7 @@ c.lost = c.lost(keep);
 c.ok = isempty(c.lost) && isempty(c.invented) && isempty(c.unplaced);
 end
 
-function [check, referenced] = acceptedIdCheck(bodies, rows, accepted, ctx)
+function [check, referenced] = acceptedIdCheck(bodies, rows, accepted, ctx, notMigrated)
 %ACCEPTEDIDCHECK Before an accepted loss lets a v1 id go, check that nothing
 %   points at it: no other v1 document names it, by a depends_on value or as
 %   any value anywhere in the document (its JSON text holds the id), and no
@@ -473,7 +902,7 @@ for r = 1:numel(rows)
     cls = row.class_name;
     if isempty(cls); cls = v1ClassName(v1); end
     id = v1Id(v1);
-    if isempty(id) || isempty(acceptedIdLoss(accepted, cls))
+    if isempty(id) || isempty(acceptedIdLoss(accepted, cls, isKey(notMigrated, id)))
         continue;
     end
     ids{end+1} = id; %#ok<AGROW>

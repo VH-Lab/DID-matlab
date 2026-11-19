@@ -5,9 +5,9 @@ function tests = testMigratorsJIngested
 %   into one of them:
 %
 %     daqmetadatareader_epochdata_ingested -> acquisition_metadata_file
-%     daqreader_epochdata_ingested         -> + N relative_reference (source kept)
-%     daqreader_image_epochdata_ingested   -> + N relative_reference (source kept)
-%     daqreader_mfdaq_epochdata_ingested   -> de-encode, then the same lift
+%     daqreader_epochdata_ingested         -> + N relative_reference (source kept as v1)
+%     daqreader_image_epochdata_ingested   -> + N relative_reference (source kept as v1)
+%     daqreader_mfdaq_epochdata_ingested   -> handed on as v1 ([retired classes leave V2])
 %
 %   ---------------------------------------------------------------------
 %   WHAT THE FIXTURES ARE BUILT FROM, AND WHY IT MATTERS
@@ -429,6 +429,10 @@ verifyEqual(testCase, numel(src), 1);
 verifyEqual(testCase, src{1}.get('base.id'), 'ing_1');
 verifyEqual(testCase, src{1}.get('epochid.epochid'), 't00001');
 verifyEqual(testCase, numel(src{1}.get('files.file_list')), 2);
+% [retired classes leave V2] (1): kept as the v1 document it is, not written as
+% the retire class `daqreader_epochdata_ingested` (until 2026-11-19 it was
+% stamped did_v2 with that class's superclass list)
+verifyKeptAsV1(testCase, src{1}, readerIngestedV1({'dev_local_time'}, [0; 10]));
 end
 
 function testReaderIngestedLiftsEveryClockInTheCellArray(testCase)
@@ -535,36 +539,41 @@ end
 
 % ===================== daqreader_mfdaq_epochdata_ingested ==================
 
-function testMfdaqIngestedStillReturnsAStructWhileGuarded(testCase)
-% The migrator function is called DIRECTLY by an existing test in
-% testMigratorsJ.m, which reads out.document_class.class_name off a struct. The
-% delegation must not change that on the guarded path.
+function testMfdaqIngestedIsHandedOnUnchanged(testCase)
+% [retired classes leave V2] (Decided by Jess Haley, 2026-10-25), step (1):
+% the migrator no longer renames the cache to the retired V2 class
+% `daqreader_epochdata_ingested` (moving its parameters onto it); it returns
+% the v1 document unchanged, and v1_to_v2 hands it on stamped did_v1
+% (HAND_ON_CLASSES) to resolveEpochProbemap. This test asserted the rename
+% until then.
 body = mfdaqIngestedV1();
 out = did2.convert.migrators_j.daqreader_mfdaq_epochdata_ingested(body);
 verifyTrue(testCase, isstruct(out));
 verifyTrue(testCase, isscalar(out));
-verifyEqual(testCase, did2.unittest.helpers.classKey(out), 'daqreader_epochdata_ingested');
-verifyEqual(testCase, out.daqreader_epochdata_ingested.parameters.sample_analog_segment, ...
-    1000000);
-verifyEqual(testCase, out.epochid.epochid, 't00001');
+verifyTrue(testCase, isequaln(out, body), 'the handed-on document is not the v1 source');
+res = runJ(body);
+verifyEqual(testCase, numel(res.migrated), 1);
+verifyEqual(testCase, numel(res.passthrough), 1);
+doc = res.migrated{1};
+verifyEqual(testCase, did2.unittest.helpers.classKey(doc), 'daqreader_mfdaq_epochdata_ingested');
+verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, ...
+    doc.get('daqreader_mfdaq_epochdata_ingested.parameters.sample_analog_segment'), 1000000);
+verifyEqual(testCase, char(doc.get('epochid.epochid')), 't00001');
 end
 
-function testMfdaqIngestedDelegatesTheEpochLift(testCase)
-% Without the delegation the mfdaq documents -- the ONLY ones carrying the real
-% .nbf.tgz recording archives -- would be the one member of the family whose
-% epochtable never became references, because v1_to_v2 looks the concrete
-% migrator up once, on the class the document ARRIVED with.
-out = runJ(withEpochEdge(mfdaqIngestedV1(), 'epoch_doc_1'));
-verifyEqual(testCase, numel(out.migrated), 2);
-verifyTrue(testCase, any(strcmp(classNames(out), 'daqreader_epochdata_ingested')));
-refs = docsOfClass(out, 'relative_time_reference');
-verifyEqual(testCase, numel(refs), 1);
-did2.unittest.helpers.verifyClock(testCase, refs{1}.get('relative_time_reference.value.clock'), 'dev_local_time');   % by node [clock terms get nodes]
-% the de-encode still happened
-src = docsOfClass(out, 'daqreader_epochdata_ingested');
-verifyEqual(testCase, ...
-    src{1}.get('daqreader_epochdata_ingested.parameters.sample_analog_segment'), ...
-    1000000);
+function testMfdaqIngestedWithAnEpochEdgeIsHandedOnUnchanged(testCase)
+% The delegated epoch lift is gone with the rename: with an `epoch_id` edge
+% (no v1 document has one) the cache is still handed on unchanged, and no
+% reference is written here; resolveEpochProbemap writes the epoch's clocks
+% from the archive's epochtable.
+body = withEpochEdge(mfdaqIngestedV1(), 'epoch_doc_1');
+out = runJ(body);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEmpty(testCase, docsOfClass(out, 'relative_time_reference'));
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
+verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
+    'daqreader_mfdaq_epochdata_ingested');
 end
 
 function v1 = mfdaqIngestedV1()
@@ -636,6 +645,47 @@ verifyEqual(testCase, numel(src), 1);
 md = src{1}.get('daqreader_image_epochdata_ingested.metadata');
 verifyTrue(testCase, isfield(md, 'israster'));
 verifyTrue(testCase, isfield(md, 'lines_per_frame'));
+% [retired classes leave V2] (1): the source is the v1 document, not a V2
+% `daqreader_image_epochdata_ingested` (a retire class)
+verifyKeptAsV1(testCase, src{1}, imageIngestedV1());
+end
+
+function testTheEpochLiftWritesNoRetiredClassAsV2(testCase)
+% [retired classes leave V2] (Decided by Jess Haley, 2026-10-25), step (1)'s
+% remaining path: the `epoch_id` lift (reached only by these fixtures) wrote
+% its source as the V2 retire class. Now, validated: nothing quarantines, the
+% two sources are stamped did_v1 with v1's own class list, and only the lifted
+% clock references are V2 documents.
+assumeVEtaSchemas(testCase);
+fixtures = {withEpochEdge(readerIngestedV1({'dev_local_time', 'exp_global_time'}, ...
+    [0 100; 10 110]), 'epoch_doc_1'), withEpochEdge(imageIngestedV1(), 'epoch_doc_7')};
+originals = {readerIngestedV1({'dev_local_time', 'exp_global_time'}, [0 100; 10 110]), ...
+    imageIngestedV1()};
+classes = {'daqreader_epochdata_ingested', 'daqreader_image_epochdata_ingested'};
+for k = 1:numel(fixtures)
+    out = runJValidated(fixtures{k});
+    verifyEmpty(testCase, out.quarantine, [classes{k} ': the lift quarantined']);
+    src = docsOfClass(out, classes{k});
+    assertEqual(testCase, numel(src), 1, [classes{k} ': the source is not in the output']);
+    verifyKeptAsV1(testCase, src{1}, originals{k});
+    refs = docsOfClass(out, 'relative_time_reference');
+    verifyNotEmpty(testCase, refs, [classes{k} ': no clock reference was lifted']);
+    for r = 1:numel(refs)
+        verifyEqual(testCase, char(refs{r}.get('document_class.schema_version')), 'did_v2');
+    end
+    verifyEqual(testCase, numel(out.migrated), numel(refs) + 1);
+end
+end
+
+function verifyKeptAsV1(testCase, doc, v1)
+%VERIFYKEPTASV1 DOC is the v1 source V1 handed on: stamped did_v1, its class
+%   and superclass list as v1 wrote them.
+verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v1');
+dc = doc.get('document_class');
+verifyEqual(testCase, char(dc.class_name), v1.document_class.class_name);
+verifyEqual(testCase, {dc.superclasses.class_name}, ...
+    {v1.document_class.superclasses.class_name}, ...
+    'the kept source''s superclass list is not the one v1 wrote');
 end
 
 function testImageIngestedCarriesNoEdgeToASubjectOrElement(testCase)
@@ -767,11 +817,11 @@ function testImageIngestedFoldDestinationsExistSoOnlyTheSubjectBlocks(testCase)
 % STILL blocks the observation, which is the half of this test that matters.
 assumeVEtaSchemas(testCase);
 cache = did2.schema.cache.shared();
-% The classes this test reads span stable (statement, observation, value, data)
-% and DRAFT (sampled_body, data_body). did2.schema.cache reads ONE non-recursive
-% folder, so a stable-only path would make this test ERROR on a missing class
-% rather than skip. CI assembles stable + draft + deprecated into one flat
-% directory; locally it may not. Probe what THIS test needs.
+% The classes this test reads are in several of did-schema's family folders
+% (statement, observation and value at the top, sampled_body in data_body/).
+% CI assembles the whole did_v2 set into one flat directory
+% (tools/assemble_schema_set.py; there are no tiers); a local path may hold
+% less. Probe what THIS test needs.
 try
     cache.getClass('observation');
     cache.getClass('value');

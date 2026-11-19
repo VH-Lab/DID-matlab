@@ -149,6 +149,11 @@ verifyEqual(testCase, doc.get('demo.value'), 5);
 verifyTrue(testCase, isnumeric(doc.get('demo.value')), ...
     'demo.value is declared double; the did_v1 template declares char');
 verifyFalse(testCase, doc.get('demo.mock'));
+% [demo keeps its name] (Jess Haley, 2026-11-19): the v1 base.name is the
+% demo's own name, and base.name is not written on the demo
+verifyEqual(testCase, doc.get('demo.name'), 'doc_1');
+s0 = doc.toStruct();
+verifyFalse(testCase, isfield(s0.base, 'name'), 'base.name is held by demo.name');
 % the file the did_v1 template declares and V_eta re-declares survives
 verifyEqual(testCase, doc.get('files.file_list'), {'filename1.ext'});
 % the consumed did_v1 block is GONE -- a populated leftover trips the strict
@@ -172,6 +177,10 @@ verifyEqual(testCase, doc.get('base.id'), 'demo_mock_1');
 verifyEqual(testCase, doc.get('demo.value'), 10);
 verifyTrue(testCase, doc.get('demo.mock'), ...
     'mock (#88; is_mock before) is the only marker separating self-test artefacts from real data');
+% an empty v1 name writes neither demo.name nor base.name ([demo keeps its name])
+sm = doc.toStruct();
+verifyFalse(testCase, isfield(sm.demo, 'name'), 'an empty v1 name is not a name');
+verifyFalse(testCase, isfield(sm.base, 'name'));
 % ALL THREE did_v1 blocks are consumed, named one at a time so a failure says
 % which one survived
 s = doc.toStruct();

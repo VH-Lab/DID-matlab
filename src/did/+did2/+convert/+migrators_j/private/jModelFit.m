@@ -26,19 +26,30 @@ function bodies = jModelFit(preBody, blk, inputEdges)
 
 bodies = {preBody};
 subjectId = jSubjectOf(preBody, {'element_id', 'subject_id'});
+reason = '';
+if isempty(subjectId)
+    % [a fit is about its input's subject] (Decided by Jess Haley, 2026-11-10):
+    % a fit with no element_id or subject_id of its own is about what its input
+    % is about. v1_to_v2 indexed the batch (did2.convert.fitInputSubjects),
+    % which follows INPUTEDGES to that document and takes its subject; never
+    % the session.
+    [subjectId, reason] = did2.convert.fitInputSubjects('get', preBody, inputEdges);
+end
 if isempty(subjectId)
     % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
     % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once
     % no v1 document passes through under it, so this document, refused on
     % purpose, is carried whole as v1 with a note ([passthrough stays v1], Jess
     % Haley, 2026-10-24) instead of passing through silently. Register rows
-    % carry-136 (fitcurve) and carry-137 (vmspikefit) cover it.
+    % carry-136 (fitcurve) and carry-137 (vmspikefit) cover it, narrowed by [a
+    % fit is about its input's subject] to a fit whose input chain names none.
     stamp = did2.convert.v1read.readStamp(preBody);
     tag = '[carry-136]';
     if strcmp(stamp.class_name, 'vmspikefit'); tag = '[carry-137]'; end
     % carry-register: carry-136 carry-137
     did2.convert.reportNote('carried_as_v1', stamp.class_name, jCarryId(preBody), ...
-        [tag ' awaiting_home: no element_id or subject_id, so no calculation subject ([passthrough stays v1])']);
+        [tag ' awaiting_home: no element_id or subject_id, so no calculation subject: ' ...
+        'its input names none (' reason ') ([a fit is about its input''s subject])']);
     return;
 end
 [software, swId, execEnv] = jSoftwareFromApp(preBody, 'RequireSession', true);
@@ -56,7 +67,7 @@ if ~isempty(p)
     for k = 1:numel(p)
         label = sprintf('parameter %d', k);
         if k <= numel(names); label = names{k}; end
-        c{k} = struct('variable', jLabel(label), 'value', p(k));
+        c{k} = coefficient(jLabel(label), p(k));
     end
     v.coefficients = did2.build.list(c{:});
 end
@@ -75,7 +86,7 @@ if isfield(blk, 'fit_constraints') && isstruct(blk.fit_constraints)
         cn = charOf(blk.fit_constraints(k), 'fit_constraint_name');
         cv = numOf(blk.fit_constraints(k), 'fit_constraint_value');
         if ~isempty(cn) && isscalar(cv)
-            cons{end+1} = struct('variable', jLabel(cn), 'value', cv); %#ok<AGROW>
+            cons{end+1} = coefficient(jLabel(cn), cv); %#ok<AGROW>
         end
     end
 end
@@ -111,12 +122,26 @@ end
 fitting = jMethod(did2.convert.registeredTerm('OBI:0200072', ...
     'curve fitting data transformation'));
 calc = jStatement(preBody, 'calculation', subjectId, ...
-    jLabel('model fit'), value, ...
+    ... % BAO:0000625 "curve fit model", by node: [variable terms batch 1]
+    ... % (Jess Haley, 2026-11-19; 'model fit' before)
+    did2.convert.registeredTerm('BAO:0000625', 'curve fit model'), value, ...
     'Fields', struct('method', fitting), ...
     'TimeReferenceIds', {anchor.base.id}, 'InputIds', inputs, ...
     'SoftwareId', swId, 'OperatingSystemId', osId, 'InterpreterId', interpreterId, ...
     'Id', char(preBody.base.id), 'ValueKind', 'model_fit');
 bodies = [{calc, anchor}, software, runDocs];
+end
+
+function c = coefficient(variable, x)
+% a coefficient or constraint: in the new numeric shape the list item
+% {variable, numeric} ([one shape for measured numbers], plan section 8,
+% answer 5: "unit optional, empty for migrated fits since v1 states none"),
+% as did2.build.fitEntry writes it; in the old shape {variable, value}
+if strcmp(did2.build.numericShape(), 'new')
+    c = struct('variable', variable, 'numeric', x);
+else
+    c = struct('variable', variable, 'value', x);
+end
 end
 
 function s = jFirst(a, b)

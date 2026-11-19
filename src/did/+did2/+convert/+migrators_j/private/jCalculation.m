@@ -20,6 +20,10 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %   VARIABLENAME the statement's variable (a label) when the source does
 %               not say what was measured; METHODNAME the calculator, the
 %               inline `method.term` (a label).
+%   OPTS.VariableTerm  a {node, name} term (did2.convert.registeredTerm):
+%               the variable, in place of jLabel(VARIABLENAME), when the
+%               decided variable has a node (the hartley planes, [hartley
+%               plane terms], Jess Haley, 2026-11-18).
 %
 %   THE RESPONSE VARIABLE (tuning families and 'csf'; Jess Haley 2026-10-22
 %   [response variable], [dF/F as variable], [response variable nodes],
@@ -158,6 +162,24 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         setting the table does not hold carries the document (carry-056).
 %     [tuning log in notes]  tuningcurve_calc's `log`, verbatim, is the
 %         statement's `notes`.
+%     [tuning axes named from the varied property] (Jess Haley, 2026-11-12)
+%         a raw curve's axis is named from tuningcurve_calc's
+%         input_parameters.independent_parameter through the registered
+%         terms (jTuningCurve 'VariedParameters'); the v1 label text, when
+%         the axis terms do not restate it, is one last line of the notes,
+%         after the log (did2.convert.tuningLabelNote).
+%     [tuning label choices confirmed] (Jess Haley, 2026-11-17)  a raw
+%         curve still named from its label (no independent_parameter, or
+%         one the name table does not hold) is counted: every folded raw
+%         curve leaves ONE did2.convert.reportNote('tuning_axis_naming',
+%         <v1 class>, <id>, <what it was named from>); the count is the
+%         denominator.
+%     [depends on name not written when it equals the edge] (Jess Haley,
+%         2026-11-12)  tuningcurve_calc's input_parameters.depends_on.name
+%         is not written when it is 'stimulus_response_scalar_id' and the
+%         curve has that edge (the round trip reads it as restated by the
+%         edge); a depends_on setting whose name is anything else is
+%         carried (carry-016).
 %     [tuning best value is a condition] (2026-10-28)  each `best` selection
 %         of tuningcurve_calc's input_parameters.selection: the value it chose,
 %         read once from the log (did2.convert.tuningBestValues), is a
@@ -170,6 +192,15 @@ function bodies = jCalculation(preBody, leafClass, family, sourceBlock, variable
 %         `selection` setting (a method parameter like any other setting);
 %         no per-parameter '<V2 name> selection' = 'best' parameter is
 %         written beside it.
+%     [tuning stated value is a condition] (Jess Haley, 2026-11-11)  each
+%         selection of tuningcurve_calc's input_parameters.selection that
+%         fixes a property at a stated number ({property, 'exact_number',
+%         <number>}, did2.convert.tuningStatedValues) is a condition named
+%         by the v2 stimulus variable (e.g. temporal frequency = 4), after
+%         the `best` conditions; the stimid rebuild reads it, and the rule
+%         stays only in the v1 `selection` setting. A property stated at two
+%         numbers, one the table does not name, or one already a condition
+%         carries the curve (carry-056).
 %     [varied properties are conditions by V2 name]  each property in
 %         tuningcurve_calc's `stim_property_list` is a condition, its variable
 %         the v2 stimulus method's (did2.convert.tuningNames), its value the
@@ -205,6 +236,8 @@ arguments
     opts.Dropped = {}            % more dropped v1 field paths, reported verbatim
     opts.AccountForEveryField (1,1) logical = false   % see ACCOUNTED FOR below
     opts.OtherBlocks = {}        % more top-level blocks the CALLER accounts for
+    opts.ParameterNames = {}     % n x 2 {v1 path, v2 name}: settings named by a decided term
+    opts.VariableTerm = []       % a {node, name} term: the variable, in place of jLabel(VARIABLENAME)
 end
 
 srcBlk = struct();
@@ -238,7 +271,7 @@ isFit = any(strcmp(family, {'oridir', 'contrast', 'sf', 'tf', 'speed'}));
 useTable = isFit || strcmp(family, 'stimulus');
 % the raw curve's notes, conditions and rebuilt stimids (family 'stimulus')
 curve = struct('rebuilt', {{}}, 'notes', '', 'conditions', [], 'reasons', {{}}, ...
-    'outcome', '', 'parameters', []);
+    'outcome', '', 'parameters', [], 'varied', {{}});
 if strcmp(family, 'stimulus')
     curve = curveContext(preBody, sourceBlock, srcBlk);
 end
@@ -262,14 +295,23 @@ else
     % the schema in use declares the block (siblings first; did-schema
     % orientation_direction_tuning_calculation.interpolated_values); until
     % then the four vector fields stay unplaced and carry the document
-    halfHeight = strcmp(family, 'oridir') && jSchemaHasPath(leafClass, ...
-        {'interpolated_values', 'full_width_half_height'});
+    halfHeight = strcmp(family, 'oridir') && summaryDeclares(leafClass, ...
+        'interpolated_values', 'full_width_half_height');
     [value, valueAxes, leafFields, dropped, response, tuningExtra] = ...
-        jTuningCurve(srcBlk, family, 'Rebuilt', curve.rebuilt, 'HalfHeight', halfHeight);
+        jTuningCurve(srcBlk, family, 'Rebuilt', curve.rebuilt, 'HalfHeight', halfHeight, ...
+        'VariedParameters', curve.varied);
     if isfield(tuningExtra, 'notes') && ~isempty(tuningExtra.notes)
         % T14: the reason each half-height value is NaN (no other family
         % writes notes here; a raw curve's are its log)
         curve.notes = tuningExtra.notes;
+    end
+    if strcmp(family, 'stimulus') && isfield(tuningExtra, 'labelNote') ...
+            && ~isempty(tuningExtra.labelNote)
+        % [tuning axes named from the varied property] (Decided by Jess
+        % Haley, 2026-11-12): the v1 label text is kept in notes, one last
+        % line after the log
+        curve.notes = did2.convert.tuningLabelNote('write', curve.notes, ...
+            tuningExtra.labelNote);
     end
 end
 % [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
@@ -301,12 +343,35 @@ reasons = [reasons, curve.reasons];
 % [parameter names map by table] (Jess Haley, 2026-10-27): the tuning
 % families' settings are named through did2.convert.tuningNames
 if useTable
-    [params, unknownSettings] = jParameterList(calcInputParameters(preBody), '', ...
+    ip = calcInputParameters(preBody);
+    if strcmp(family, 'stimulus') && isstruct(ip) && isscalar(ip) ...
+            && isfield(ip, 'independent_label')
+        % [display label compared loosely] (Decided by Jess Haley, 2026-11-10,
+        % did-schema did_v2_go_forward_class_audit.md; answers the question
+        % [term picks batch 3] left): v1 `independent_label` (display text,
+        % "Orientation") is not written; the independent variable already
+        % carries its meaning, and the round trip rebuilds the text from the
+        % curve's registered variable name, letter case and '_' versus space
+        % compared loosely (+roundtrip/private/tuningInverse.m)
+        ip = rmfield(ip, 'independent_label');
+    end
+    if strcmp(family, 'stimulus')
+        [ip, why] = dependsOnNameRestated(ip, preBody);
+        if ~isempty(why)
+            reasons{end+1} = why;
+        end
+    end
+    [params, unknownSettings] = jParameterList(ip, '', ...
         @(n) did2.convert.tuningNames('v2', n));
     for k = 1:numel(unknownSettings)
         reasons{end+1} = sprintf(['[carry-056] input_parameters.%s (no v2 name in ' ...
             'the table: [parameter names map by table])'], unknownSettings{k}); %#ok<AGROW>
     end
+elseif ~isempty(opts.ParameterNames)
+    % settings with a decided term ([term picks batch 3]: hartley_calc's
+    % X_sample / Y_sample); every other setting is named as before
+    names = opts.ParameterNames;
+    params = jParameterList(calcInputParameters(preBody), '', @(n) namedSetting(n, names));
 else
     params = jParameterList(calcInputParameters(preBody));
 end
@@ -354,6 +419,9 @@ if jRawCarry(classNameOf(preBody), preBody, {}, outside, 'carry-100', reasons)
     return;
 end
 variable = jLabel(variableName);
+if isstruct(opts.VariableTerm)
+    variable = opts.VariableTerm;   % a decided term with its node (hartley_calc's planes)
+end
 if isstruct(response) && isstruct(response.variable)
     variable = response.variable;   % [response variable]: what was measured
 end
@@ -380,7 +448,8 @@ elseif strcmp(family, 'csf')
     % V_eta_go_forward_class_audit.md): the method term names the general
     % procedure, not the calculator class. A contrast sensitivity result is
     % Naka-Rushton fits (jContrastSensitivityValue: one model_fit entry per
-    % RB / RBN / RBNS variant), so its term is OBI:0200072 "curve fitting
+    % RB / RBN / RBNS variant and spatial frequency, [tuning fit coefficients
+    % named by symbol]), so its term is OBI:0200072 "curve fitting
     % data transformation"; the calculator (METHODNAME) is the `software`
     % entity on software_id. The parameters are the v1 settings, as before.
     f.method = jMethod(did2.convert.registeredTerm('OBI:0200072', ...
@@ -410,7 +479,7 @@ hasMain = isfield(f, 'interpolated_values') && ~isempty(f.interpolated_values);
 hasAbs = isfield(absLeafFields, 'interpolated_values') ...
     && ~isempty(absLeafFields.interpolated_values);
 if (hasMain || hasAbs) ...
-        && jSchemaHasPath(leafClass, {'interpolated_values', 'response_transform'})
+        && summaryDeclares(leafClass, 'interpolated_values', 'response_transform')
     entries = {};
     if hasMain
         entries{end+1} = f.interpolated_values;
@@ -422,7 +491,28 @@ if (hasMain || hasAbs) ...
     end
     f.interpolated_values = did2.build.list(entries{:});
 end
-if isempty(fieldnames(value)) && ~strcmp(family, 'rf')
+% [tuning summaries in the value] (Decided by Jess Haley, 2026-11-10, did-schema
+% did_v2_go_forward_class_audit.md): `circular_statistics` and
+% `interpolated_values` move from the calculator class's own block into
+% `tuning_curve.value`, beside model_fit and significance. Siblings first: each
+% goes where the LOADED schema declares it (summaryInValue), in the value once
+% tuning_curve.value declares it, on the calculator's block until then.
+% The no-curve test below reads the value as the fold built it, BEFORE the
+% summaries move in: a summary is not a curve, so a calculator whose result
+% block states no curve passes through on either schema (did-schema main,
+% summaries on the calculator; and once they are in the value).
+noCurve = isempty(fieldnames(value));
+if isFit
+    for nm = {'circular_statistics', 'interpolated_values'}
+        if isfield(f, nm{1}) && isEmptySummary(f.(nm{1}))
+            f = rmfield(f, nm{1});   % an empty summary block is never written
+        elseif isfield(f, nm{1}) && summaryInValue(nm{1})
+            value.(nm{1}) = f.(nm{1});
+            f = rmfield(f, nm{1});
+        end
+    end
+end
+if noCurve && ~strcmp(family, 'rf')
     % did-schema #88: the result composite's `value` is REQUIRED (tuning_curve,
     % contrast_sensitivity). A calculator document with no curve has nothing to
     % state there, and inventing one is not allowed, so it passes through
@@ -459,6 +549,18 @@ leaf = jStatement(preBody, leafClass, subjectId, ...
     'Notes', curve.notes, ...
     'Id', char(preBody.base.id));   % id preserved -> inbound references resolve
 
+% [contrast sensitivity repeated fit is a known v1 defect] and [known v1 defects list] (Jess Haley, 2026-11-12): a contrast sensitivity
+% result whose spatial frequencies are all one value is migrated as v1 wrote
+% it, and the run's migration report lists the repeated fits as a known v1
+% defect of the document (jRepeatedSpatialFrequency)
+if strcmp(family, 'csf')
+    defect = jRepeatedSpatialFrequency(srcBlk);
+    fitPath = 'contrast_sensitivity.value.model_fit';
+    if ~isempty(defect) && did2.schema.givesField(leaf, fitPath)
+        did2.convert.migrationReport('defect', leaf, fitPath, defect);
+    end
+end
+
 bodies = [{leaf}, {anchor}, software, runDocs];
 
 % (a field the value mapping had no home for carried the document as v1 above:
@@ -468,6 +570,16 @@ className = classNameOf(preBody);
 if isstruct(response)
     did2.convert.reportNote('tuning_response_variable', className, ...
         char(preBody.base.id), response.outcome);
+end
+% [tuning label choices confirmed] (Decided by Jess Haley, 2026-11-17,
+% did-schema docs/plans/did_v2_go_forward_class_audit.md): a raw curve whose
+% axis is named from its v1 display label (no independent_parameter, or one
+% the name table does not hold) is counted and reported: one note per folded
+% raw curve, the denominator, its DETAIL what the axis was named from
+if strcmp(family, 'stimulus') && isfield(tuningExtra, 'axisNaming') ...
+        && ~isempty(tuningExtra.axisNaming)
+    did2.convert.reportNote('tuning_axis_naming', className, ...
+        char(preBody.base.id), tuningExtra.axisNaming);
 end
 end
 
@@ -509,7 +621,7 @@ for k = 1:numel(rest)
 end
 lf = absBlk.leafFields;
 if isfield(lf, 'interpolated_values') && ~isempty(lf.interpolated_values) ...
-        && ~jSchemaHasPath(leafClass, {'interpolated_values', 'response_transform'})
+        && ~summaryDeclares(leafClass, 'interpolated_values', 'response_transform')
     reasons{end+1} = sprintf(['[carry-056] %s.abs.fitless (the schema in use ' ...
         'declares interpolated_values one structure)'], sourceBlock);
 end
@@ -517,6 +629,39 @@ rest = setdiff(fieldnames(lf), {'interpolated_values'});
 for k = 1:numel(rest)
     reasons{end+1} = sprintf(['[carry-056] %s.abs (its %s: no home beside the ' ...
         'absolute-value fits)'], sourceBlock, rest{k}); %#ok<AGROW>
+end
+end
+
+function tf = isEmptySummary(v)
+%ISEMPTYSUMMARY A tuning summary block that states nothing: empty, a struct
+%   with no fields, or a list whose every entry is one of those.
+if isempty(v)
+    tf = true;
+elseif isstruct(v)
+    tf = all(arrayfun(@(e) isempty(fieldnames(e)), v(:)));
+elseif iscell(v)
+    tf = all(cellfun(@isEmptySummary, v(:)));
+else
+    tf = false;
+end
+end
+
+function tf = summaryInValue(name)
+%SUMMARYINVALUE Does the loaded schema declare the tuning summary NAME
+%   ('circular_statistics', 'interpolated_values') in `tuning_curve.value`?
+%   ([tuning summaries in the value], Decided by Jess Haley, 2026-11-10;
+%   on the calculator classes' own blocks until did-schema moves them.)
+tf = jSchemaHasPath('tuning_curve', {'value', name});
+end
+
+function tf = summaryDeclares(leafClass, name, sub)
+%SUMMARYDECLARES Does the loaded schema declare field SUB of the tuning
+%   summary NAME where it declares NAME: in tuning_curve.value once it is
+%   there ([tuning summaries in the value]), else on LEAFCLASS's own block.
+if summaryInValue(name)
+    tf = jSchemaHasPath('tuning_curve', {'value', name, sub});
+else
+    tf = jSchemaHasPath(leafClass, {name, sub});
 end
 end
 
@@ -733,12 +878,19 @@ function curve = curveContext(preBody, sourceBlock, srcBlk)
 %   CURVE.reasons are tagged carry reasons; CURVE.rebuilt the raw-curve fields
 %   placed by the rebuild; CURVE.outcome the tuning_stimid_rebuild note.
 curve = struct('rebuilt', {{}}, 'notes', '', 'conditions', [], 'reasons', {{}}, ...
-    'outcome', 'none stated');
+    'outcome', 'none stated', 'varied', {{}});
 cls = classNameOf(preBody);
 own = struct();
 if ~strcmp(cls, sourceBlock) && isfield(preBody, cls) && isstruct(preBody.(cls)) ...
         && isscalar(preBody.(cls))
     own = preBody.(cls);
+end
+% the varied parameters, as the calculator's own settings state them (not
+% the label: [tuning axes named from the varied property])
+if isfield(own, 'input_parameters') && isstruct(own.input_parameters) ...
+        && isscalar(own.input_parameters) ...
+        && isfield(own.input_parameters, 'independent_parameter')
+    curve.varied = independentParameters(own, struct());
 end
 % the log, verbatim
 if isfield(own, 'log') && ~isEmptyValue(own.log)
@@ -805,6 +957,35 @@ if ~isempty(bestNames)
         condValues = [condValues, bestValues];
     end
 end
+% [tuning stated value is a condition] (Jess Haley, 2026-11-11): a selection
+% fixing a property at a stated number ({property, 'exact_number', <number>},
+% e.g. tFrequency exact_number 4) is a condition too (temporal frequency = 4),
+% named by the v2 stimulus variable as the best value is; the rule stays only
+% in the v1 `selection` setting, and the stimid rebuild reads the condition
+[statedNames, statedValues, why] = did2.convert.tuningStatedValues(ip);
+if ~isempty(statedNames) || ~isempty(why)
+    statedConds = {};
+    for k = 1:numel(statedNames)
+        if ~isempty(why); break; end
+        [v2, found] = did2.convert.tuningNames('v2', statedNames{k});
+        if ~found
+            why = sprintf('no v2 name in the table for "%s"', statedNames{k});
+        elseif any(strcmp(statedNames{k}, condNames))
+            why = sprintf('"%s" is both an exact_number selection and a condition already', ...
+                statedNames{k});
+        else
+            statedConds{end+1} = did2.build.condition(jLabel(v2), 'Value', statedValues(k)); %#ok<AGROW>
+        end
+    end
+    if ~isempty(why)
+        curve.reasons{end+1} = sprintf(['[carry-056] %s.input_parameters.selection (%s: ' ...
+            '[tuning stated value is a condition])'], cls, why);
+    else
+        conds = [conds, statedConds];
+        condNames = [condNames, statedNames];
+        condValues = [condValues, statedValues];
+    end
+end
 if ~isempty(conds)
     curve.conditions = did2.build.list(conds{:});
 end
@@ -857,6 +1038,42 @@ if ~(isnumeric(v) || islogical(v)) || numel(v) ~= numel(n)
 end
 names = reshape(n, 1, []);
 values = reshape(double(v), 1, []);
+end
+
+function [ip, why] = dependsOnNameRestated(ip, preBody)
+%DEPENDSONNAMERESTATED tuningcurve_calc's input_parameters.depends_on
+%   {name, value} (an earlier writer's copy of its input edge, in every corpus
+%   tuningcurve_calc: did2.convert.tuningNames) less its `name` when the name
+%   only restates the curve's own edge. [depends on name not written when it
+%   equals the edge] (Decided by Jess Haley, 2026-11-12, did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md): "a tuning curve's
+%   `depends on.name` method parameter is not written when it names the
+%   curve's own `stimulus_response_scalar_id` edge; the round-trip inverse
+%   rebuilds it from the edge; a curve whose value names anything else is
+%   carried as v1." The round trip reads the left-out name as restated by
+%   the edge, as it reads the calculator block's inner depends_on copy
+%   ([restated values checked]; +roundtrip/private/tuningInverse.m). WHY is a
+%   carry reason (carry-016, the register row of a depends_on copy that
+%   differs from the top-level edge) when the name is stated and is anything
+%   but 'stimulus_response_scalar_id', or the curve has no such edge; ''
+%   otherwise. A depends_on that is not one structure (written as one text
+%   entry by jParameterList), or that states no name, is left as it was.
+why = '';
+if ~isstruct(ip) || ~isscalar(ip) || ~isfield(ip, 'depends_on') ...
+        || ~isstruct(ip.depends_on) || ~isscalar(ip.depends_on) ...
+        || ~isfield(ip.depends_on, 'name') || isEmptyValue(ip.depends_on.name)
+    return;
+end
+nm = ip.depends_on.name;
+if isstring(nm) && isscalar(nm); nm = char(nm); end
+edge = jDependency(preBody, 'stimulus_response_scalar_id');
+if ~(ischar(nm) && strcmp(nm, 'stimulus_response_scalar_id') && ~isempty(edge))
+    why = sprintf(['[carry-016] %s.input_parameters.depends_on.name (names ' ...
+        'something other than the curve''s stimulus_response_scalar_id edge: ' ...
+        '[depends on name not written when it equals the edge])'], classNameOf(preBody));
+    return;
+end
+ip.depends_on = rmfield(ip.depends_on, 'name');
 end
 
 function p = independentParameters(own, srcBlk)
@@ -1126,4 +1343,16 @@ function t = DATA_ANALYSIS()
 %   EDAM:operation_2945 "Data analysis" ([data analysis is the general method],
 %   Jess Haley, 2026-10-30; registry row built in did-schema).
 t = did2.convert.registeredTerm('EDAM:operation_2945', 'Data analysis');
+end
+
+function [v2, found] = namedSetting(name, names)
+%NAMEDSETTING A setting's v2 name: its row of NAMES ({v1 path, v2 name}), else
+%   its v1 path with '_' as ' ' (jParameterList's default name).
+found = true;
+ix = find(strcmp(names(:, 1), name), 1);
+if isempty(ix)
+    v2 = strrep(name, '_', ' ');
+else
+    v2 = names{ix, 2};
+end
 end

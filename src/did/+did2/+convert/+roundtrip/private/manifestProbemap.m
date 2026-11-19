@@ -38,7 +38,12 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %                      where the migrator wrote none, the type its device
 %                      kind names (its Equipment Type assertion,
 %                      did2.convert.elementTypeOfKind; [element type is a
-%                      device kind term])
+%                      device kind term]); for a kind several types share
+%                      whose statement resolveEpochProbemap dropped, the
+%                      kind plus the row statement's own mode term
+%                      (did2.convert.elementTypeOfKindAndMode; [recording
+%                      mode terms]), or the kind's general type when the row
+%                      carries no mode (a bare patch or sharp)
 %     devicestring     the acquisition system's name, ':', the wiring
 %                      relation's conditions ';'-joined (or the
 %                      acquisition_channels' groups), each the v1 prefix of its
@@ -60,7 +65,12 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %   above, devicestring from the rig and the relation's conditions, and
 %   subjectstring the local_identifier of the entity the element `observes`
 %   (or is `derived_from`, an element with no underlying element), the
-%   element's subject. These rows follow the statements' rows: the round trip
+%   element's subject; with neither, the v1 subject the run's migration
+%   report carries for the element (carry-172, did2.convert.
+%   carriedElementSubject: NDI-matlab's second pass removes the `observes`
+%   of a stimulator no statement names and holds its subject there,
+%   [one-field carry in the migration report], Jess Haley, 2026-11-19).
+%   These rows follow the statements' rows: the round trip
 %   compares a probe map's rows as an unordered set ([probe map rows compared
 %   as a set], Jess Haley, 2026-11-09; private/sameProbemapSeveralRows), the
 %   way NDI finds a probe's rows (ndi.probe.epochprobemapmatch: name,
@@ -220,7 +230,14 @@ end
 
 function id = elementSubjectId(elementId, ctx)
 % the entity an element `observes`, else the one it is `derived_from` (the
-% lineage relation +migrators_j/element.m writes; +roundtrip/element.m reads it)
+% lineage relation +migrators_j/element.m writes; +roundtrip/element.m reads it),
+% else the v1 subject the run's migration report carries for it: NDI-matlab's
+% second pass removes the `observes` of a stimulator no statement names (and
+% of a recording probe with no recording observation) and holds its v1
+% subject there (carry-172; [stimulator subject carried as needing
+% information], [one-field carry in the migration report], [recording probe
+% subject carried the same way], Jess Haley, 2026-11-19), read by
+% did2.convert.carriedElementSubject
 id = '';
 derived = '';
 for k = ctxReferrers(ctx, elementId)
@@ -240,6 +257,9 @@ for k = ctxReferrers(ctx, elementId)
     end
 end
 id = derived;
+if isempty(id)
+    id = did2.convert.carriedElementSubject(elementId);
+end
 end
 
 function [rowText, why] = rowOf(st, ctx, prefixes)
@@ -328,6 +348,22 @@ if isscalar(kindNodes)
     if ~isempty(elType)
         return;
     end
+    % a kind several types share whose statement resolveEpochProbemap dropped
+    % ([recording mode terms]): the kind plus THIS row's mode, the method
+    % term the row's observation carries; with none, the kind's general type
+    % (a bare patch or sharp row)
+    mode = '';
+    m = getIn(st, 'interaction', 'method');
+    if isstruct(m) && isscalar(m) && isfield(m, 'term')
+        [mode, ~] = termParts(m.term);
+    end
+    elType = did2.convert.elementTypeOfKindAndMode(kindNodes{1}, mode);
+    if isempty(elType) && isempty(mode)
+        elType = did2.convert.elementGeneralTypeOfKind(kindNodes{1});
+    end
+    if ~isempty(elType)
+        return;
+    end
 end
 why = sprintf('statement %s: its instrument states no element type', char(st.base.id));
 end
@@ -388,6 +424,9 @@ for g = 1:numel(conds)
     nums = [];
     if isstruct(c) && isfield(c, 'matrix')
         nums = c.matrix;
+    end
+    if isempty(nums) && isstruct(c) && isfield(c, 'numeric')
+        nums = c.numeric;   % the new numeric shape ([one shape for measured numbers])
     end
     groups{g} = struct('type', {getIn(c, 'variable')}, 'numbers', {nums});
 end

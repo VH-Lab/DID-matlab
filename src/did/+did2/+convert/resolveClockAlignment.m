@@ -116,10 +116,11 @@ end
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 
 report = struct( ...
     'documents_inspected',          0, ...
@@ -166,6 +167,11 @@ report.ran = true;
 docs = result.migrated;
 n = numel(docs);
 report.documents_inspected = n;
+% the migrators this pass calls mint (a software entity, ...) in a context
+% keyed on the source they fold, as v1_to_v2 keys one on every source
+% (did2.convert.mintId; [migration reliability practices] (b))
+mintDepth = did2.convert.mintId('-depth');
+restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth)); %#ok<NASGU>
 
 % --- read every document once ---------------------------------------------
 % A document this cannot read is COUNTED, never dropped -- the silentLoss rule.
@@ -242,7 +248,9 @@ for k = 1:n
     end
 
     stamped = stampSessionDocument(bodies{k}, sessionDocId(sid));
+    pushSourceContext(bodies{k});
     folded  = did2.convert.migrators_j.syncgraph(lendSessionIdField(stamped));
+    did2.convert.mintId('-pop');
     % The migrator DECLINED if it handed the (stamped) body straight back -- it
     % returns {preBody} on any guard it cannot pass. That must not be counted as
     % a fold: it would replace the passthrough with the SAME body carrying a
@@ -272,7 +280,7 @@ end
 
 % --- validate through the same door every other pass uses ------------------
 % The bodies are tagged schema_version == TargetVersion, so v1_to_v2
-% short-circuits them (isAlreadyTarget) to ensureClassBlocks + validate. A body
+% short-circuits them (isAlreadyTarget) to validate. A body
 % that cannot validate lands in `quarantine` and the ORIGINAL syncgraph is kept,
 % so a bad fold degrades to "not folded" rather than to a lost document.
 out = did2.convert.v1_to_v2(rebuilt, ...
@@ -426,7 +434,9 @@ for k = 1:n
     for j = 1:2
         stamped = stampEdge(stamped, 'resolved_acquisition_system_id', resolved{j});
     end
+    pushSourceContext(b);
     folded = did2.convert.migrators_j.syncrule(lendSessionIdField(stamped));
+    did2.convert.mintId('-pop');
     if isscalar(folded) && strcmp(classNameOf(folded{1}), 'syncrule')
         report.syncrule_refused_migrator_declined = ...
             report.syncrule_refused_migrator_declined + 1;
@@ -488,6 +498,16 @@ for g = 1:numel(slotOf)
     end
     report.syncrule_configurations_folded = report.syncrule_configurations_folded + 1;
 end
+end
+
+function pushSourceContext(b)
+% open the mint context for the v1 source B ('' when it has no mint key: a
+% mint without a source is then an error, did2:convert:mintId:noSource)
+key = did2.convert.mintKey(b);
+if ~isempty(key)
+    key = ['resolveClockAlignment|' key];
+end
+did2.convert.mintId('-push', key);
 end
 
 function k = systemKey(sessionId, name)

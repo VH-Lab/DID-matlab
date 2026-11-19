@@ -7,8 +7,8 @@ function [node, handles] = vocabulary(kind, handle)
 %   undirected relation names), 'entity_type' (entity.type), 'clock'
 %   (relative_time_reference value.clock and clock_alignment_configuration
 %   clock, the did_clocktype value set) -- or '' when
-%   the handle names no node (culture; a relation with no published term) or
-%   is not a handle of KIND. HANDLE is the snake_case handle code has always
+%   the handle names no node (a relation with no published term; a row the
+%   loaded schema binds with an empty node) or is not a handle of KIND. HANDLE is the snake_case handle code has always
 %   written ('member_of', 'dataset') or the label ('member of'); case,
 %   spaces, underscores and hyphens are ignored.
 %
@@ -36,6 +36,19 @@ function [node, handles] = vocabulary(kind, handle)
 %   did_v1 clocktype strings (NDI ndi.time.clocktype); the label spellings
 %   are listed too, so a name-only document written after the label flip
 %   still finds its node.
+%
+%   CULTURE. Decided by Jess Haley [culture and alignment nodes] (did-schema
+%   did_v2_go_forward_class_audit.md): the entity type `culture` gets the node
+%   OBI:0001876, so code compares it by node like every other type. The table
+%   row is added here first; the loaded schema's own row still decides (step
+%   1 below), so while it binds culture with an EMPTY node (did-schema main
+%   before that registration lands) the handle answers '' and a culture is
+%   written and compared by name exactly as before. A node-less culture
+%   document still matches either way (did2.build.isVocabulary compares a
+%   term with no node by its name). [culture renamed cell culture] (Jess
+%   Haley, 2026-11-10): the type will be renamed "cell culture"; until the
+%   schema's row spells it, 'cell culture' is an alias of the handle
+%   (private/vocabularyAlias), so a node-less document named either matches.
 %
 %   See also did2.build.isVocabulary, did2.build.vocabularyHandle,
 %   did2.convert.channelType.
@@ -82,6 +95,7 @@ switch kind
     case 'entity_type'
         handles = {
             'organism',     'COB:0000022'
+            'culture',      'OBI:0001876'
             'tissue',       'UBERON:0000479'
             'cell',         'CL:0000000'
             'group',        'NCIT:C43359'
@@ -123,12 +137,23 @@ end
 %    label): its node. The schema is the truth for a node, so while its row
 %    is still {RO:0001000, "derived_from"} that row wins over the table's
 %    prov:wasDerivedFrom below (Jess Haley 2026-10-22 [derived from general]).
+%    A row the schema binds with an EMPTY node says the handle has no node
+%    yet, and that wins over the table too (culture, before did-schema
+%    registers OBI:0001876: a writer must not write a node the schema does
+%    not bind).
 rows = schemaRows(kind);
 for k = 1:size(rows, 1)
-    if strcmp(normalize(rows{k, 1}), key) && ~isempty(rows{k, 2})
+    if strcmp(normalize(rows{k, 1}), key)
         node = rows{k, 2};
         return;
     end
+end
+% an ALIAS (private/vocabularyAlias: 'cell culture' for culture, [culture
+% renamed cell culture]) the schema has no row for answers as its handle does
+alias = vocabularyAlias(kind, handle);
+if ~isempty(alias)
+    node = did2.build.vocabulary(kind, alias);
+    return;
 end
 % 2. the handle table, for a handle the schema's label no longer spells
 %    ('sample_of' once the row is "derives from part of", 'funding' once it

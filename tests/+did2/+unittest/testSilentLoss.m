@@ -144,6 +144,32 @@ verifyFalse(testCase, any(strcmp('time_reference_id', edges)), ...
     'one instance satisfies min_count 1');
 end
 
+function testTheCardinalityCheckReportsItsDenominator(testCase)
+% DID-matlab #399. A zero cardinality-violation count must be told apart from
+% "nothing in reach declares a family", so the check reports what it looked
+% at: documents whose class declares a numbered family, the distinct (class,
+% family) pairs, and the (document, family) checks. Two observations, one
+% satisfied and one not: both are CHECKED, the denominator counts both.
+a = bodyStruct('observation', 'obs_with_time');
+a.depends_on = struct('name', {'time_reference_id'}, 'value', {'tr_1'});
+b = bodyStruct('observation', 'obs_no_time');
+rep = did2.validate.silentLoss({did2.document(a), did2.document(b)});
+cd = rep.cardinality_denominator;
+verifyEqual(testCase, cd.docs_checked, 2, ...
+    'both observations declare a numbered family and both are checked');
+verifyGreaterThanOrEqual(testCase, cd.families_declared, 1);
+verifyGreaterThanOrEqual(testCase, cd.family_checks, 2);
+verifyGreaterThanOrEqual(testCase, cd.family_checks, cd.families_declared);
+end
+
+function testTheCardinalityDenominatorIsZeroOnAnEmptyBatch(testCase)
+% The third state: nothing inspected is 0 checks, never an absent field.
+rep = did2.validate.silentLoss({});
+verifyEqual(testCase, rep.cardinality_denominator.docs_checked, 0);
+verifyEqual(testCase, rep.cardinality_denominator.families_declared, 0);
+verifyEqual(testCase, rep.cardinality_denominator.family_checks, 0);
+end
+
 % ===================== #72: the epoch association ==========================
 %
 % NOTE ON PROVENANCE OF THESE TESTS. They are written from the SCHEMA and from

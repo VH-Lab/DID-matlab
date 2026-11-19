@@ -117,10 +117,13 @@ end
 b = did2.convert.v1read.readBase(src);
 id = b.id;
 if ~ischar(id); id = ''; end
+% The row's kind is needs_mapping (Jess Haley, 2026-11-10 [distance and its
+% metadata are one statement]): the statement is built where the dataset map
+% names the distance element (carry-063).
 % carry-register: carry-147
 did2.convert.reportNote('carried_as_v1', 'distance_metadata', id, ...
-    ['[carry-147] awaiting_home: distance_metadata, until its v2 home is ' ...
-    'decided ([reshaped retire classes carried])']);
+    ['[carry-147] needs_mapping: built where the dataset map names the ' ...
+    'distance element (carry-063) ([distance and its metadata are one statement])']);
 bodies = {src};
 end
 

@@ -1,16 +1,20 @@
-function [v1, spec] = vmspikefit(bodies)
+function [v1, spec] = vmspikefit(bodies, ctx)
 %VMSPIKEFIT Rebuild a v1 `vmspikefit` from the model-fit calculation
 %   did2.convert.migrators_j.vmspikefit converted it to.
 %
-%   [V1, SPEC] = did2.convert.roundtrip.vmspikefit(BODIES). BODIES is what
+%   [V1, SPEC] = did2.convert.roundtrip.vmspikefit(BODIES, CTX). BODIES is what
 %   private/jModelFit emitted (the `calculation`, its session anchor, the
 %   software and run entities); private/modelFitInverse says what is rebuilt
 %   and what is not. The edges are the template's `fit_input_id` and the
 %   subject as `element_id`; the `app` block comes back from the software and
 %   run entities (private/calcParts). The template's `epochid.epochid` is not
 %   kept (the calculation is anchored to the session) and is reported. A fit
-%   with no subject is carried whole as v1 (carry-137) and never reaches this
-%   inverse (did2.convert.roundtrip.check compares the carry itself).
+%   that names no subject is about what its input is about ([a fit is about
+%   its input's subject], Jess Haley, 2026-11-10); with CTX, the whole final
+%   batch, the inverse sees that and rebuilds the template's `element_id`
+%   empty. A fit whose input names no subject either is carried whole as v1
+%   (carry-137) and never reaches this inverse (did2.convert.roundtrip.check
+%   compares the carry itself).
 %
 %   The class reads raw v1 (did2.convert.rawV1Classes, [migrators read raw
 %   v1], Jess Haley, 2026-10-26).
@@ -19,9 +23,10 @@ function [v1, spec] = vmspikefit(bodies)
 
 arguments
     bodies cell
+    ctx = []
 end
 
 [v1, spec] = modelFitInverse(bodies, 'vmspikefit', {'fit_input_id'}, 1, ...
     {'fit_name', 'fit_equation', 'fit_parameters', 'fit_parameter_names', ...
-    'fit_sse', 'fit_sse_perpoint', 'fit_constraints'});
+    'fit_sse', 'fit_sse_perpoint', 'fit_constraints'}, ctx, true);
 end

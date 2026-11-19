@@ -62,10 +62,13 @@ function bodies = daqreader_image_epochdata_ingested(preBody)
 %      first") and leaves it open. Retiring the source therefore drops it
 %      silently, and a passthrough keeps it losslessly.
 %
-%   3. #30 IS NOT BUILT. The raw-recording observation model
-%      (`V_eta_recording_observation_plan.md`) is what says whose observation a
-%      camera epoch is and what its `instrument_id` points at; the ingested-
-%      payload plan gates this half on it explicitly.
+%   3. #30 (HISTORICAL-BUILD-CLAIM: this blocker is withdrawn, see 3' below;
+%      #30 is built). It said the raw-recording observation model (did-schema
+%      `did_v2_recording_observation_plan.md`, TEAM-SIGN-OFF [raw recording
+%      observation], amended by [Guard A amended], Jess Haley, 2026-10-27;
+%      did-schema #104 closed 2026-10-29), which says whose observation a
+%      camera epoch is and what its `instrument_id` points at, had not landed;
+%      the ingested-payload plan gates this half on it explicitly.
 %
 %   Blocker 1 alone would justify a guarded passthrough in the fitcurve /
 %   image_stack shape. What makes a passthrough SAFE here is that the V_eta
@@ -343,14 +346,14 @@ refs = did2.convert.epochClockReferences(getSubStruct(blk, 'epochtable'), epochD
 % document rather than being deleted -- deciding it is redundant is the fold's
 % call to make, not this one's.
 
-% the document is kept beside its clock references, so it is emitted
-% complete: the superclass list of its class, from the schema
-% (did2.build.superclasses; [early migration pieces fixed] (2), Jess Haley,
-% 2026-10-26: "the builder produces a complete document"; before,
-% v1_to_v2's ensureClassBlocks rewrote v1's list)
-kept = preBody;
-kept.document_class.superclasses = did2.build.superclasses('daqreader_image_epochdata_ingested');
-bodies = [{kept}, refs];
+% The source is kept beside its clock references UNCHANGED, as the v1
+% document it is: v1_to_v2 hands it on stamped did_v1 (HAND_ON_CLASSES), never
+% as a V2 `daqreader_image_epochdata_ingested`, a retire class (Decided by Jess Haley,
+% 2026-10-25 [retired classes leave V2] (1): "the generic migration stops
+% writing retired classes as V2 documents"; [handed-on are v1 as written],
+% 2026-11-03). Until 2026-11-19 this branch re-stamped the source with the
+% retire class's superclass list and v1_to_v2 wrote it as that V2 class.
+bodies = [{preBody}, refs];
 end
 
 % ===================== small helpers =======================================

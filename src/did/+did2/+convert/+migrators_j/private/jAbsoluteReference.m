@@ -73,9 +73,11 @@ if ~isempty(utc)
 else
     value = struct('start', struct('source_value', instant, 'approximate', false));
     if ~isempty(duration)
+        % a `time` value, not a timestamp: source_numeric in the new numeric
+        % shape ([numeric shape details] (2)); start and end keep their text
         value.duration = struct('seconds', duration.seconds, ...
             'source_unit', duration.source_unit, ...
-            'source_value', duration.source_value);
+            did2.build.sourceNumericField(), duration.source_value);
     end
     if ~isempty(stopText)
         stop = struct();

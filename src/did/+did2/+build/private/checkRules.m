@@ -45,6 +45,16 @@ function checkRules(cache, className, doc, chain)
 %                                     variable and the curve's covariate along
 %                                     it agree on the unit
 %
+%      BOTH NUMERIC SHAPES are read ([one shape for measured numbers], Jess
+%      Haley, 2026-11-17, did-schema did_v2_numeric_shape_plan.md, step 1 of
+%      its section 9): a covariate, condition or parameter may carry the new
+%      flat `numeric` form (counted as one value form beside the old
+%      `quantity` and `matrix`) or the new flat origin + spacing; an entry
+%      carrying a field only the new shape has is also checked against the
+%      plan's section 6 "New" rules (newShapeFields), under the rule name of
+%      its kind (covariate_one_value_form, conditions_one_value,
+%      parameter_one_form).
+%
 %   2. BUILDER CHECKS that the schema states only in a field's documentation
 %      (not as a machine-readable rule). Each cites where it is stated:
 %        conditions_one_value     statement.conditions: "{variable, unit,
@@ -357,9 +367,11 @@ if isstruct(conditions)
         given = valueForms(conditions(k));
         if numel(given) ~= 1
             violated('conditions_one_value', className, sprintf( ...
-                'condition %d carries %d value forms (%s); exactly one of term, quantity, count, text, matrix, logical.', ...
+                'condition %d carries %d value forms (%s); exactly one of term, quantity or numeric, count, text, matrix, logical.', ...
                 k, numel(given), strjoin(given, ', ')));
         end
+        newShapeFields(conditions(k), given{1}, 'conditions_one_value', ...
+            sprintf('%s condition %d', className, k));
         n = valueCount(conditions(k), given{1});
         if n == 0 && strcmp(given{1}, 'quantity') ...
                 && canonicalListedAsGap(doc, conditions(k).quantity, k)
@@ -371,6 +383,12 @@ if isstruct(conditions)
             % value is then the source_value it keeps (first use: an image
             % stack's acquisition time on a clock that is not UTC,
             % [acquisition time on its clock])
+            n = 1;
+        end
+        if n == 0 && strcmp(given{1}, 'numeric') ...
+                && numericListedAsGap(doc, conditions(k), k)
+            % the same in the new numeric shape: `numeric` absent, the
+            % source_numeric kept, the gap <block>.conditions(K).numeric
             n = 1;
         end
         if n ~= 1
@@ -423,9 +441,11 @@ for b = 1:numel(blocks)
         given = valueForms(params(k));
         if numel(given) ~= 1
             violated('parameter_one_form', className, sprintf( ...
-                'parameter %d carries %d value forms (%s); exactly one of term, quantity, count, text, matrix, logical.', ...
+                'parameter %d carries %d value forms (%s); exactly one of term, quantity or numeric, count, text, matrix, logical.', ...
                 k, numel(given), strjoin(given, ', ')));
         end
+        newShapeFields(params(k), given{1}, 'parameter_one_form', ...
+            sprintf('%s parameter %d', className, k));
         if valueCount(params(k), given{1}) ~= 1
             violated('parameter_one_form', className, sprintf( ...
                 'parameter %d carries %d values; a parameter is ONE value.', ...
@@ -633,7 +653,10 @@ for k = 1:numel(covs)
     % `key` (Jess Haley, 2026-11-01, "Yes, rename document to key", did-schema
     % did_v2_data_body_model_plan.md [covariate key]); the old `document`
     % spelling is not read (an undeclared field).
-    for f = {'quantity', 'count', 'term', 'text', 'logical', 'matrix', 'key'}
+    % `numeric`: the new shape's number ([one shape for measured numbers],
+    % Jess Haley, 2026-11-17, did-schema did_v2_numeric_shape_plan.md; read
+    % beside the old forms until step 4 of its section 9)
+    for f = {'quantity', 'numeric', 'count', 'term', 'text', 'logical', 'matrix', 'key'}
         if isfield(c, f{1}) && ~isAbsent(c.(f{1})) ...
                 && ~(strcmp(f{1}, 'key') && isequal(c.(f{1}), -1))   % -1: the blank, not used
             given{end+1} = f{1}; %#ok<AGROW>
@@ -641,10 +664,11 @@ for k = 1:numel(covs)
     end
     if numel(given) ~= 1
         violated('covariate_one_value_form', where, sprintf( ...
-            'carries %d value forms (%s); exactly one of origin+spacing, quantity, count, term, text, logical, matrix, key.', ...
+            'carries %d value forms (%s); exactly one of origin+spacing, quantity or numeric, count, term, text, logical, matrix, key.', ...
             numel(given), strjoin(given, ', ')));
     end
     form = given{1};
+    newShapeFields(c, form, 'covariate_one_value_form', where);
     hasIndex = isfield(c, 'index') && ~isAbsent(c.index);
     if hasIndex && ~strcmp(form, 'key')
         % [key covariate index]: `index` picks entries of a keyed document
@@ -656,7 +680,7 @@ for k = 1:numel(covs)
             'a covariate given by %s runs along exactly one dimension; `along` has %d.', form, numel(along)));
     end
     if isfield(c, 'cyclic') && isTrue(c.cyclic) ...
-            && ~(any(strcmp(form, {'origin+spacing', 'quantity'})) && numel(along) == 1)
+            && ~(any(strcmp(form, {'origin+spacing', 'quantity', 'numeric'})) && numel(along) == 1)
         % Jess Haley 2026-10-22 [covariate details], 5.1a
         violated('covariate_cyclic', where, sprintf( ...
             ['`cyclic` applies only to an origin+spacing or a quantity covariate ' ...
@@ -712,8 +736,76 @@ switch form
         end
     case 'matrix'
         shapeMatches(c.matrix, ext, true, 'matrix', where);
+    case 'numeric'
+        % the new shape's number: one per position (as `quantity`), or an
+        % array at each position (as `matrix`: "an array at each position
+        % adds dimensions", did_v2_numeric_shape_plan.md section 4)
+        for f = {'numeric', 'source_numeric'}
+            if isfield(c, f{1}) && ~isAbsent(c.(f{1})) && isnumeric(c.(f{1}))
+                v = c.(f{1});
+                shapeMatches(v, ext, numel(v) ~= prod(ext), f{1}, where);
+            end
+        end
     otherwise
         shapeMatches(c.(form), ext, false, form, where);
+end
+end
+
+function newShapeFields(entry, form, ruleName, where)
+%NEWSHAPEFIELDS The fields of the new numeric shape go with their form
+%   ([one shape for measured numbers], Jess Haley, 2026-11-17, did-schema
+%   did_v2_numeric_shape_plan.md section 6, "New"): source_numeric and
+%   tolerance only with numeric; unit and source_unit with numeric or
+%   origin; spacing, source_origin and source_spacing only with origin, and
+%   origin and spacing flat numbers. Checked on an entry that carries a field
+%   only the new shape has; an entry in the old shape is checked as before
+%   (step 1 of the plan's section 9 reads both). FORM is the entry's one form
+%   ('origin+spacing' for a regular covariate). "numeric has a unit, unless
+%   the variable is unitless or the run's report lists a gap" waits for the
+%   classes to declare which variables are unitless (step 3) and is not
+%   checked here.
+if ~isNewShapeEntry(entry)
+    return;
+end
+isNumeric = strcmp(form, 'numeric');
+isOrigin = strcmp(form, 'origin+spacing');
+only = {'source_numeric', isNumeric, 'numeric'; ...
+        'tolerance', isNumeric, 'numeric'; ...
+        'unit', isNumeric || isOrigin, 'numeric or origin'; ...
+        'source_unit', isNumeric || isOrigin, 'numeric or origin'; ...
+        'source_origin', isOrigin, 'origin'; ...
+        'source_spacing', isOrigin, 'origin'};
+for r = 1:size(only, 1)
+    name = only{r, 1};
+    if isfield(entry, name) && ~isAbsent(entry.(name)) && ~only{r, 2}
+        violated(ruleName, where, sprintf( ...
+            '`%s` goes only with %s in the new numeric shape; this entry is given by %s.', ...
+            name, only{r, 3}, form));
+    end
+end
+for n = {'origin', 'spacing'}
+    if isfield(entry, n{1}) && ~isAbsent(entry.(n{1})) && isstruct(entry.(n{1}))
+        violated(ruleName, where, sprintf( ...
+            ['`%s` is a flat number in the new numeric shape (with source_origin, ' ...
+             'source_spacing); this entry mixes it with the old {value, source_value} block.'], n{1}));
+    end
+end
+end
+
+function tf = isNewShapeEntry(entry)
+% An entry carrying a field only the new numeric shape has.
+tf = false;
+for f = {'numeric', 'source_numeric', 'tolerance', 'source_origin', 'source_spacing'}
+    if isfield(entry, f{1}) && ~isAbsent(entry.(f{1}))
+        tf = true;
+        return;
+    end
+end
+for f = {'origin', 'spacing'}
+    if isfield(entry, f{1}) && ~isAbsent(entry.(f{1})) && isnumeric(entry.(f{1}))
+        tf = true;
+        return;
+    end
 end
 end
 
@@ -784,10 +876,17 @@ end
 
 given = {};
 % `logical` since Jess Haley 2026-10-22 [logical entries] (F2a)
-for f = {'term', 'quantity', 'count', 'text', 'matrix', 'logical'}
+for f = {'term', 'quantity', 'numeric', 'count', 'text', 'matrix', 'logical'}
     if isfield(entry, f{1}) && ~isAbsent(entry.(f{1}))
         given{end+1} = f{1}; %#ok<AGROW>
     end
+end
+% the new shape ([one shape for measured numbers]): a number kept only as the
+% source wrote it is the `numeric` form, its canonical absent (as a quantity
+% with only a source_value is the `quantity` form)
+if ~any(strcmp(given, 'numeric')) && isfield(entry, 'source_numeric') ...
+        && ~isAbsent(entry.source_numeric)
+    given{end+1} = 'numeric';
 end
 end
 
@@ -805,6 +904,19 @@ suffix = sprintf('.conditions(%d).quantity.value', k);
 tf = any(cellfun(@(f) endsWith(f, suffix), named));
 end
 
+function tf = numericListedAsGap(doc, entry, k)
+%NUMERICLISTEDASGAP canonicalListedAsGap in the new numeric shape: condition
+%   K keeps a source_numeric and the run's migration report lists its
+%   canonical (<block>.conditions(K).numeric).
+tf = false;
+if ~isfield(entry, 'source_numeric') || isAbsent(entry.source_numeric)
+    return;
+end
+named = did2.schema.reportedGaps(doc);
+suffix = sprintf('.conditions(%d).numeric', k);
+tf = any(cellfun(@(f) endsWith(f, suffix), named));
+end
+
 function n = valueCount(entry, form)
 %VALUECOUNT How many values one value form of an entry holds.
 arguments
@@ -812,13 +924,16 @@ arguments
     form (1,:) char
 end
 
-v = entry.(form);
+v = [];
+if isfield(entry, form); v = entry.(form); end
 switch form
     case 'quantity'
         n = 0;
         if isstruct(v) && isfield(v, 'value'); n = numel(v.value); end
-    case 'matrix'
-        n = double(~isAbsent(v));   % the whole array is ONE value (AMENDMENT 4)
+    case {'matrix', 'numeric'}
+        % the whole array is ONE value (AMENDMENT 4); the new shape's `numeric`
+        % replaces both `quantity` and `matrix`, so it is one value too
+        n = double(~isAbsent(v));
     case 'logical'
         n = numel(v);
     case 'text'

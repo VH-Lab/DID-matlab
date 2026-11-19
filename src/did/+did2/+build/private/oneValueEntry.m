@@ -34,6 +34,17 @@ function s = oneValueEntry(variable, forms, opts, ruleName)
 %
 %   Fields that are not given are left out. The result is not yet checked
 %   against the schema; the caller passes it to did2.build.composite.
+%
+%   THE NEW SHAPE (OPTS.Shape 'new'; default did2.build.numericShape(), 'new'
+%   since step 2 of did-schema did_v2_numeric_shape_plan.md [one shape for
+%   measured numbers], Jess Haley, 2026-11-17): the number is flat -- 'Value'
+%   / 'Quantity' and 'Matrix' write `numeric`, SourceValue writes
+%   `source_numeric` in the source's own type -- a number given as a number,
+%   text given as text ([numeric shape details] (1), Jess Haley, 2026-11-17:
+%   "a number where v1 stored a number, text where v1 stored text (e.g. a
+%   method parameter's "0.030")"; the old shape stores both as text),
+%   OPTS.Tolerance [minus plus] writes `tolerance`; `unit` and
+%   `source_unit` go only with a number (a count has no unit, plan section 4).
 
 arguments
     variable
@@ -47,6 +58,16 @@ if iscell(variable) || (isstruct(variable) && ~isscalar(variable)) ...
     error('did2:build:typeMismatch', ...
         'The variable is one term: a name or a scalar {node, name} struct.');
 end
+
+shape = '';
+if isfield(opts, 'Shape'); shape = char(opts.Shape); end
+if isempty(shape); shape = did2.build.numericShape(); end
+if ~any(strcmp(shape, {'old', 'new'}))
+    error('did2:build:badOption', '''Shape'' is ''old'' or ''new''; got ''%s''.', shape);
+end
+isNew = strcmp(shape, 'new');
+tol = [];
+if isfield(opts, 'Tolerance'); tol = opts.Tolerance; end
 
 given = forms(cellfun(@(f) ~isAbsent(opts.(f)), forms));
 if numel(given) ~= 1
@@ -88,6 +109,7 @@ if ~isOne
         ruleName, form, numel(one));
 end
 numeric = any(strcmp(form, {'Value', 'Quantity'}));
+sourceGiven = opts.SourceValue;   % as given: the new shape keeps its type
 if ~isAbsent(opts.SourceValue)
     if ~numeric
         error('did2:build:ruleViolated', ...
@@ -104,6 +126,53 @@ end
 if (~isAbsent(opts.Unit) || ~isAbsent(opts.SourceUnit)) && ~(numeric || any(strcmp(form, {'Count', 'Matrix'})))
     error('did2:build:ruleViolated', ...
         '''Unit''/''SourceUnit'' apply only to a number, a count or a matrix.');
+end
+
+if isNew && strcmp(form, 'Count') && (~isAbsent(opts.Unit) || ~isAbsent(opts.SourceUnit))
+    error('did2:build:ruleViolated', ...
+        '''Unit''/''SourceUnit'' apply only to a number in the new shape; a count has no unit.');
+end
+if ~isAbsent(tol)
+    if ~isNew
+        error('did2:build:ruleViolated', ...
+            '''Tolerance'' is written only in the new shape (''Shape'', ''new''); the old entry has none.');
+    end
+    if ~(numeric || strcmp(form, 'Matrix'))
+        error('did2:build:ruleViolated', '''Tolerance'' goes only with a number.');
+    end
+    if ~(isnumeric(tol) && numel(tol) == 2 && all(isfinite(tol(:))) && all(tol(:) >= 0))
+        error('did2:build:badTolerance', ...
+            '''Tolerance'' is [minus plus], two non-negative finite numbers in ''Unit''.');
+    end
+end
+if isNew
+    s = struct('variable', {variable});
+    if ~isAbsent(opts.Approximate); s.approximate = opts.Approximate; end
+    switch form
+        case 'Term'
+            s.term = one;
+        case 'Count'
+            s.count = one;
+        case 'Text'
+            s.text = char(one);
+        case 'Logical'
+            s.logical = logical(one);
+        otherwise   % Value, Quantity, Matrix: the number, flat
+            s.numeric = double(one);
+            if ~isAbsent(opts.Unit); s.unit = opts.Unit; end
+            if ~isAbsent(sourceGiven)
+                if isnumeric(sourceGiven) || islogical(sourceGiven)
+                    s.source_numeric = double(sourceGiven);
+                else
+                    s.source_numeric = char(sourceGiven);
+                end
+            end
+            if ~isAbsent(opts.SourceUnit); s.source_unit = opts.SourceUnit; end
+            if ~isAbsent(tol)
+                s.tolerance = struct('minus', double(tol(1)), 'plus', double(tol(2)));
+            end
+    end
+    return;
 end
 
 s = struct('variable', {variable});

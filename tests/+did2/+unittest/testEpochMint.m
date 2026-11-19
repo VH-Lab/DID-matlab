@@ -171,11 +171,15 @@ function testTheInlineClocksBlockIsLeftInPlace(testCase)
 % #69's defect, and the lesser evil against the 2,484 corpus-B quarantines that
 % deleting ahead of a corpus run cost last time. If a later change clears the
 % block, THIS test is the one that should fail and be inverted deliberately.
+% [retired classes leave V2] (Jess Haley, 2026-10-25, step (1)): the source is
+% the v1 element_epoch pass 1 handed on, and its v1 block is what stays.
 out = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
     elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')});
-ae = ofClass(out, 'acquisition_epoch');
+ae = ofClass(out, 'element_epoch');
 verifyEqual(testCase, numel(ae), 1);
-clocks = ae{1}.get('acquisition_epoch.clocks');
+verifyEmpty(testCase, ofClass(out, 'acquisition_epoch'));
+verifyEqual(testCase, char(ae{1}.get('element_epoch.epoch_clock')), 'dev_local_time');
+clocks = did2.convert.elementEpochClockRecords(ae{1}.toStruct());
 verifyEqual(testCase, numel(clocks), 1);
 verifyEqual(testCase, char(clocks(1).name), 'dev_local_time');
 end
@@ -271,17 +275,73 @@ verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, 'the DENOMINATOR');
 verifyEqual(testCase, rep.epoch_extent_refused_no_system, 1);
 verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 1);
 verifyEmpty(testCase, rep.epoch_extent_carried_source_ids);
+% [agreeing untied sources count as one] leaves the one-source case as it was
+verifyEqual(testCase, rep.epoch_extent_untied_epochs, 1, 'the untied DENOMINATOR');
+verifyEqual(testCase, rep.epoch_extent_untied_several_sources_anchored, 0);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs_carried, 0);
 end
 
-function testUntiedExtentsFromSeveralSourcesAreCarried(testCase)
-% [untied epochs keep the session anchor]: "Extents that come from several
-% sources, or disagree, still carry it." Two untied sources of one epoch: no
-% reference, both sources carried.
+function testSeveralAgreeingUntiedSourcesKeepTheSessionAnchor(testCase)
+% INVERTS testUntiedExtentsFromSeveralSourcesAreCarried. [agreeing untied
+% sources count as one] (Jess Haley, 2026-11-12, amending [untied epochs keep
+% the session anchor]): an untied epoch with SEVERAL sources keeps the
+% session-anchored time reference when all its sources state the same clock
+% list in the same order and identical t0/t1. Three such sources: one
+% reference, nothing carried.
 a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
 b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+c = elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3');
+[out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b, c});
+verifyEqual(testCase, numel(ofClass(out, 'epoch')), 1, 'one epoch');
+refs = ofClass(out, 'relative_time_reference');
+assertEqual(testCase, numel(refs), 1, 'ONE session-anchored reference, not three');
+ep = ofClass(out, 'epoch');
+verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), depValueOf(ep{1}, 'session_id'), ...
+    'anchored on the session the epoch belongs to');
+verifyEqual(testCase, rep.epoch_extent_sources_seen, 3, 'the DENOMINATOR');
+verifyEqual(testCase, rep.epoch_extent_refused_no_system, 3);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs, 1);
+verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 1);
+verifyEqual(testCase, rep.epoch_extent_untied_several_sources_anchored, 1);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs_carried, 0);
+verifyEmpty(testCase, rep.epoch_extent_carried_source_ids, 'none carried');
+verifyEqual(testCase, rep.epoch_extent_carried_sources, 0);
+end
+
+function testUntiedSourcesDifferingInT1AreAllCarried(testCase)
+% [agreeing untied sources count as one]: "any difference still carries all of
+% them". The third source states a different t1: no reference, all three
+% sources carried.
+a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+c = elementEpochBody('ee_3', 'sess_1', 't00001', 'elem_3');
+c.element_epoch.t0_t1 = [0, 452.709857];
+[out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b, c});
+verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
+verifyEqual(testCase, rep.epoch_extent_untied_epochs, 1);
+verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 0);
+verifyEqual(testCase, rep.epoch_extent_untied_several_sources_anchored, 0);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs_carried, 1);
+verifyEqual(testCase, sort(rep.epoch_extent_carried_source_ids), {'ee_1', 'ee_2', 'ee_3'});
+verifyEqual(testCase, rep.epoch_extent_carried_sources, 3);
+end
+
+function testUntiedSourcesDifferingInClockOrderAreAllCarried(testCase)
+% [agreeing untied sources count as one]: the same clock list IN THE SAME
+% ORDER. Two sources state the same two clocks with the same times per clock,
+% in opposite order: that is a difference, so both are carried.
+a = elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1');
+a.element_epoch.epoch_clock = 'dev_local_time,utc';
+a.element_epoch.t0_t1 = [0, 10; 100, 110];   % 2-by-N: columns are clocks
+b = elementEpochBody('ee_2', 'sess_1', 't00001', 'elem_2');
+b.element_epoch.epoch_clock = 'utc,dev_local_time';
+b.element_epoch.t0_t1 = [10, 0; 110, 100];
 [out, rep] = mintFrom({sessionBody('sess_doc_1', 'sess_1', 'ref'), a, b});
+verifyEqual(testCase, rep.epoch_extent_clocks_read, 4, ...
+    'both sources were read, two clocks each');
 verifyEmpty(testCase, ofClass(out, 'relative_time_reference'));
 verifyEqual(testCase, rep.epoch_extent_untied_session_anchored, 0);
+verifyEqual(testCase, rep.epoch_extent_untied_epochs_carried, 1);
 verifyEqual(testCase, sort(rep.epoch_extent_carried_source_ids), {'ee_1', 'ee_2'});
 end
 
@@ -950,19 +1010,21 @@ end
 
 function testPassOneBehaviourIsUnchangedByTheMint(testCase)
 % The mint ADDS; it must not disturb what pass 1 produced. In particular
-% `element_epoch` still renames to `acquisition_epoch` and keeps its `epochid`
-% string -- #60's own ordering constraint is that the string may not leave
-% before every epoch-scoped document carries its replacement edge, and that
-% rewire is NOT part of this build.
+% `element_epoch` is handed on as v1 ([retired classes leave V2], Jess Haley,
+% 2026-10-25, step (1); it was renamed to `acquisition_epoch` until then) and
+% keeps its `epochid` string -- #60's own ordering constraint is that the
+% string may not leave before every epoch-scoped document carries its
+% replacement edge, and that rewire is NOT part of this build.
 [out, ~] = mintFrom({ ...
     sessionBody('sd_A', 'sess_A', 'ts_2008'), ...
     elementEpochBody('ee_1', 'sess_A', 't00069', 'el_1')});
-verifyTrue(testCase, any(strcmp(classNames(out), 'acquisition_epoch')));
-ae = ofClass(out, 'acquisition_epoch');
+verifyTrue(testCase, any(strcmp(classNames(out), 'element_epoch')));
+ae = ofClass(out, 'element_epoch');
+verifyEqual(testCase, char(ae{1}.get('document_class.schema_version')), 'did_v1');
 verifyEqual(testCase, char(ae{1}.get('epochid.epochid')), 't00069', ...
     'the v1 handle stays until the 15-class rewire lands');
 verifyFalse(testCase, hasDep(ae{1}.toStruct(), 'epoch_id'), ...
-    ['acquisition_epoch declares no epoch_id edge, so the mint must not ' ...
+    ['element_epoch declares no epoch_id edge, so the mint must not ' ...
      'stamp one -- an undeclared edge is the invented-edge pattern reversed']);
 end
 

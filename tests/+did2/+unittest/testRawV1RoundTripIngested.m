@@ -32,8 +32,9 @@ function tests = testRawV1RoundTripIngested
 %   These are the shapes of all 4,438 / 4,437 / 2,832 / 1,417 documents of the
 %   corpora (Dab and Soph; census of the corpus zips, 2026-10-27).
 %
-%   Pass 1 converts the mfdaq cache (renamed to daqreader_epochdata_ingested),
-%   passes the manifest through, and carries the mapping (carry-036) and the
+%   Pass 1 hands the mfdaq cache on as v1 ([retired classes leave V2]; it was
+%   renamed to the retired daqreader_epochdata_ingested until then), passes
+%   the manifest through, and carries the mapping (carry-036) and the
 %   stimulus file (carry-046). The mapping's fold is did2.convert.epochMint's;
 %   its round trip is tested here on epochMint's output.
 %
@@ -60,50 +61,50 @@ r = runRaw({writerMfdaq('mf_1', 1), writerManifest('efi_1', 't00001', 'nav_1', p
 verifyEqual(testCase, r.summary.legacy_ndi_document.bodies_read_raw_v1, 4);
 end
 
-% ===================== the mfdaq cache: converted ========================
+% ===================== the mfdaq cache: handed on as v1 ==================
 
-function testWriterMfdaqCachesConvertAndRoundTrip(testCase)
+function testWriterMfdaqCachesAreHandedOnAsV1AndRoundTrip(testCase)
+% [retired classes leave V2] (Decided by Jess Haley, 2026-10-25), step (1):
+% pass 1 no longer writes the cache as the retired V2 class
+% `daqreader_epochdata_ingested`; it hands the v1 document on unchanged,
+% stamped did_v1, to resolveEpochProbemap (v1_to_v2 HAND_ON_CLASSES). This
+% test asserted the rename until then.
 cases = {'one clock', writerMfdaq('mf_1', 1); 'two clocks', writerMfdaq('mf_2', 2)};
 for k = 1:size(cases, 1)
     [label, v1] = cases{k, :};
     out = runRaw(v1);
     verifyEmpty(testCase, out.quarantine, label);
     verifyEqual(testCase, numel(out.migrated), 1, label);
-    verifyEmpty(testCase, out.passthrough, [label ': converted, not passed through']);
+    verifyEqual(testCase, numel(out.passthrough), 1, [label ': handed on, recorded as a passthrough']);
     doc = out.migrated{1};
     verifyEqual(testCase, char(doc.get('document_class.class_name')), ...
-        'daqreader_epochdata_ingested', label);
-    verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v2', label);
-    verifyEqual(testCase, doc.get('daqreader_epochdata_ingested.parameters.sample_digital_segment'), ...
-        1e7, label);
+        'daqreader_mfdaq_epochdata_ingested', label);
+    verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v1', label);
+    emitted = doc.toStruct();
+    emitted.document_class = rmfield(emitted.document_class, 'schema_version');
+    verifyTrue(testCase, isequaln(emitted, v1), [label ': the handed-on document is not the v1 source']);
+    verifyFalse(testCase, isfield(out.summary.migration_notes, 'carried_as_v1'), ...
+        [label ': handed on, not carried']);
     r = did2.convert.roundtrip.check(v1, out.migrated);
-    verifyFalse(testCase, r.carried, label);
+    verifyTrue(testCase, r.carried, label);
     verifyRoundTrip(testCase, r, label, findingsFor(label));
-    accounted = [r.matched, r.not_set];
-    for p = {'base.id', 'base.session_id', 'base.datestamp', 'base.name', ...
-            'document_class.class_name', 'depends_on(1).name', 'depends_on(1).value', ...
-            'epochid.epochid', 'daqreader_epochdata_ingested.epochtable.epochclock', ...
-            'daqreader_epochdata_ingested.epochtable.t0_t1', ...
-            'daqreader_mfdaq_epochdata_ingested.parameters.sample_analog_segment', ...
-            'daqreader_mfdaq_epochdata_ingested.parameters.sample_digital_segment', ...
-            'files.file_list', 'files.file_info(1).name'}
-        verifyTrue(testCase, any(strcmp(p{1}, accounted)), ...
-            sprintf('%s: %s is not accounted for', label, p{1}));
-    end
 end
 end
 
-function testTheMfdaqLiftRoundTrips(testCase)
-% with an `epoch_id` edge (never on a v1 document; the parent's lift) the
-% epochtable also becomes references, which restate it
+function testAnMfdaqCacheWithAnEpochEdgeIsHandedOnUnchanged(testCase)
+% with an `epoch_id` edge (never on a v1 document) the migrator lifted the
+% epochtable into references beside the renamed cache; the cache is now
+% handed on unchanged and resolveEpochProbemap writes the epoch's clocks
 v1 = writerMfdaq('mf_3', 2);
 v1.depends_on = [v1.depends_on; struct('name', 'epoch_id', 'value', 'epochdoc_1')];
 v1 = jsondecode(jsonencode(v1));
 out = runRaw(v1);
 verifyEmpty(testCase, out.quarantine);
-verifyGreaterThan(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
 r = did2.convert.roundtrip.check(v1, out.migrated);
-verifyRoundTrip(testCase, r, 'mfdaq cache with its lift', {});
+verifyTrue(testCase, r.carried);
+verifyRoundTrip(testCase, r, 'mfdaq cache with an epoch edge', {});
 end
 
 function testAnUnreadMfdaqFieldIsCarried(testCase)

@@ -38,7 +38,7 @@ on:
       # Keep the file: its `did_schema_ref` input is a real capability the
       # matrix does not offer -- pointing Soph at a different did-schema branch.
       # To run Soph alone: bump the token below and push.
-      #   soph-run-token: 1
+      #   soph-run-token: 2
       - '.github/workflows/test-soph-corpus.yml'
   workflow_dispatch:
     inputs:
@@ -47,6 +47,21 @@ on:
         required: false
         default: ''
         type: string
+      shards:
+        # SESSION SHARDS. Soph stopped fitting in one 6-hour job (runs
+        # 41094952761, 44030323541 and 44026343232 were cancelled at the limit;
+        # the last full run to finish, 40635635248, took 4h35m). With N > 1
+        # the corpus is cut into N shards of whole sessions
+        # (tools/shard_corpus.py; sessions joined by a depends_on stay
+        # together), one job per shard, each running the same test with the
+        # same assertions over its shard. The union of the shards is the whole
+        # corpus. Each report carries the shard manifest under `sample`, so a
+        # shard's numbers cannot pass for the corpus's. 1 runs the whole
+        # corpus in one job, as before.
+        description: 'Number of whole-session shards (1 = the whole corpus in one job)'
+        required: false
+        default: '6'
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -54,9 +69,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  soph_corpus:
-    name: Soph (Griswold) corpus discovery
+  select:
+    name: "select shards"
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+      n: ${{ steps.pick.outputs.n }}
+    steps:
+      - id: pick
+        shell: bash
+        env:
+          # A push carries no inputs: it shards too (one job no longer fits).
+          RAW: ${{ inputs.shards || '6' }}
+        run: |
+          set -euo pipefail
+          case "$RAW" in
+            ''|*[!0-9]*) echo "::error::shards '$RAW' is not a whole number"; exit 1 ;;
+          esac
+          n=$((10#$RAW))
+          if [ "$n" -lt 1 ] || [ "$n" -gt 20 ]; then
+            echo "::error::shards must be 1..20, got $n"; exit 1
+          fi
+          m=$(python3 -c "import json,sys; print(json.dumps(list(range(int(sys.argv[1])))))" "$n")
+          echo "DENOMINATOR: $n shard(s) -> $m"
+          echo "matrix=$m" >> "$GITHUB_OUTPUT"
+          echo "n=$n" >> "$GITHUB_OUTPUT"
+
+  soph_corpus:
+    needs: select
+    name: "Soph (Griswold) corpus discovery${{ needs.select.outputs.n != '1' && format(' shard {0} of {1}', matrix.shard, needs.select.outputs.n) || '' }}"
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, whatever another shard does.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.select.outputs.matrix) }}
     env:
       DID_SCHEMA_REF: ${{ inputs.did_schema_ref || 'main' }}
       DID_RUN_SOPH_TEST: '1'
@@ -71,39 +118,18 @@ jobs:
           ref: ${{ env.DID_SCHEMA_REF }}
           path: did-schema
 
-      - name: Assemble V_eta schema set (stable + draft)
+      - name: Assemble the did_v2 schema set (did-schema main, no tiers)
         run: |
           mkdir -p "${GITHUB_WORKSPACE}/eta-schemas"
-          # DEPRECATED IS PART OF THE VALIDATION SET, even though it is not part
-          # of the go-forward MODEL. Those are two different questions and they
-          # were conflated here until 2026-08-10.
-          #
-          # `deprecated/` holds exactly the v1 shapes that DELIBERATELY pass
-          # through unmodelled -- projectvar, stimulus_parameter_table,
-          # image_stack(+_parameters). A passthrough's whole contract is that the
-          # document reaches the validator under its own class, so omitting the
-          # tier means every one of them QUARANTINES. The tier was doing nothing.
-          #
-          # It went unnoticed because three of the four have never appeared in a
-          # tested corpus. The fourth did: corpus run 31421715133 turned 4,563 JH
-          # `image_stack` documents into `No schema file for class "image_stack"`
-          # the moment the guard made them passthroughs instead of subject-less
-          # observations. Trading silent husks for loud quarantines was the point
-          # of the guard; losing them at validation was not.
-          #
-          # Safe to copy: no filename collides across tiers (checked, 245 files).
-          # [schema set renamed did_v2] (Jess Haley, 2026-10-25), step 1: the set's
-          # new name when did-schema has it, else V_eta; and [retired classes leave
-          # V2]: a set with no deprecated/ tier is not an error.
-          # [schema folders by family] (Decided by Jess Haley, 2026-10-30, did-schema
-          # V_eta_go_forward_class_audit.md): schemas/did_v2/ holds class files only, in
-          # family subfolders, and the registries move to schemas/registry/ and
-          # schemas/generated/. Siblings first, so both layouts are read: every class
-          # file under did_v2/ (else V_eta/) at any depth -- the old stable/, draft/ and
-          # deprecated/ tiers included -- plus every *_meta.json and
-          # ndi_reserved_keys.json under schemas/ and every registry/*.json, copied
-          # FLAT. A basename held twice fails the step; so does finding no class.
-          # On today's tiered did-schema it copies what `cp stable/ draft/` copied.
+          # did-schema main's layout ([schema folders by family], Decided by Jess
+          # Haley, 2026-10-30, did-schema did_v2_go_forward_class_audit.md): every
+          # class file under schemas/did_v2/ at any depth (core classes at the top,
+          # family subfolders, retiring/), plus the registries in schemas/registry/
+          # and schemas/generated/, copied FLAT. There are no stable/, draft/ or
+          # deprecated/ tiers ([one folder, final classes only]), and no
+          # deprecated/*.json is copied ([retired classes leave V2] step 2, Jess
+          # Haley, 2026-10-25): a tier folder fails the step, as do a basename held
+          # twice and finding no class (tools/assemble_schema_set.py).
           python3 tools/assemble_schema_set.py did-schema/schemas "${GITHUB_WORKSPACE}/eta-schemas"
 
       - name: Check out NDI-matlab's v1 templates at the locked main
@@ -173,6 +199,30 @@ jobs:
             addpath(genpath("tools"));
             matbox.installRequirements(didtools.projectdir());
 
+      - name: Cut Soph into whole-session shards (this job's shard)
+        if: ${{ needs.select.outputs.n != '1' }}
+        # Downloads the zip the test would, writes this job's shard where the
+        # driver reads a cut corpus (DID_CORPUS_SAMPLE_DIR,
+        # did2.unittest.helpers.sampledCorpus, which refuses to fall back to
+        # the full corpus when the variable is set and the shard is missing).
+        env:
+          SHARD: ${{ matrix.shard }}
+          NSHARDS: ${{ needs.select.outputs.n }}
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/corpus-src"
+          out="$RUNNER_TEMP/corpus-shard"
+          mkdir -p "$src"
+          curl -sSfL -o "$src/Soph.zip" \
+            "https://ndi-programming-development.s3.us-east-1.amazonaws.com/Soph.zip"
+          unzip -q "$src/Soph.zip" -d "$src"
+          python3 -I tools/shard_corpus.py --corpus Soph --src "$src/Soph" \
+              --out "$out" --shards "$NSHARDS" --index "$SHARD"
+          rm -rf "$src"
+          mkdir -p tests/corpus-reports
+          cp "$out/Soph.sample.json" "tests/corpus-reports/Soph.shard.json"
+          echo "DID_CORPUS_SAMPLE_DIR=$out" >> "$GITHUB_ENV"
+
       - name: Run the Soph corpus discovery test
         uses: matlab-actions/run-command@v2
         with:
@@ -187,7 +237,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: soph-corpus-discovery-report
+          name: soph-corpus-discovery-report${{ needs.select.outputs.n != '1' && format('-shard{0}-of-{1}', matrix.shard, needs.select.outputs.n) || '' }}
           # BOTH ROOTS, and `warn` not `ignore`: MATLAB's pwd here is `tests/`,
           # so a root-only path silently uploaded nothing.
           path: |

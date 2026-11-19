@@ -242,6 +242,10 @@ POST_PASSES = [
         # rows around it are document counts and nothing else says so.
         ("experimental_approach_terms_emitted", "experimental_approach TERMS (not documents)"),
         ("relations_emitted", "directed_relation documents emitted"),
+        # [copyright from another tool is emitted] (Jess Haley 2026-11-12)
+        ("copyright_years_emitted", "copyright year date assertions emitted (schema:copyrightYear)"),
+        ("copyright_holders_emitted", "  copyrightHolder relations emitted"),
+        ("copyright_unplaced", "Copyright documents with content that has no place (component carried as v1)"),
         # THE LOSSES, WITH NUMBERS ON THEM. Consumed because leaving them would
         # dangle an `openminds_#` edge; not emitted because the entity tier has
         # nowhere to put them. Counted rather than shrugged at, per the brief.
@@ -480,8 +484,18 @@ POST_PASSES = [
         # epoch whose extents all come from ONE untied source and agree keeps
         # a session-anchored reference; several sources or disagreeing ones
         # are carried (counted in epoch_extent_carried_sources below).
+        # [agreeing untied sources count as one] (Jess Haley, 2026-11-12):
+        # several untied sources stating the same clocks in the same order
+        # with identical t0/t1 are anchored too. untied_epochs is the
+        # denominator: anchored + epochs_carried equals it.
+        ("epoch_extent_untied_epochs",
+         "  epochs holding an untied source (denominator of the two below)"),
         ("epoch_extent_untied_session_anchored",
-         "  of those, epochs kept on the SESSION anchor (one source, agreeing)"),
+         "  of those, epochs kept on the SESSION anchor (sources agreeing)"),
+        ("epoch_extent_untied_several_sources_anchored",
+         "    of those, from SEVERAL agreeing sources"),
+        ("epoch_extent_untied_epochs_carried",
+         "  of those, epochs whose untied sources are CARRIED"),
         ("epoch_extent_carried_sources",
          "  acquisition_epoch sources CARRIED (untied or conflicting)"),
         ("arming_edge_declaration_unchecked",
@@ -519,6 +533,12 @@ POST_PASSES = [
         ("pyraview_deferred_resolved", "  deferred pyraview FOLDED (left the quarantine)"),
         ("pyraview_deferred_unresolved", "  deferred pyraview UNRESOLVED (stays quarantined)"),
         ("pyraview_deferred_epochs_minted", "  epochs minted for a deferred pyraview (it alone named them)"),
+        ("spikewaves_deferred_seen", "spikewaves DEFERRED from pass 1 (in the quarantine)"),
+        ("spikewaves_deferred_resolved", "  deferred spikewaves MIGRATED (left the quarantine)"),
+        ("spikewaves_deferred_unresolved", "  deferred spikewaves UNRESOLVED (stays quarantined)"),
+        ("spikewaves_deferred_quarantined", "  deferred spikewaves QUARANTINED by the re-run"),
+        ("spikewaves_deferred_carried_dependent", "  deferred spikewaves CARRIED: an edge to a carried document"),
+        ("spikewaves_deferred_epochs_minted", "  epochs minted for a deferred spikewaves (it alone named them)"),
     ]),
     ("session_anchor_fold", "did2.convert.resolveSessionAnchors", [
         ("documents_inspected", "documents inspected"),
@@ -594,7 +614,11 @@ POST_PASSES = [
         ("rows_stimulator", "  rows whose type is a stimulator (the other direction)"),
         ("observations_emitted", "OBSERVATIONS emitted (>= rows: patch/sharp yield 2)"),
         ("mode_methods_written", "  observations built with a decided mode method term (resolveEpochProbemap recordingModeMethod)"),
-        ("manipulations_emitted", "MANIPULATIONS emitted (one term_manipulation per stimulator row)"),
+        ("manipulations_emitted", "MANIPULATIONS emitted (stimulator rows that carry something the wiring and element do not)"),
+        ("stimulator_manipulations_not_written", "  stimulator rows held by their wiring and element: no manipulation written"),
+        ("stimulator_manipulations_kept_no_wiring", "  manipulation kept: the row has no wiring relation"),
+        ("stimulator_manipulations_kept_other_subject", "  manipulation kept: the row names another subject than its element's"),
+        ("stimulator_manipulations_kept_other_type", "  manipulation kept: the row's type is not its element's"),
         ("instrument_resolved", "  with an instrument_id edge (probe resolved)"),
         ("instrument_omitted", "  instrument_id OMITTED (probe unresolved; edge optional)"),
         # device half (increment 2): the devicestring -> acq system + channels.
@@ -631,7 +655,8 @@ POST_PASSES = [
         # [clamp mode of unrecorded probe dropped] (Jess Haley 2026-11-03)
         ("mode_statements_seen", "`element type` statements of a shared device kind (patch, sharp, microscope)"),
         ("mode_statements_dropped_unrecorded", "  DROPPED: the probe never recorded (ingested session, no probe-map row names it)"),
-        ("mode_statements_kept_named_in_probemap", "  kept: a probe-map row names the probe"),
+        ("mode_statements_dropped_recorded", "  DROPPED: a recorded probe whose kind and recording modes rebuild the word ([recording mode terms])"),
+        ("mode_statements_kept_named_in_probemap", "  kept: a probe-map row names the probe and its modes do not rebuild the word"),
         ("mode_statements_kept_session_not_ingested", "  kept: the session has no ingested epoch (NDI's second pass reads it)"),
         ("channels_unbindable_type", "  rows whose channel type is not one of the ten channel types (no wiring)"),
         ("channels_derived_read_mode", "  channel groups naming a derived read mode (dep, den, dimp, ...; not a channel type)"),
@@ -726,6 +751,11 @@ POST_PASSES = [
         ("sorter_input_edges", "    input_id edges added"),
         ("sorter_input_fallback_entity", "  FALLBACK: no recording observation, the electrode entity"),
         ("sorter_link_quarantined", "  link QUARANTINED (kept as it was)"),
+        ("spike_calculations_seen", "spikewaves calculations (spike times, waveforms)"),
+        ("spike_calculations_linked", "  linked to the element's recording observation of their epoch"),
+        ("spike_calculation_input_edges", "  input_id edges added"),
+        ("spike_calculation_input_fallback", "  FALLBACK: no recording observation of that element and epoch"),
+        ("spike_calculation_link_quarantined", "  link QUARANTINED (kept as it was)"),
     ]),
     # #61's RESOLVER HALF (TEAM-SIGN-OFF [stimulus response] 2026-08-08): the
     # run knobs move inline onto the calculation whose value kind is
@@ -796,6 +826,27 @@ POST_PASSES = [
         # into a method document (id preserved), so nothing is removed. Printed
         # anyway: a non-zero would mean documents vanished from the batch.
         ("parameters_documents_deleted", "parameters documents DELETED (0 by construction: converted in place)"),
+        # Jess Haley 2026-11-12 [response computed from the spike times]: each
+        # response lists its unit's spike-times observation for its epoch as
+        # an input; one with none is listed in the migration report. isspike
+        # is then not written (rebuilt from the input); one that disagrees
+        # keeps the parameters document v1.
+        ("spike_observations_seen", "spike-times observations in the batch"),
+        ("spike_input_linked", "responses GIVEN their spike-times input"),
+        ("spike_input_already_linked", "  already had it (a re-run)"),
+        ("spike_input_not_found", "  NO matching spike-times observation (listed in the report)"),
+        ("spike_input_ambiguous", "  two or more matching (not guessed; listed)"),
+        ("spike_input_link_quarantined", "  link did not validate (kept without it)"),
+        ("isspike_rebuilt_from_inputs", "methods with isspike NOT written (rebuilt from inputs)"),
+        ("isspike_written_no_converted_user", "  methods still stating isspike (no converted user)"),
+        ("refused_isspike_disagrees", "  REFUSED: isspike disagrees with the inputs (kept v1)"),
+        # Jess Haley 2026-11-12 [orphaned response settings are an accepted
+        # loss]: a parameters document nothing refers to, with an identical
+        # used twin in its session, is not migrated (listed in the report's
+        # known_v1_defects); one with no such twin is converted as before.
+        ("orphans_seen", "parameters documents nothing refers to (orphans)"),
+        ("orphans_dropped_identical_twin", "  NOT MIGRATED: identical used twin (accepted loss, listed)"),
+        ("orphans_kept_no_identical_twin", "  no identical used twin: converted as before"),
     ]),
     # TEAM DECISION 2026-08-11: generic_file -> opaque_body + a statement whose
     # `variable` comes from the sibling ontologyLabel.
@@ -2504,6 +2555,65 @@ def render_carry_register_rows(r, out):
         return
     for row, c in zip(rows, counts):
         p("      %-40s %6s" % (row, c))
+
+
+def render_tuning_axis_naming(r, out):
+    """[tuning label choices confirmed] (Decided by Jess Haley, 2026-11-17,
+    did-schema docs/plans/did_v2_go_forward_class_audit.md): of the raw
+    tuning curves folded (the denominator, first), how many had their axis
+    named from v1 `independent_parameter` and how many from the v1 display
+    label (no `independent_parameter`, one the name table does not hold, or
+    a count that is not the number of columns). Absent, or a report that
+    says not measured, is NOT MEASURED, never 0 of 0."""
+    p = out.append if isinstance(out, list) else out
+    e = r.get("tuning_axis_naming")
+    if not isinstance(e, dict) or "not_measured" in e or "count_failed" in e:
+        why = "this report carries no tuning_axis_naming block"
+        if isinstance(e, dict):
+            why = str(e.get("not_measured") or
+                      ("the count failed: %s" % e.get("count_failed")))
+        p("    tuning axis naming: NOT MEASURED -- %s" % why)
+        return
+
+    def n(key):
+        v = e.get(key)
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    def s(v):
+        return "?" if v is None else str(v)
+
+    total = n("curves_folded")
+    varied, label = n("named_from_varied_parameter"), n("named_from_label")
+    none_, table, count = (n("label_no_independent_parameter"),
+                           n("label_not_in_name_table"), n("label_count_mismatch"))
+    nodet, unread = n("no_detail"), n("unread")
+    p("    tuning axis naming: %s folded raw tuning curve(s)" % s(total))
+    p("      named from independent_parameter:  %6s" % s(varied))
+    p("      named from the v1 label:           %6s  (no independent_parameter %s, "
+      "not in the name table %s, count not the columns %s)"
+      % (s(label), s(none_), s(table), s(count)))
+    if nodet or unread:
+        p("      no reason recorded %s; unread reason %s" % (s(nodet), s(unread)))
+    parts = (varied, label, nodet or 0, unread or 0)
+    if None not in (total,) + parts and sum(parts) != total:
+        p("      *** the parts (%d) do not add up to the denominator (%d)"
+          % (sum(parts), total))
+    names = e.get("not_in_name_table") or []
+    if isinstance(names, str):
+        names = [names]
+    counts = e.get("not_in_name_table_counts")
+    if not isinstance(counts, list):
+        counts = [] if counts is None else [counts]
+    for k, name in enumerate(names):
+        c = counts[k] if k < len(counts) else "?"
+        if isinstance(c, float) and c.is_integer():
+            c = int(c)
+        p("      not in the name table: %-30s %6s" % (name, c))
+    rows = e.get("by_class") or {}
+    for cls in sorted(rows):
+        p("      %-40s %6s folded" % (cls, rows[cls]))
 
 
 def render_tuning_response_variable(r, out):
@@ -4885,9 +4995,17 @@ def _render_response_parameters_reading(rep, p):
             # refused_unknown_setting (2026-10-27) is absent from older
             # reports, which could not refuse for it: 0 there
             doc_refused = sum(parts) + (
-                _int_or_none(rep.get("refused_unknown_setting")) or 0)
+                _int_or_none(rep.get("refused_unknown_setting")) or 0) + (
+                # [response computed from the spike times] (2026-11-12):
+                # absent from older reports, 0 there
+                _int_or_none(rep.get("refused_isspike_disagrees")) or 0)
         quar = _int_or_none(rep.get("fold_quarantined"))
-        if seen_p and minted == 0 and doc_refused == 0 and not quar:
+        # [orphaned response settings are an accepted loss] (2026-11-12): a
+        # dropped orphan is neither minted nor refused; absent from older
+        # reports, 0 there
+        dropped = _int_or_none(rep.get("orphans_dropped_identical_twin")) or 0
+        if seen_p and minted == 0 and doc_refused == 0 and not quar \
+                and not dropped:
             p("          *** %d parameters document(s) seen and NOTHING minted or"
               % seen_p)
             p("          *** refused. That is a")
@@ -4895,7 +5013,7 @@ def _render_response_parameters_reading(rep, p):
             p("          *** parameters document either becomes a method or is")
             p("          *** refused with a reason.")
         if None not in (seen_p, minted, doc_refused, quar):
-            residual = seen_p - minted - doc_refused - quar
+            residual = seen_p - minted - doc_refused - quar - dropped
             if residual:
                 p("          *** %d parameters document(s) neither minted,"
                   % residual)
@@ -5846,6 +5964,21 @@ def render_report(r, out):
         # exists to remove, one field further down.
         p("  silent-loss: %s edge-family cardinality violation(s)"
           % sl.get("family_violation_count", "?"))
+        # DID-matlab #399: what the cardinality check looked at, printed
+        # unconditionally; a report without the block says so.
+        cdn = sl.get("cardinality_denominator")
+        if isinstance(cdn, dict):
+            p("      DENOMINATOR: %s doc(s) declaring a numbered family checked; "
+              "%s (class, family) pair(s); %s (document, family) check(s)"
+              % (cdn.get("docs_checked", "?"), cdn.get("families_declared", "?"),
+                 cdn.get("family_checks", "?")))
+            if cdn.get("family_checks") == 0:
+                p("      *** no document declares a numbered family, so the rule")
+                p("      *** COULD NOT FIRE. Zero above means 'untested', not"
+                  " 'clean'.")
+        else:
+            p("      DENOMINATOR: NOT REPORTED (this report carries no "
+              "cardinality_denominator; the zero is 'not measured')")
         for v in aslist(sl.get("family_count_violation"))[:10]:
             p("      %8s  %s.%s  declared %s, found %s"
               % (v.get("count", "?"), v.get("class_name", "?"),
@@ -5978,6 +6111,7 @@ def render_report(r, out):
     render_stimulus_control_edges(r, out)
     render_carry_register_rows(r, out)
     render_tuning_response_variable(r, out)
+    render_tuning_axis_naming(r, out)
     # DIRECTLY AFTER the silent-loss block, and specifically after its
     # family-uniqueness lines: the two are the #52 pair and a reader compares
     # them. "The uniqueness rule fired and found nothing" and "the regime the
@@ -6091,6 +6225,11 @@ def rollup(reports, out):
                "members_examined": 0, "members_resolved": 0,
                "members_unresolved": 0, "members_no_key": 0,
                "members_keyed_by_node": 0, "members_keyed_by_name": 0}
+    # #63 rollup denominators (DID-matlab #399), and how many reports carried
+    # them: a report written before silentLoss emitted the block is "not
+    # reported", never a zero.
+    card_den = {"docs_checked": 0, "families_declared": 0, "family_checks": 0}
+    card_den_reports = 0
     inspected = 0
     addends = []
     quarantine = 0
@@ -6137,6 +6276,14 @@ def rollup(reports, out):
                 uni_den[k] += int(ud.get(k) or 0)
             except (TypeError, ValueError):
                 pass
+        cdn = sl.get("cardinality_denominator")
+        if isinstance(cdn, dict):
+            card_den_reports += 1
+            for k in card_den:
+                try:
+                    card_den[k] += int(cdn.get(k) or 0)
+                except (TypeError, ValueError):
+                    pass
 
     p("")
     p("=" * 72)
@@ -6179,6 +6326,27 @@ def rollup(reports, out):
         total = sum(table.values())
         p("")
         p("  %s: %d document(s) across %d row(s)" % (label, total, len(table)))
+        if table is families:
+            # DID-matlab #399: the cardinality table's denominator, printed
+            # first and unconditionally, as the uniqueness table's is. Summed
+            # families_declared counts a (class, family) pair once PER
+            # CORPUS, so it is labelled as a sum.
+            p("      DENOMINATOR: %d of %d silent-loss report(s) carried a "
+              "cardinality denominator"
+              % (card_den_reports, with_silent_loss))
+            p("      DENOMINATOR: %d document(s) declaring a numbered family "
+              "checked; %d (document, family) check(s); %d (class, family) "
+              "pair(s), summed over corpora"
+              % (card_den["docs_checked"], card_den["family_checks"],
+                 card_den["families_declared"]))
+            if card_den_reports < with_silent_loss:
+                p("      *** %d report(s) carried NO cardinality denominator:"
+                  % (with_silent_loss - card_den_reports))
+                p("      *** their part of the zero is 'not measured'.")
+            if card_den["family_checks"] == 0:
+                p("      *** NOTHING IN REACH DECLARES A NUMBERED FAMILY, or no")
+                p("      *** report said what it checked. The rule could not")
+                p("      *** fire; the zero is 'untested', not 'clean'.")
         if table is uniques:
             # The uniqueness row set is the one where an empty table is
             # AMBIGUOUS, so its denominators print beside it rather than three

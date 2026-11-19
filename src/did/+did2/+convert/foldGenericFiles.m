@@ -445,10 +445,11 @@ restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 
 % DENOMINATOR FIRST AND UNCONDITIONALLY (Operating Rule 5). The report is
 % attached BEFORE a single document is read, so "the pass never ran" and "the
@@ -694,7 +695,7 @@ end
 
 % --- validate through the same door every other pass uses -------------------
 % The bodies are tagged schema_version == TargetVersion, so v1_to_v2
-% short-circuits them (isAlreadyTarget) to ensureClassBlocks + validate. A pair
+% short-circuits them (isAlreadyTarget) to validate. A pair
 % is accepted ONLY IF BOTH HALVES SURVIVE: a statement without its bytes, or
 % bytes with no statement to hang off, is worse than an unfolded document.
 out = did2.convert.v1_to_v2(rebuilt, ...
@@ -1120,6 +1121,15 @@ for i = 1:numel(la)
                             'source_value', L.origin.value);
                         L.spacing = struct('value', L.spacing.value * factor, ...
                             'source_value', L.spacing.value);
+                    elseif isfield(L, 'origin') && isnumeric(L.origin) && ~isempty(L.origin) ...
+                            && isfield(L, 'spacing') && isnumeric(L.spacing) && ~isempty(L.spacing)
+                        % the new numeric shape ([one shape for measured
+                        % numbers], Jess Haley, 2026-11-17): flat origin and
+                        % spacing beside source_origin and source_spacing
+                        L.source_origin = L.origin;
+                        L.source_spacing = L.spacing;
+                        L.origin = L.origin * factor;
+                        L.spacing = L.spacing * factor;
                     end
                 end
                 lc{la{i}.covIdx} = L;
@@ -1130,6 +1140,9 @@ for i = 1:numel(la)
                     && (~isfield(L, 'term') || isempty(L.term)) ...
                     && numel(labelList(P.term)) == double(la{i}.n)
                 if isfield(L, 'quantity'); L.quantity = []; end
+                % ... or the new numeric shape's number ([one shape for measured numbers])
+                if isfield(L, 'numeric'); L.numeric = []; end
+                if isfield(L, 'source_numeric'); L.source_numeric = []; end
                 L.term = P.term;
                 lc{la{i}.covIdx} = L;
                 changed = true;
@@ -1190,15 +1203,19 @@ arguments
 end
 
 f = 1;
+% the old {value, source_value} pair or the new flat origin / spacing and
+% source_origin / source_spacing (did2.read.numeric; [one shape for measured
+% numbers], Jess Haley, 2026-11-17)
+r = did2.read.numeric(P);
+if ~strcmp(r.form, 'origin')
+    return;
+end
 for name = {'spacing', 'origin'}
-    if isfield(P, name{1}) && isstruct(P.(name{1})) ...
-            && isfield(P.(name{1}), 'source_value')
-        sv = double(P.(name{1}).source_value);
-        v = double(P.(name{1}).value);
-        if ~isempty(sv) && sv ~= 0
-            f = v / sv;
-            return;
-        end
+    sv = double(r.(['source_' name{1}]));
+    v = double(r.(name{1}));
+    if ~isempty(sv) && sv ~= 0
+        f = v / sv;
+        return;
     end
 end
 end
@@ -1597,7 +1614,10 @@ function [body, anchor] = makeStatement(src, node, subjectId)
 %   requires a `data_type` the source does not state).
 term = did2.convert.registeredTerm(char(node), '');
 [sid, ds] = sessionAndTime(src);
+% its id derived from the source's (did2.convert.mintId; practice (b) of
+% [migration reliability practices], Jess Haley, 2026-10-26)
 anchor = did2.build.relativeTimeReference(sid, 'Relation', 'intervalDuring', ...
+    'Id', did2.convert.mintId('generic_file anchor', baseField(src, 'id')), ...
     'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
 body = did2.build.statement('observation', char(subjectId), term, term, ...
     'TimeReferenceIds', {anchor.base.id}, ...

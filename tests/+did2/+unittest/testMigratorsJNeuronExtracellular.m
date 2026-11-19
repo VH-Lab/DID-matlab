@@ -213,12 +213,14 @@ function testTheTimeAxisIsRegularWithTheMeasuredOriginAndSpacing(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
 verifyNotEmpty(testCase, ax(1).cov.origin, 'regular: origin + spacing (AMENDMENT 6 removed `regular`)');
-verifyEqual(testCase, ax(1).cov.origin.value,         -0.00025, 'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).cov.origin.source_value,  -0.00025, 'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).cov.spacing.value,         5e-05,   'AbsTol', 1e-18);
-verifyEqual(testCase, ax(1).cov.spacing.source_value,  5e-05,   'AbsTol', 1e-18);
+% the new numeric shape: flat origin and spacing beside source_origin and
+% source_spacing ([one shape for measured numbers], plan section 4)
+verifyEqual(testCase, ax(1).cov.origin,          -0.00025, 'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.source_origin,   -0.00025, 'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.spacing,          5e-05,   'AbsTol', 1e-18);
+verifyEqual(testCase, ax(1).cov.source_spacing,   5e-05,   'AbsTol', 1e-18);
 verifyEqual(testCase, ax(1).cov.source_unit.name, 'second');
-verifyFalse(testCase, isfield(ax(1).cov, 'quantity') && ~isempty(ax(1).cov.quantity), ...
+verifyFalse(testCase, isfield(ax(1).cov, 'numeric') && ~isempty(ax(1).cov.numeric), ...
     'a regular covariate stores no coordinates -- origin+spacing generate them');
 end
 
@@ -293,12 +295,15 @@ end
 function testAllSixHundredAndSeventyTwoValuesReachTheDocumentInColumnMajorOrder(testCase)
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
 value = pick(out, 'calculation+voltage').voltage.value;
-verifyEqual(testCase, numel(value), 672, ...
+% the new numeric shape: the series is ONE cell whose source_numeric is the
+% array (plan section 8, answer 4)
+verifyEqual(testCase, numel(value), 1, 'one value cell');
+verifyEqual(testCase, numel(value.source_numeric), 672, ...
     'DENOMINATOR: 21 time samples x 32 channels; a short array is a silent drop');
-verifyEqual(testCase, [value.source_value], 1:672, ...
+verifyEqual(testCase, value.source_numeric, 1:672, ...
     'column-major -- reshape(values,[21 32]) must invert w(:)');
 ax = did2.unittest.helpers.axesOf(pick(out, 'calculation+voltage'));
-verifyEqual(testCase, prod([ax.n]), numel(value));
+verifyEqual(testCase, prod([ax.n]), numel(value.source_numeric));
 end
 
 
@@ -338,7 +343,35 @@ w = pick(out, 'calculation+voltage');
 verifyFalse(testCase, isfield(w.value, 'data_body') && logical(w.value.data_body));
 verifyEqual(testCase, w.value.data_type, 'float64');
 verifyEqual(testCase, w.value.source_data_type, 'double');
-verifyEqual(testCase, w.statement.variable.name, 'mean spike waveform');
+% INVERTED 2026-11-13: [spike unit quality and mean waveform terms] (Decided
+% by Jess Haley, 2026-11-12, did-schema did_v2_go_forward_class_audit.md):
+% the variable is EMPTY:0000447 "spike waveform" ('mean spike waveform', no
+% node, until then)
+verifyEqual(testCase, char(w.statement.variable.node), 'EMPTY:0000447');
+verifyEqual(testCase, char(w.statement.variable.name), 'spike waveform');
+end
+
+
+function testTheSpikeUnitTermsAndTheMeanAsMethod(testCase)
+% [spike unit quality and mean waveform terms] (Decided by Jess Haley,
+% 2026-11-12, did-schema did_v2_go_forward_class_audit.md): the sort quality
+% (label and number) is EMPTY:0000446 "unit isolation quality"; the mean
+% waveform is EMPTY:0000447 "spike waveform" with the method NCIT:C53319
+% Arithmetic Mean, and no other calculation gets that method.
+out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
+w = pick(out, 'calculation+voltage');
+verifyEqual(testCase, char(w.interaction.method.term.node), 'NCIT:C53319');
+verifyFalse(testCase, isfield(w.interaction.method, 'parameters') ...
+    && ~isempty(w.interaction.method.parameters), 'the mean has no settings');
+q = labelCalc(out, 'unit isolation quality');
+verifyEqual(testCase, char(q.statement.variable.node), 'EMPTY:0000446');
+s = pick(out, 'calculation+score');
+verifyEqual(testCase, char(s.statement.variable.node), 'EMPTY:0000446');
+verifyEqual(testCase, char(s.statement.variable.name), 'unit isolation quality');
+verifyFalse(testCase, isfield(s, 'interaction') && isfield(s.interaction, 'method') ...
+    && isfield(s.interaction.method, 'term') ...
+    && strcmp(char(s.interaction.method.term.node), 'NCIT:C53319'), ...
+    'the quality is not an average');
 end
 
 
@@ -468,7 +501,7 @@ function testTheQualityLabelIsALabelCalculationNotDropped(testCase)
 % `quality_label` ('multi' / 'single' in the corpus) was dropped before item
 % 48; it is now a label calculation about the unit.
 out = did2.convert.migrators_j.neuron_extracellular(neuronExtracellularV1());
-q = labelCalc(out, 'spike sort quality');
+q = labelCalc(out, 'unit isolation quality');   % 'spike sort quality' until 2026-11-12
 verifyEqual(testCase, q.label.value.name, 'multi');
 verifyEqual(testCase, depValueOf(q, 'entity_id'), 'rec_sub_1');
 end

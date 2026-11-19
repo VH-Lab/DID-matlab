@@ -163,12 +163,21 @@ end
 if isfield(result, 'summary') && isfield(result.summary, 'legacy_ndi_document')
     report.legacy_ndi_document = result.summary.legacy_ndi_document;
 end
-% CLASS-BLOCK PADDING ([early migration pieces fixed] (2), Jess Haley,
-% 2026-10-26): the converted bodies did2.convert.ensureClassBlocks changed, by
-% v1 class, with its denominator. Those migrators do not yet produce a complete
-% document; the padding goes once this reads 0. Absent is not zero.
-if isfield(result, 'summary') && isfield(result.summary, 'class_blocks_padding')
-    report.class_blocks_padding = result.summary.class_blocks_padding;
+% THE v1 NAME CHECK ([v1 name goes to the class's own name field], Jess Haley,
+% 2026-10-27): the converted sources pass 1's name check read (the
+% denominator), those with a non-empty v1 name, those carried as statements
+% (carry-106), and those whose name no emitted document keeps
+% (`v1_name_not_kept`), by class, with the distinct names not kept. Absent is
+% "not measured", not zero.
+if isfield(result, 'summary') && isfield(result.summary, 'v1_name')
+    report.v1_name = result.summary.v1_name;
+    report.v1_name.not_kept_distinct_names = {};
+    if isfield(result.summary, 'migration_notes') ...
+            && isfield(result.summary.migration_notes, 'v1_name_not_kept') ...
+            && isfield(result.summary.migration_notes.v1_name_not_kept, 'distinct_details')
+        report.v1_name.not_kept_distinct_names = ...
+            result.summary.migration_notes.v1_name_not_kept.distinct_details;
+    end
 end
 % HANDED ON AS v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03):
 % pass 1's count, by class, of the documents it handed on to a batch pass
@@ -223,6 +232,14 @@ if isfield(result, 'summary') && isfield(result.summary, 'migration_notes')
         else
             report.carried_as_v1.notes_citing_no_row = n.count;
         end
+        % WHAT each carry names (report-only): every distinct DETAIL and how
+        % many notes carry it (EXACT, did2.convert.reportNote 'collect'), so a
+        % row's count can be read back as the fields behind it without a
+        % re-run. count - sum(distinct_detail_counts) notes had no DETAIL.
+        if isfield(n, 'distinct_details') && isfield(n, 'distinct_detail_counts')
+            report.carried_as_v1.distinct_details = cellstr(n.distinct_details);
+            report.carried_as_v1.distinct_detail_counts = n.distinct_detail_counts;
+        end
     end
 end
 % THE TUNING RESPONSE VARIABLE ([response variable], [dF/F as variable],
@@ -246,6 +263,23 @@ if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
         'general_unrecognised', sum(cnt(unrec)), ...
         'unrecognised_spellings', {det(unrec)}, ...
         'by_class', n.by_class);
+end
+% [tuning label choices confirmed] (Decided by Jess Haley, 2026-11-17,
+% did-schema docs/plans/did_v2_go_forward_class_audit.md): the folded raw
+% tuning curves (the denominator) and how many had their axis named from v1
+% independent_parameter or from the v1 display label, by why
+% (did2.convert.tuningAxisNamingCounts). Absent when no raw curve was folded:
+% "not measured". Best-effort: a count must not cost the run its report.
+if isfield(result, 'summary') && isfield(result.summary, 'migration_notes') ...
+        && isfield(result.summary.migration_notes, 'tuning_axis_naming')
+    try
+        report.tuning_axis_naming = did2.convert.tuningAxisNamingCounts( ...
+            result.summary.migration_notes.tuning_axis_naming);
+    catch namingErr
+        report.tuning_axis_naming = struct('count_failed', namingErr.message);
+    end
+else
+    report.tuning_axis_naming = struct('not_measured', 'no raw tuning curve was folded');
 end
 
 % The v1 SOURCE census: three pre-build measurements that exist nowhere else

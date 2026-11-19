@@ -23,7 +23,8 @@ function [spelling, settings] = compressionCodec(value, options)
 %   says which ('blosc-zstd'), else as the term's name. A parameter's variable
 %   is read back to the setting key the table names for it ('compression
 %   level' -> clevel), else to the variable's own name. A parameter's value is
-%   its text, logical, count, quantity.value or term name; an inner
+%   its text, logical, count, number (old quantity.value or new numeric) or
+%   term name; an inner
 %   compressor written as a term reads back to the table's spelling
 %   (Zstandard -> 'zstd').
 %
@@ -189,6 +190,11 @@ elseif isfield(e, 'count') && ~isempty(e.count)
 elseif isfield(e, 'quantity') && isstruct(e.quantity) && isfield(e.quantity, 'value') ...
         && ~isempty(e.quantity.value)
     v = double(e.quantity.value);
+elseif isfield(e, 'numeric') && ~isempty(e.numeric)
+    % the new numeric shape ([one shape for measured numbers], Jess Haley,
+    % 2026-11-17, did-schema did_v2_numeric_shape_plan.md), as
+    % did2.build.compression writes a number that is not whole
+    v = double(e.numeric);
 elseif isfield(e, 'term') && isstruct(e.term)
     v = textOf(e.term, 'name');
 elseif isfield(e, 'text')

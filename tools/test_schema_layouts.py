@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""Both did-schema layouts read the same: tools/assemble_schema_set.py and
+"""did-schema's layout is read: tools/assemble_schema_set.py and
 tools/did_schema_names.py.
+
+UPDATED 2026-11-19: the assembly reads only did-schema main's layout (classes
+by family under `schemas/did_v2/`); a tiered tree (stable/, draft/,
+deprecated/) FAILS ([retired classes leave V2] step 2, [one folder, final
+classes only]). Until then it read both and the old-layout tests below
+asserted the old `cp`. did_schema_names still finds a data file by either name.
 
 did-schema moves to family folders (Decided by Jess Haley, 2026-10-30
 [schema folders by family], did-schema `V_eta_go_forward_class_audit.md`):
@@ -120,39 +126,41 @@ def stems(dest):
     return {f[:-5] for f in os.listdir(dest) if f.endswith(".json")}
 
 
-def test_both_layouts_assemble_the_same_classes_and_registries():
+def test_the_family_layout_assembles_every_class_and_registry():
     with tmp() as d:
-        got = {}
-        for layout in ("old", "new"):
-            schemas = build(os.path.join(d, layout), layout)
-            dest = os.path.join(d, layout + "-flat")
-            code, out = assemble(schemas, dest)
-            assert code == 0, out
-            assert out.startswith("DENOMINATOR: %d class file(s)" % len(CLASSES)), out
-            got[layout] = stems(dest)
-        classes = {s for s in got["new"] if asm.is_class_name(s)}
+        schemas = build(os.path.join(d, "new"), "new")
+        dest = os.path.join(d, "new-flat")
+        code, out = assemble(schemas, dest)
+        assert code == 0, out
+        assert out.startswith("DENOMINATOR: %d class file(s)" % len(CLASSES)), out
+        got = stems(dest)
+        classes = {s for s in got if asm.is_class_name(s)}
         assert classes == set(CLASSES), classes
-        assert {s for s in got["old"] if asm.is_class_name(s)} == classes
         meta = {m[:-5] for m in META}
-        assert meta <= got["old"] and meta <= got["new"], got
-        # The new layout also carries the authored registry files; they are not
-        # classes, so the cache never loads them as one.
-        extra = got["new"] - got["old"]
+        assert meta <= got, got
+        # the authored registry files are copied too; they are not classes
+        extra = got - classes - meta
         assert extra == {"did_v2_" + b[:-5] for b, f in DATA.items()
                          if f == "registry"}, extra
-        assert not any(asm.is_class_name(s) for s in extra), extra
-        assert "index" not in got["new"] and "topics" not in got["old"]
+        assert "index" not in got
 
 
-def test_the_old_layout_matches_the_old_cp():
+def test_a_tiered_layout_fails():
+    # [retired classes leave V2] step 2: no deprecated/ (nor stable/, draft/)
+    # tier is copied; a tree that has one is not did-schema main
     with tmp() as d:
         schemas = build(os.path.join(d, "old"), "old")
         dest = os.path.join(d, "flat")
-        assert assemble(schemas, dest)[0] == 0
-        expected = set()
-        for tier in ("stable", "draft", "deprecated"):
-            expected |= {f[:-5] for f in os.listdir(os.path.join(schemas, "did_v2", tier))}
-        assert stems(dest) == expected, stems(dest) ^ expected
+        code, out = assemble(schemas, dest)
+        assert code == 1, out
+        assert "tier folder(s) stable/, draft/, deprecated/" in out, out
+        assert not os.path.isdir(dest) or not os.listdir(dest), os.listdir(dest)
+    for tier in ("stable", "draft", "deprecated"):
+        with tmp() as d:
+            schemas = build(os.path.join(d, "new"), "new")
+            _write(os.path.join(schemas, "did_v2", tier, "x.json"), {})
+            code, out = assemble(schemas, os.path.join(d, "flat"))
+            assert code == 1 and ("tier folder(s) %s/" % tier) in out, (tier, out)
 
 
 def test_a_class_held_twice_fails():

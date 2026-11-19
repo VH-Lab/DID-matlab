@@ -35,8 +35,9 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   instrument_id edge. The same documents are also listed under
 %   epochfiles_ingested, whose probe-map rows and files they are built from.
 %
-%   BATCH-PASS-CONSUMES: epochfiles_ingested, acquisition_epoch, pyraview, element
+%   BATCH-PASS-CONSUMES: epochfiles_ingested, element_epoch, acquisition_epoch, pyraview, element
 %   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity, directed_relation
+%   BATCH-PASS-EMITS: element_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
 %       +migrators_j/pyraview through epochMint) are RE-POINTED to the epoch's
@@ -48,11 +49,12 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
 %   pass order from these; [migration reliability practices] (c), Jess Haley,
 %   2026-10-26). Read from this file's code, class by class.
-%   BATCH-PASS-READS: acquisition_epoch, epochfiles_ingested,
+%   BATCH-PASS-READS: element_epoch, acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested, sampled_body(pyraview level),
 %       entity(epoch), acquisition_system, directed_relation(element lineage),
 %       directed_relation(observes), entity(element),
-%       calculation(spike sorter), observation(session-scoped recording),
+%       calculation(spike sorter), calculation(spike times),
+%       calculation(spike waveforms), observation(session-scoped recording),
 %       observation(pyraview),
 %       relative_time_reference(session anchor of a recording observation),
 %       relative_reference(folded session anchor),
@@ -62,8 +64,9 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       opaque_body(spike train), opaque_body(ingested archive),
 %       relative_time_reference(epoch anchor), relative_reference(epoch anchor),
 %       ingestion_manifest, directed_relation(wiring)
-%   BATCH-PASS-CHANGES: sampled_body(pyraview level), calculation(spike sorter)
-%   BATCH-PASS-REMOVES: acquisition_epoch, epochfiles_ingested,
+%   BATCH-PASS-CHANGES: sampled_body(pyraview level), calculation(spike sorter),
+%       calculation(spike times), calculation(spike waveforms)
+%   BATCH-PASS-REMOVES: element_epoch, acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested,
 %       observation(session-scoped recording), observation(pyraview),
 %       directed_relation(observes), assertion(element type)
@@ -192,6 +195,14 @@ function [result, report] = resolveEpochProbemap(result, options)
 %     modality is imaging (image, not emittable)  -> rows_image_deferred
 %     modality is 'unresolved'                   -> rows_unresolved_modality
 %
+%   A stimulator row writes its per-epoch Stimulator manipulation only when it
+%   carries something its wiring relation and its element do not: no wiring
+%   relation, another subject than the element's, or another type
+%   (stimulator_manipulations_kept_*). Otherwise it writes none and its wiring
+%   relation and epoch anchor are kept for it
+%   (stimulator_manipulations_not_written; [stimulator manipulation dropped],
+%   Jess Haley, 2026-11-09, did-schema did_v2_standing_wiring_plan.md).
+%
 %   `subject_id` is the ONE required edge on the observation chain, and an empty
 %   required edge validates clean because +did2/+validate/references.m:90 skips
 %   empty edges -- the invented-empty-edge pattern, 7,233 documents and counting.
@@ -206,7 +217,11 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   ([recording mode terms], [imaging mode terms], 2026-11-01) the current
 %   clamp, voltage clamp, wide-field, two-photon and one-photon terms. A bare
 %   `patch` or `sharp` has no decided mode and writes none.
-%   `mode_methods_written` counts the observations built with one.
+%   `mode_methods_written` counts the observations built with one. The
+%   element's `element type` statement (+migrators_j/element.m) is then
+%   dropped where its device kind and those modes rebuild the word
+%   (mode_statements_dropped_recorded), or where the probe never recorded
+%   (mode_statements_dropped_unrecorded).
 %
 %   A PROBE IN SEVERAL ROWS IS ONE WIRING (Decided by Jess Haley, 2026-11-03,
 %   [probe in several rows is one wiring]). A probe listed in several rows of
@@ -251,10 +266,11 @@ restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 
 % DENOMINATOR FIRST, and unconditionally (Operating Rule 5). Every field is
 % defined before a single document is read, so "did not run" and "ran and found
@@ -273,6 +289,10 @@ report = struct( ...
     'observations_emitted',           0, ...
     'mode_methods_written',           0, ...
     'manipulations_emitted',          0, ...
+    'stimulator_manipulations_not_written',     0, ...
+    'stimulator_manipulations_kept_no_wiring',  0, ...
+    'stimulator_manipulations_kept_other_subject', 0, ...
+    'stimulator_manipulations_kept_other_type', 0, ...
     'instrument_resolved',            0, ...
     'instrument_omitted',             0, ...
     'device_strings_seen',            0, ...
@@ -358,6 +378,7 @@ report = struct( ...
     'pyraview_anchor_equal_epoch_dropped', 0, ...
     'mode_statements_seen',           0, ...
     'mode_statements_dropped_unrecorded', 0, ...
+    'mode_statements_dropped_recorded', 0, ...
     'mode_statements_kept_named_in_probemap', 0, ...
     'mode_statements_kept_session_not_ingested', 0, ...
     'pyraview_anchor_to_time_key',    0, ...
@@ -368,6 +389,15 @@ report = struct( ...
     'sorter_input_edges',             0, ...
     'sorter_input_fallback_entity',   0, ...
     'sorter_link_quarantined',        0, ...
+    ... % [spike waveforms built now] (Jess Haley, 2026-11-10), D1: the
+    ... % spikewaves calculations (spike times, spike waveforms) take the
+    ... % element's recording observation of their epoch as input. seen =
+    ... % linked + fallback.
+    'spike_calculations_seen',        0, ...
+    'spike_calculations_linked',      0, ...
+    'spike_calculation_input_edges',  0, ...
+    'spike_calculation_input_fallback', 0, ...
+    'spike_calculation_link_quarantined', 0, ...
     'ran',                            false);
 result.epoch_probemap_fold = report;
 
@@ -450,6 +480,15 @@ elementTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 kindTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 unitTypeById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
+% An element's slice of an epoch is a v1 `element_epoch` pass 1 handed on
+% ([retired classes leave V2], Decided by Jess Haley, 2026-10-25, step (1):
+% v1_to_v2 HAND_ON_CLASSES), or, in a batch written before, the
+% `acquisition_epoch` pass 1 renamed it to; both are read the same way below
+% (isElementEpochSlice; clocks through did2.convert.elementEpochClockRecords).
+% A v1 element_epoch pass 1 CARRIED (result.source_outputs `carried`) is not
+% read: it was never renamed, so it was never read before, and the stamp alone
+% cannot tell it from one handed on (as in did2.convert.foldGenericFiles).
+passOneCarried = passOneCarriedIds(result);
 acqEpochIdx = [];
 sampledIdx = [];
 archiveIdxAll = [];
@@ -464,7 +503,7 @@ metaArchiveIdxAll = [];
 for k = 1:n
     if isempty(bodies{k}); continue; end
     b = bodies{k};
-    if strcmp(classOf{k}, 'acquisition_epoch'); acqEpochIdx(end+1) = k; end %#ok<AGROW>
+    if isElementEpochSlice(classOf{k}, docIds{k}, passOneCarried); acqEpochIdx(end+1) = k; end %#ok<AGROW>
     if strcmp(classOf{k}, 'sampled_body'); sampledIdx(end+1) = k; end %#ok<AGROW>
     if isArchiveClass(classOf{k}); archiveIdxAll(end+1) = k; end %#ok<AGROW>
     if strcmp(classOf{k}, 'daqmetadatareader_epochdata_ingested')
@@ -594,6 +633,10 @@ renameBodyBySrcId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 acIdByKey   = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acBodyById  = containers.Map('KeyType', 'char', 'ValueType', 'any');
 newGroupAc = {};     % wiring relation base.id each new body depends on ('' = none)
+% [stimulator manipulation dropped]: a stimulator row whose wiring relation and
+% element hold all it says writes no manipulation; its wiring relation and
+% epoch anchor are kept for it, {wiring id, anchor id} per row
+wiringOnlyRows = cell(0, 2);
 % [clock only on the time reference] (Decided by Jess Haley, 2026-11-01,
 % did-schema did_v2_go_forward_class_audit.md): "the recording observation's
 % time references say when the epoch starts on each clock". An ingested
@@ -618,6 +661,7 @@ epochSpecs = struct('src', {}, 'obsIds', {}, 'sid', {}, 'datestamp', {}, ...
 % manipulations it minted -- the owners of that epoch's metadata archive.
 stimSpecs = struct('manipIds', {}, 'sid', {}, 'epochString', {}, 'navId', {});
 obsPairById = containers.Map('KeyType', 'char', 'ValueType', 'char');
+modeNodeByObsId = containers.Map('KeyType', 'char', 'ValueType', 'char');   % obs id -> its mode node ('' none)
 recByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'char');
 spikeObsIds = containers.Map('KeyType', 'char', 'ValueType', 'double');  % obs id -> acquisition_epoch idx
 spikeAnchorByObs = containers.Map('KeyType', 'char', 'ValueType', 'char');  % obs id -> its own anchor id
@@ -627,6 +671,12 @@ ingestedSessions = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 namedInstruments = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:n
     if ~strcmp(classOf{k}, 'epochfiles_ingested'); continue; end
+    % the ids minted for this source derive from its id (did2.convert.mintId;
+    % practice (b) of [migration reliability practices], Jess Haley,
+    % 2026-10-26), keyed apart from the ids v1_to_v2 minted for the same
+    % source, whose ordinals this context does not continue
+    did2.convert.mintId('-popto', mintDepth + 1);
+    did2.convert.mintId('-push', ['resolveEpochProbemap|' sourceKey(docIds{k}, bodies{k})]);
     report.epochfiles_ingested_seen = report.epochfiles_ingested_seen + 1;
     b = bodies{k};
     sid = sessionIds{k};
@@ -876,6 +926,41 @@ for k = 1:n
         end
 
         if strcmp(disposition, 'stimulator')
+            if isempty(instrumentId)
+                report.instrument_omitted = report.instrument_omitted + 1;
+            else
+                report.instrument_resolved = report.instrument_resolved + 1;
+            end
+            % [stimulator manipulation dropped] (Jess Haley, 2026-11-09,
+            % did-schema did_v2_standing_wiring_plan.md): the
+            % body-less per-epoch Stimulator manipulation is no longer
+            % written, "except for a row that carries something the wiring
+            % and the element do not". The row is read back from its wiring
+            % relation (rig, channels) and its element (name, reference,
+            % type, and the subject it `observes`, or is `derived_from`)
+            % ([probe map rows compared as a set]; NDI-matlab
+            % ndi.vintage.ingestedEpochs, +roundtrip/private/manifestProbemap).
+            % So the manipulation is still written for a row with no wiring
+            % relation, a row whose subject is not its element's (12 Dab
+            % epochs' bath rows), and a row whose type is not its element's.
+            if isempty(acId)
+                report.stimulator_manipulations_kept_no_wiring = ...
+                    report.stimulator_manipulations_kept_no_wiring + 1;
+            elseif ~(isKey(observesIdxByPair, [char(instrumentId) '|' char(subjectId)]) ...
+                    || (isKey(derivedParent, instrumentId) ...
+                    && strcmp(derivedParent(instrumentId), subjectId)))
+                report.stimulator_manipulations_kept_other_subject = ...
+                    report.stimulator_manipulations_kept_other_subject + 1;
+            elseif ~strcmp(strtrim(char(row.type)), stimulatorElementType( ...
+                    instrumentId, elementTypeById, kindTypeById))
+                report.stimulator_manipulations_kept_other_type = ...
+                    report.stimulator_manipulations_kept_other_type + 1;
+            else
+                report.stimulator_manipulations_not_written = ...
+                    report.stimulator_manipulations_not_written + 1;
+                wiringOnlyRows(end+1, :) = {acId, anchorId}; %#ok<AGROW>
+                continue;
+            end
             manip = mkManipulation(row.type, subjectId, instrumentId, ...
                 anchorId, sid, datestamp, acqSystemId);
             newBodies{end+1} = manip;              %#ok<AGROW>
@@ -883,11 +968,6 @@ for k = 1:n
             newGroupAc{end+1} = acId;              %#ok<AGROW>
             newGroupClock{end+1} = {};             %#ok<AGROW>
             specManipIds{end+1} = manip.base.id;   %#ok<AGROW>
-            if isempty(instrumentId)
-                report.instrument_omitted = report.instrument_omitted + 1;
-            else
-                report.instrument_resolved = report.instrument_resolved + 1;
-            end
             continue;
         end
 
@@ -902,6 +982,7 @@ for k = 1:n
             specObsIds{end+1} = obs.base.id;        %#ok<AGROW>
             if ~isempty(instrumentId)
                 obsPairById(obs.base.id) = [char(instrumentId) '|' char(subjectId)];
+                modeNodeByObsId(obs.base.id) = modeNodeOf(modeMethod);
                 rk = recKey(instrumentId, epochDocId, entries(e).class, entries(e).mixin);
                 if ~isKey(recByInstrEpoch, rk); recByInstrEpoch(rk) = obs.base.id; end
             end
@@ -963,6 +1044,7 @@ for k = 1:n
             mkIngestionManifest(b, fnId, epochDocId, sid, datestamp);
     end
 end
+did2.convert.mintId('-popto', mintDepth + 1);   % back to the run's context
 
 % ---- the element_epoch dissolution (F1, D2) -----------------------------
 % Decided by Jess Haley, 2026-10-22 [epoch dissolution before merge] (F1,
@@ -1014,6 +1096,12 @@ end
 for i = 1:numel(acqEpochIdx)
     k = acqEpochIdx(i);
     b = bodies{k};
+    % the ids minted for this source derive from its id (did2.convert.mintId;
+    % practice (b) of [migration reliability practices], Jess Haley,
+    % 2026-10-26), keyed apart from the ids v1_to_v2 minted for the same
+    % source, whose ordinals this context does not continue
+    did2.convert.mintId('-popto', mintDepth + 1);
+    did2.convert.mintId('-push', ['resolveEpochProbemap|' sourceKey(docIds{k}, bodies{k})]);
     report.acquisition_epoch_seen = report.acquisition_epoch_seen + 1;
     if isKey(extentCarried, docIds{k})
         report.acquisition_epoch_kept_extent_carried = ...
@@ -1121,6 +1209,7 @@ for i = 1:numel(acqEpochIdx)
         report.spike_instrument_resolved = report.spike_instrument_resolved + 1;
     end
 end
+did2.convert.mintId('-popto', mintDepth + 1);   % back to the run's context
 
 report.archive_docs_inspected = numel(archiveIdxAll);
 report.metadata_archives_inspected = numel(metaArchiveIdxAll);
@@ -1145,9 +1234,20 @@ for k = 1:n
     end
 end
 report.sorter_calculations_seen = numel(sorterIdx);
+% [spike waveforms built now] D1: the two calculations +migrators_j/spikewaves
+% emits, about the element, variable GO:0001508 "action potential", value
+% kind `time` (the spike times) or `voltage` (the waveforms)
+spikeCalcIdx = [];
+for k = 1:n
+    if strcmp(classOf{k}, 'calculation') && any(strcmp(kindOf{k}, {'time', 'voltage'})) ...
+            && isSpikeVariable(bodies{k})
+        spikeCalcIdx(end+1) = k; %#ok<AGROW>
+    end
+end
+report.spike_calculations_seen = numel(spikeCalcIdx);
 
 renameBodies = renameBodyBySrcId.values;
-if isempty(newBodies) && isempty(renameBodies)
+if isempty(newBodies) && isempty(wiringOnlyRows) && isempty(renameBodies)
     % nothing emitted: no archive file has a new owner, and no pyraview has a
     % recording observation to move to -- both kept, and counted as such
     report.archive_docs_kept_unowned_files = report.archive_docs_inspected;
@@ -1155,6 +1255,7 @@ if isempty(newBodies) && isempty(renameBodies)
     report.metadata_archives_carried_for_ndi = report.metadata_archives_inspected;
     report.pyraview_kept_no_recording_observation = report.pyraview_observations_seen;
     report.sorter_input_fallback_entity = report.sorter_calculations_seen;
+    report.spike_calculation_input_fallback = report.spike_calculations_seen;
     result.epoch_probemap_fold = report;
     return;
 end
@@ -1167,7 +1268,7 @@ end
 % not resolve references (that is the corpus orphan gate), so this is fine.
 % A quarantined observation is a defect and propagates to the 0-quarantine gate.
 producedById = containers.Map('KeyType', 'char', 'ValueType', 'any');
-if ~isempty(newBodies)
+if ~isempty(newBodies) || ~isempty(wiringOnlyRows)
     anchorBodies = anchorBodyById.values;
     acBodies = acBodyById.values;
     clockBodies = clockBodyById.values;
@@ -1230,6 +1331,14 @@ clockHasSurvivor = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 
 emittedNewIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 recIdsByInstr = containers.Map('KeyType', 'char', 'ValueType', 'any');   % electrode -> its recording observations
+recIdsByInstrEpoch = containers.Map('KeyType', 'char', 'ValueType', 'any');   % electrode|epoch -> its recording observations
+epochOfAnchor = containers.Map('KeyType', 'char', 'ValueType', 'char');   % a recording row's epoch anchor -> its epoch
+aKeys = anchorByEpochId.keys;
+for a = 1:numel(aKeys)
+    if ~startsWith(aKeys{a}, 'element_epoch|')
+        epochOfAnchor(anchorByEpochId(aKeys{a})) = aKeys{a};
+    end
+end
 appended = {};
 for j = 1:numel(newBodies)
     id = newBodies{j}.base.id;
@@ -1266,11 +1375,28 @@ for j = 1:numel(newBodies)
             else
                 recIdsByInstr(instr) = {id};
             end
+            if isKey(epochOfAnchor, aid)
+                ek = [instr '|' epochOfAnchor(aid)];
+                if isKey(recIdsByInstrEpoch, ek)
+                    recIdsByInstrEpoch(ek) = [recIdsByInstrEpoch(ek), {id}];
+                else
+                    recIdsByInstrEpoch(ek) = {id};
+                end
+            end
         end
     end
     emittedNewIds(id) = true;
     anchorHasSurvivor(aid) = true;
     if ~isempty(acId); acHasSurvivor(acId) = true; end
+end
+% a stimulator row that writes no manipulation ([stimulator manipulation
+% dropped]) keeps its wiring relation and its epoch anchor, which hold it
+for j = 1:size(wiringOnlyRows, 1)
+    [acId, aid] = wiringOnlyRows{j, :};
+    if anchorAlive(aid) && isKey(producedById, acId)
+        anchorHasSurvivor(aid) = true;
+        acHasSurvivor(acId) = true;
+    end
 end
 acKeys = acHasSurvivor.keys;
 for a = 1:numel(acKeys)
@@ -1619,14 +1745,15 @@ end
 % statement is DROPPED when its element has such a shared device kind, its
 % session is ingested (it has an epochfiles_ingested document, so its
 % recordings are the probe-map rows decomposed here) and NO probe-map row of
-% that session names the probe: the probe never recorded. It is KEPT when a
-% row names the probe (the recording observation carries the mode, and a row
-% that did not decompose keeps its v1 document) and when the session has no
-% ingested epoch (its recordings are minted later, by NDI's second pass, which
-% reads the mode from the statement). Counters mode_statements_*.
+% that session names the probe: the probe never recorded. When a row names
+% the probe it is dropped only where the probe's recording observations
+% rebuild the word ([recording mode terms], below), and kept otherwise; it is
+% KEPT when the session has no ingested epoch (its recordings are minted
+% later, by NDI's second pass, which reads the mode from the statement).
+% Counters mode_statements_*.
 modeRetire = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 modeIdx = containers.Map('KeyType', 'char', 'ValueType', 'double');
-sharedKind = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+sharedKind = containers.Map('KeyType', 'char', 'ValueType', 'char');   % entity -> its shared kind node
 for k = 1:n
     if ~strcmp(classOf{k}, 'assertion'); continue; end
     b = bodies{k};
@@ -1637,7 +1764,35 @@ for k = 1:n
         modeIdx(ent) = k;
     elseif strcmpi(vName, 'equipment type') && ~isempty(valNode) ...
             && isempty(did2.convert.elementTypeOfKind(valNode))
-        sharedKind(ent) = true;
+        sharedKind(ent) = valNode;
+    end
+end
+% [recording mode terms] (Decided by Jess Haley, 2026-11-01), its Build
+% pending line: "`+roundtrip/element.m` rebuilds the v1 word from kind plus
+% mode; the `element type` assertion stops for these types, but stays for v1
+% `sharp-I`" ([element type is a device kind term]: "the round trip rebuilds
+% the v1 word from kind plus mode"). A probe a row names is a RECORDED probe:
+% its statement is DROPPED when its kind and the mode terms of its surviving
+% recording observations rebuild its word exactly -- the one type the kind
+% and the modes name (did2.convert.elementTypeOfKindAndMode), or, when the
+% observations carry no mode of that kind, its kind's general type
+% (did2.convert.elementGeneralTypeOfKind: a bare `patch` or `sharp`), the
+% rule did2.convert.roundtrip.element and NDI-matlab's
+% ndi.vintage.elementTypeOf read it back by. It is KEPT when they do not
+% (rows of another type, two modes, no surviving observation): nothing is
+% dropped that the round trip could not rebuild. (`sharp-I` never reaches
+% here: such an element is carried whole, [element types batch 4] (9).)
+modesByInstr = containers.Map('KeyType', 'char', 'ValueType', 'any');
+obsKeys = modeNodeByObsId.keys;
+for i = 1:numel(obsKeys)
+    if ~isKey(emittedNewIds, obsKeys{i}); continue; end
+    pair = obsPairById(obsKeys{i});
+    cut = strfind(pair, '|');
+    instr = pair(1:cut(1) - 1);
+    if isKey(modesByInstr, instr)
+        modesByInstr(instr) = [modesByInstr(instr), {modeNodeByObsId(obsKeys{i})}];
+    else
+        modesByInstr(instr) = {modeNodeByObsId(obsKeys{i})};
     end
 end
 modeEnts = modeIdx.keys;
@@ -1650,8 +1805,16 @@ for i = 1:numel(modeEnts)
         report.mode_statements_kept_session_not_ingested = ...
             report.mode_statements_kept_session_not_ingested + 1;
     elseif isKey(namedInstruments, ent)
-        report.mode_statements_kept_named_in_probemap = ...
-            report.mode_statements_kept_named_in_probemap + 1;
+        if ~isempty(docIds{k}) && isKey(modesByInstr, ent) ...
+                && strcmp(rebuiltWord(sharedKind(ent), modesByInstr(ent)), ...
+                    elementTypeOfAssertionExact(bodies{k}))
+            modeRetire(docIds{k}) = true;
+            report.mode_statements_dropped_recorded = ...
+                report.mode_statements_dropped_recorded + 1;
+        else
+            report.mode_statements_kept_named_in_probemap = ...
+                report.mode_statements_kept_named_in_probemap + 1;
+        end
     elseif ~isempty(docIds{k})
         modeRetire(docIds{k}) = true;
         report.mode_statements_dropped_unrecorded = ...
@@ -1733,6 +1896,49 @@ for i = 1:numel(sorterIdx)
     report.sorter_input_edges = report.sorter_input_edges + numel(ins);
 end
 
+% ---- [spike waveforms built now] D1: the element's recording observation of
+% the calculation's epoch is its input (as [sorter input], per epoch). The
+% epoch is the referent of the calculation's own anchor; no recording
+% observation of that element in that epoch (a derived element, an epoch not
+% ingested) leaves the calculation as it is, counted (input_id is typed to
+% statements, so there is no entity fallback edge).
+anchorReferent = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:n
+    if strcmp(classOf{k}, 'relative_time_reference') && ~isempty(docIds{k})
+        r = depValueOf(bodies{k}, 'referent_id');
+        if ~isempty(r); anchorReferent(docIds{k}) = r; end
+    end
+end
+for i = 1:numel(spikeCalcIdx)
+    sb = bodies{spikeCalcIdx(i)};
+    el = depValueOf(sb, 'entity_id');
+    tr = depValueOf(sb, 'time_reference_id');
+    ek = '';
+    if ~isempty(el) && ~isempty(tr) && isKey(anchorReferent, tr)
+        ek = [el '|' anchorReferent(tr)];
+    end
+    if isempty(ek) || ~isKey(recIdsByInstrEpoch, ek)
+        report.spike_calculation_input_fallback = report.spike_calculation_input_fallback + 1;
+        continue;
+    end
+    ins = recIdsByInstrEpoch(ek);
+    for m = 1:numel(ins)
+        sb = addEdge(sb, 'input_id', ins{m});
+    end
+    res = did2.convert.v1_to_v2({sb}, ...
+        'Validate',      options.Validate, ...
+        'SchemaCache',   options.SchemaCache, ...
+        'TargetVersion', options.TargetVersion);
+    if ~isempty(res.quarantine) || ~isscalar(res.migrated)
+        report.spike_calculation_link_quarantined = report.spike_calculation_link_quarantined + 1;
+        report.spike_calculation_input_fallback = report.spike_calculation_input_fallback + 1;
+        continue;
+    end
+    sorterReplace(docIds{spikeCalcIdx(i)}) = res.migrated{1};
+    report.spike_calculations_linked = report.spike_calculations_linked + 1;
+    report.spike_calculation_input_edges = report.spike_calculation_input_edges + numel(ins);
+end
+
 % --- rebuild the migrated set: drop retired obs + removable anchors, append -
 % and REPLACE each renamed epochfiles_ingested with its ingestion_manifest
 % (increment 3), id-preserved. A manifest that quarantined leaves the source
@@ -1745,7 +1951,7 @@ for k = 1:n
             || isKey(pyraviewRetire, id) || isKey(modeRetire, id))
         continue;
     end
-    if ~isempty(id) && isKey(acqEpochRetire, id) && strcmp(classOf{k}, 'acquisition_epoch')
+    if ~isempty(id) && isKey(acqEpochRetire, id) && isElementEpochSlice(classOf{k}, id, passOneCarried)
         continue;   % dissolved: its observation (same id) is in `appended`
     end
     if ~isempty(id) && isKey(levelReplace, id)
@@ -1820,51 +2026,43 @@ switch char(name)
 end
 end
 
+function node = modeNodeOf(modeMethod)
+% the node of a recording observation's mode term ('' when it has none)
+node = '';
+if isstruct(modeMethod) && isscalar(modeMethod) && isfield(modeMethod, 'node')
+    node = char(modeMethod.node);
+end
+end
+
+function w = rebuiltWord(kindNode, modeNodes)
+% the v1 word a shared device kind and its recording modes read back as: the
+% one type they name, else the kind's general type ('' for a microscope)
+w = did2.convert.elementTypeOfKindAndMode(kindNode, modeNodes);
+if isempty(w)
+    w = did2.convert.elementGeneralTypeOfKind(kindNode);
+end
+end
+
+function t = elementTypeOfAssertionExact(b)
+% the value name of an `element type` term assertion, exactly as written
+% (edge blanks aside); '' for any other document
+t = '';
+if ~isfield(b, 'term') || ~isstruct(b.term) || ~isscalar(b.term) || ~isfield(b.term, 'value')
+    return;
+end
+v = b.term.value;
+if isstruct(v) && isscalar(v) && isfield(v, 'name') && ~isempty(v.name)
+    t = strtrim(char(v.name));
+end
+end
+
 function t = recordingModeMethod(elementType)
 %RECORDINGMODEMETHOD The decided recording or imaging mode of a probe-map row's
 %   v1 type, as the method term of its recording observation; [] when no mode
-%   term is decided for the type.
-%   [element type is a device kind term] (Decided by Jess Haley, 2026-10-27,
-%   did-schema V_eta_go_forward_class_audit.md): "recording mode suffixes
-%   (-Vm, -I, -Im, -attached) go on the recording observation";
-%   [imaging mode is a method term] (2026-10-29): the imaging mode is "a
-%   method term on the recording observation". The decided terms:
-%     patch-attached       OBI:0002179 "cell-attached patch clamp assay"
-%                          ([element types batch 1], [cell-attached is OBI])
-%     brightfield-imaging  EMPTY:0000300 "brightfield imaging"
-%                          ([element types batch 2])
-%     patch-Vm, sharp-Vm   OBI:0002185 "current clamp assay"
-%     patch-I, sharp-I,    OBI:0002182 "voltage clamp assay"
-%     sharp-Im             ([recording mode terms], Jess Haley, 2026-11-01:
-%                          "OBI:0002185 'current clamp assay' (v1 `-Vm`) and
-%                          OBI:0002182 'voltage clamp assay' (v1 `-I`, `-Im`)")
-%     wide-field-imaging   OBI:0002437 "widefield microscopy assay"
-%     two-photon-imaging   FBbi:00000254 "two-photon laser scanning microscopy"
-%     one-photon-imaging   NCIT:C16856 "Fluorescence Microscopy"
-%                          ([imaging mode terms], Jess Haley, 2026-11-01;
-%                          term amended by [one-photon is NCIT fluorescence
-%                          microscopy], Jess Haley, 2026-11-03: the NCIT term
-%                          already registered and used for Haley, T19)
-%   A bare `patch` or `sharp` names no mode: nothing is written for it.
-%   Types are compared exactly, edge blanks aside, as NDI's probestruct2probe
-%   matches its keys.
-t = [];
-switch strtrim(char(elementType))
-    case 'patch-attached'
-        t = did2.convert.registeredTerm('OBI:0002179', 'cell-attached patch clamp assay');
-    case 'brightfield-imaging'
-        t = did2.convert.registeredTerm('EMPTY:0000300', 'brightfield imaging');
-    case {'patch-Vm', 'sharp-Vm'}
-        t = did2.convert.registeredTerm('OBI:0002185', 'current clamp assay');
-    case {'patch-I', 'sharp-I', 'sharp-Im'}
-        t = did2.convert.registeredTerm('OBI:0002182', 'voltage clamp assay');
-    case 'wide-field-imaging'
-        t = did2.convert.registeredTerm('OBI:0002437', 'widefield microscopy assay');
-    case 'two-photon-imaging'
-        t = did2.convert.registeredTerm('FBbi:00000254', 'two-photon laser scanning microscopy');
-    case 'one-photon-imaging'
-        t = did2.convert.registeredTerm('NCIT:C16856', 'Fluorescence Microscopy');
-end
+%   term is decided for the type. The table, with each term's decision, is
+%   did2.convert.elementRecordingMode (moved there so the round trip reads the
+%   same one: did2.convert.elementTypeOfKindAndMode).
+t = did2.convert.elementRecordingMode(elementType);
 end
 
 function m = mkManipulation(stimType, subjectId, instrumentId, anchorId, ...
@@ -1880,6 +2078,18 @@ m = did2.build.statement('manipulation', char(subjectId), typeTerm, typeTerm, ..
     'AcquisitionSystemId', char(acqSystemId), ...
     'SessionId', char(sessionId), 'CreationTimestamp', char(datestamp), ...
     'Validate', false, 'ValueKind', 'term');
+end
+
+function t = stimulatorElementType(instrumentId, elementTypeById, kindTypeById)
+% the element's v1 type, as the round trip reads it (+roundtrip/private/
+% manifestProbemap rowTypeOf): its `element type` assertion, else the type its
+% device kind names ('' when neither)
+t = '';
+if isKey(elementTypeById, instrumentId)
+    t = strtrim(char(elementTypeById(instrumentId)));
+elseif isKey(kindTypeById, instrumentId)
+    t = strtrim(char(kindTypeById(instrumentId)));
+end
 end
 
 function et = archiveEpochTable(b)
@@ -2088,6 +2298,17 @@ function t = mkOntologyTerm(node, name)
 t = struct('node', char(node), 'name', char(name));
 end
 
+function key = sourceKey(docId, body)
+%SOURCEKEY The key this pass mints a source's ids from: its id, or, for a
+%   source stating none, 'content|' and did2.convert.mintKey's content key
+%   ([ids from content when v1 states none], Jess Haley, 2026-11-12), so two
+%   sources with no id never mint the same ids.
+key = char(docId);
+if isempty(key)
+    key = ['content|' did2.convert.mintKey(body)];
+end
+end
+
 function m = mkIngestionManifest(srcBody, filenavigatorId, epochDocId, ...
         sessionId, datestamp)
 % did-schema #88: ingestion_manifest {files} with the epoch_file_pattern_id
@@ -2095,7 +2316,11 @@ function m = mkIngestionManifest(srcBody, filenavigatorId, epochDocId, ...
 % epoch_id edge. No serialized epochprobemap (#73 review item 39): the caller
 % only renames when every row has decomposed.
 srcId = baseField(srcBody, 'id');
-if isempty(srcId); srcId = did.ido.unique_id(); end
+if isempty(srcId)
+    % no id stated: derived from the document's content ([ids from content
+    % when v1 states none], Jess Haley, 2026-11-12)
+    srcId = did2.convert.contentId('ingestion_manifest', srcBody);
+end
 m = did2.build.document('ingestion_manifest', ...
     struct('files', {ingestedFilesOf(srcBody)}), ...
     'Edges', struct('epoch_file_pattern_id', char(filenavigatorId), ...
@@ -2534,6 +2759,7 @@ for L = 1:numel(list)
         'Notes', sprintf(['The ingested recording of epoch %s: v1 attached ' ...
             'file series %s, carried as attached (%d member(s)).'], ...
             sp.epochString, slot, numel(idx)), ...
+        'Id', did2.convert.mintId(['ingested recording body ' slot], baseField(archive, 'id')), ...
         'SessionId', sp.sid, 'CreationTimestamp', sp.datestamp, 'Validate', false);
     fi = struct('name', {}, 'locations', {});
     for m = 1:numel(idx)
@@ -2567,6 +2793,7 @@ for f = 1:numel(files)
         'Notes', sprintf(['A raw recording file of epoch %s, recorded by ' ...
             'location where the source keeps it (named by the v1 ' ...
             'epochfiles_ingested cache; not ingested, never copied).'], sp.epochString), ...
+        'Id', did2.convert.mintId('recording file body', baseField(src, 'id')), ...
         'SessionId', sp.sid, 'CreationTimestamp', sp.datestamp, 'Validate', false);
     body.files.file_info = struct('name', 'body_data_0', 'locations', struct( ...
         'delete_original', 0, 'uid', did2.convert.mintId('file_uid', baseField(src, 'id')), 'location', path, ...
@@ -2645,10 +2872,11 @@ function [clk, t0, t1] = epochLocalClock(b)
 % t1}); '' when there is none or it is malformed. Other clocks (JH's
 % exp_global_time) are not offsets from the epoch; the epoch carries them as
 % its own extents (did2.convert.epochMint, #60 option A).
+% Either shape: a v1 element_epoch's epoch_clock / t0_t1, or an
+% acquisition_epoch's `clocks` (did2.convert.elementEpochClockRecords).
 clk = ''; t0 = []; t1 = [];
-if ~isfield(b, 'acquisition_epoch') || ~isstruct(b.acquisition_epoch) ...
-        || ~isfield(b.acquisition_epoch, 'clocks'); return; end
-c = b.acquisition_epoch.clocks;
+c = did2.convert.elementEpochClockRecords(b);
+if isempty(c); return; end
 if isstruct(c); c = num2cell(c); end
 if ~iscell(c); return; end
 hit = {};
@@ -2766,6 +2994,7 @@ for i = 1:numel(ks)
             'the v1 element_epoch file epoch_binary_data.vhsb, carried as attached.'], ...
             archiveEpochOf(b)), ...
         'SessionId', char(sessionIds{k}), 'CreationTimestamp', datestamp, ...
+        'Id', did2.convert.mintId('element_epoch opaque_body', baseField(b, 'id')), ...
         'Validate', false);
     loc = struct();
     if isfield(fi, 'locations'); loc = fi.locations; end
@@ -2913,9 +3142,11 @@ for k = 1:numel(cs)
     v = cs(k).variable;
     nm = '';
     if isstruct(v) && isfield(v, 'name'); nm = char(v.name); end
-    if strcmpi(nm, 'time') && isfield(cs(k), 'origin') && isstruct(cs(k).origin) ...
-            && isfield(cs(k).origin, 'value') && ~isempty(cs(k).origin.value)
-        o = double(cs(k).origin.value);
+    % the old {value, source_value} origin or the new flat one
+    % (did2.read.numeric; [one shape for measured numbers], Jess Haley, 2026-11-17)
+    r = did2.read.numeric(cs(k));
+    if strcmpi(nm, 'time') && strcmp(r.form, 'origin') && ~isempty(r.origin)
+        o = double(r.origin);
         return;
     end
 end
@@ -3255,4 +3486,40 @@ for k = 1:numel(result.migrated)
     end
 end
 summary.by_class = byClass;
+end
+
+function tf = isSpikeVariable(b)
+% a statement whose variable is GO:0001508 "action potential" (by node), the
+% variable +migrators_j/spikewaves writes on both its calculations
+tf = false;
+if ~isstruct(b) || ~isfield(b, 'statement') || ~isstruct(b.statement) ...
+        || ~isfield(b.statement, 'variable')
+    return;
+end
+v = b.statement.variable;
+tf = isstruct(v) && isfield(v, 'node') && strcmpi(char(v.node), 'GO:0001508');
+end
+
+function m = passOneCarriedIds(result)
+% the v1 ids of the sources pass 1 carried as v1 (result.source_outputs,
+% `carried`); empty when the result holds no such record
+m = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+if ~isfield(result, 'source_outputs') || ~isstruct(result.source_outputs) ...
+        || ~isfield(result.source_outputs, 'carried')
+    return;
+end
+for k = 1:numel(result.source_outputs)
+    so = result.source_outputs(k);
+    if so.carried && ~isempty(so.id)
+        m(char(so.id)) = true;
+    end
+end
+end
+
+function tf = isElementEpochSlice(className, docId, passOneCarried)
+% an element's slice of an epoch this pass dissolves: an acquisition_epoch (a
+% batch written before [retired classes leave V2]), or a v1 element_epoch pass
+% 1 handed on, not one it carried
+tf = strcmp(className, 'acquisition_epoch') || (strcmp(className, 'element_epoch') ...
+    && ~(~isempty(docId) && isKey(passOneCarried, char(docId))));
 end

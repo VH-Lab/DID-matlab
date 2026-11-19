@@ -361,6 +361,64 @@ class TestRollup(DigestCase):
         self.assertIn("EDGE-FAMILY CARDINALITY VIOLATIONS: 0 document(s)", text)
         self.assertIn("(none)", text)
 
+    def _card(self, name, docs, fams, checks, violations=0):
+        self.write(name, {
+            "corpus": name, "total": docs, "migrated_count": docs,
+            "quarantine_count": 0, "fragment_count": 0,
+            "silent_loss": {"total_docs": docs, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0,
+                            "family_violation_count": violations,
+                            "cardinality_denominator": {
+                                "docs_checked": docs,
+                                "families_declared": fams,
+                                "family_checks": checks}}})
+
+    def test_the_cardinality_table_prints_its_denominator(self):
+        # DID-matlab #399: EDGE-FAMILY CARDINALITY VIOLATIONS printed a count
+        # with no denominator, so its zero could not be told from "nothing in
+        # reach was checked". The rollup now sums what each report checked.
+        self._card("A", 10, 2, 15)
+        self._card("B", 4, 1, 4)
+        text, failed = self.run_digest()
+        self.assertEqual(failed, [])
+        head = text.index("EDGE-FAMILY CARDINALITY VIOLATIONS: 0 document(s)")
+        rest = text[head:text.index("EDGE-FAMILY UNIQUENESS VIOLATIONS")]
+        self.assertIn("2 of 2 silent-loss report(s) carried a cardinality "
+                      "denominator", rest)
+        self.assertIn("14 document(s) declaring a numbered family checked; "
+                      "19 (document, family) check(s); 3 (class, family) "
+                      "pair(s), summed over corpora", rest)
+        self.assertNotIn("'untested'", rest)
+
+    def test_a_cardinality_zero_with_nothing_checked_is_untested(self):
+        self._card("A", 3, 0, 0)
+        text, _ = self.run_digest()
+        head = text.index("EDGE-FAMILY CARDINALITY VIOLATIONS")
+        rest = text[head:text.index("EDGE-FAMILY UNIQUENESS VIOLATIONS")]
+        self.assertIn("the zero is 'untested', not 'clean'", rest)
+        # and the per-corpus block says the same
+        self.assertIn("0 (document, family) check(s)", text)
+        self.assertIn("COULD NOT FIRE", text)
+
+    def test_a_report_without_the_cardinality_denominator_is_not_measured(self):
+        # A report written before silentLoss emitted the block: printed as
+        # NOT REPORTED, never as a zero.
+        self.write("Old", {
+            "corpus": "Old", "total": 3, "migrated_count": 3,
+            "quarantine_count": 0, "fragment_count": 0,
+            "silent_loss": {"total_docs": 3, "skipped_docs": 0,
+                            "empty_dependency_count": 0,
+                            "vacuous_field_count": 0,
+                            "family_violation_count": 0}})
+        text, _ = self.run_digest()
+        self.assertIn("DENOMINATOR: NOT REPORTED", text)
+        head = text.index("EDGE-FAMILY CARDINALITY VIOLATIONS")
+        rest = text[head:text.index("EDGE-FAMILY UNIQUENESS VIOLATIONS")]
+        self.assertIn("0 of 1 silent-loss report(s) carried a cardinality "
+                      "denominator", rest)
+        self.assertIn("their part of the zero is 'not measured'", rest)
+
     def test_a_broken_rollup_does_not_destroy_the_per_corpus_output(self):
         # Run #256's lesson, applied to the new code: an exception in the
         # aggregate must not take the six individual reports with it.
@@ -2406,6 +2464,30 @@ class TestResponseParametersRendering(ThreePassCase):
             parameters_documents_deleted=3))
         text, _ = self.run_digest()
         self.assertIn("parameters_documents_deleted is 3 and MUST be 0", text)
+
+    def test_dropped_orphans_are_accounted_not_a_residual(self):
+        # [orphaned response settings are an accepted loss] (Jess Haley,
+        # 2026-11-12): a dropped orphan is neither minted nor refused, and is
+        # not "an id that did not come back"
+        self._corpus("A", response_parameters_fold=self._rp(
+            leaves_seen=5, leaves_with_edge=5, parameters_documents_seen=10,
+            methods_minted=7, orphans_seen=3,
+            orphans_dropped_identical_twin=3, orphans_kept_no_identical_twin=0,
+            parameters_documents_referenced_after=7,
+            parameters_documents_unreferenced_after=3))
+        text, _ = self.run_digest()
+        self.assertIn("NOT MIGRATED: identical used twin", text)
+        self.assertNotIn("neither minted,", text)
+
+    def test_an_undropped_orphan_still_leaves_a_residual(self):
+        self._corpus("A", response_parameters_fold=self._rp(
+            leaves_seen=5, leaves_with_edge=5, parameters_documents_seen=10,
+            methods_minted=7, orphans_seen=3,
+            orphans_dropped_identical_twin=2, orphans_kept_no_identical_twin=1,
+            parameters_documents_referenced_after=7,
+            parameters_documents_unreferenced_after=3))
+        text, _ = self.run_digest()
+        self.assertIn("1 parameters document(s) neither minted,", text)
 
     def test_a_broken_gate_partition_is_named(self):
         self._corpus("A", response_parameters_fold=self._rp(
@@ -5234,6 +5316,63 @@ class TestTuningResponseVariable(unittest.TestCase):
         src = inspect.getsource(census_digest)
         self.assertIn("    render_tuning_response_variable(r, out)\n", src)
 
+
+
+class TestTuningAxisNaming(unittest.TestCase):
+    """[tuning label choices confirmed] (Jess Haley, 2026-11-17): the raw
+    tuning curves named from their v1 label are counted and reported,
+    denominator first."""
+
+    def test_absent_is_not_measured(self):
+        out = []
+        census_digest.render_tuning_axis_naming({}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+
+    def test_a_report_that_says_not_measured_is_not_measured(self):
+        out = []
+        census_digest.render_tuning_axis_naming({"tuning_axis_naming": {
+            "not_measured": "no raw tuning curve was folded"}}, out)
+        self.assertEqual(len(out), 1)
+        self.assertIn("NOT MEASURED", out[0])
+        self.assertIn("no raw tuning curve was folded", out[0])
+
+    def test_denominator_first_then_varied_and_label(self):
+        out = []
+        census_digest.render_tuning_axis_naming({"tuning_axis_naming": {
+            "curves_folded": 10, "named_from_varied_parameter": 6,
+            "named_from_label": 4, "label_no_independent_parameter": 1,
+            "label_not_in_name_table": 3, "label_count_mismatch": 0,
+            "no_detail": 0, "unread": 0,
+            "not_in_name_table": ["notAStimulusParameter"],
+            "not_in_name_table_counts": 3,
+            "by_class": {"tuningcurve_calc": 10}}}, out)
+        self.assertIn("10 folded raw tuning curve(s)", out[0])
+        self.assertIn("named from independent_parameter", out[1])
+        self.assertIn("6", out[1])
+        self.assertIn("named from the v1 label", out[2])
+        self.assertIn("no independent_parameter 1", out[2])
+        self.assertIn("not in the name table 3", out[2])
+        self.assertFalse(any("do not add up" in x for x in out))
+        self.assertTrue(any("notAStimulusParameter" in x and "3" in x for x in out))
+        self.assertIn("tuningcurve_calc", out[-1])
+
+    def test_a_bad_sum_is_flagged_and_a_missing_count_is_unknown(self):
+        out = []
+        census_digest.render_tuning_axis_naming({"tuning_axis_naming": {
+            "curves_folded": 10, "named_from_varied_parameter": 6,
+            "named_from_label": 2, "no_detail": 0, "unread": 0}}, out)
+        self.assertTrue(any("do not add up" in x for x in out))
+        out = []
+        census_digest.render_tuning_axis_naming({"tuning_axis_naming": {
+            "curves_folded": 3}}, out)
+        self.assertIn("?", out[1])
+        self.assertIn("?", out[2])
+
+    def test_it_reaches_the_per_corpus_digest(self):
+        import inspect
+        src = inspect.getsource(census_digest)
+        self.assertIn("    render_tuning_axis_naming(r, out)\n", src)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

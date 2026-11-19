@@ -106,9 +106,20 @@ end
 if isempty(leaf)
     return;
 end
+% v1 states no unit for the number: its canonical is a gap in the migration
+% report ([canonical absent only as needs info], Jess Haley, 2026-10-30)
+[value, gaps] = jQuantity(leaf, double(numValue(1)), '', 'approximate', false);
 obs = jStatement(preBody, 'observation', entityId, variable, ...
-    jQuantity(leaf, double(numValue(1)), '', 'approximate', false), ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', sourceId(preBody), 'ValueKind', leaf);
+    value, ...
+    'TimeReferenceIds', {anchor.base.id}, 'Id', sourceId(preBody), 'ValueKind', leaf, ...
+    'Gaps', gaps);
+gapClass = 'measurement';
+if isfield(preBody, 'document_class') && isfield(preBody.document_class, 'class_name')
+    gapClass = char(preBody.document_class.class_name);
+end
+for g = 1:numel(gaps)
+    did2.convert.reportNote('gap', gapClass, sourceId(preBody), gaps(g).field);
+end
 bodies = {obs, anchor};
 end
 

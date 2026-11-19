@@ -301,10 +301,11 @@ end
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 
 % DENOMINATOR FIRST, and unconditionally. Every field is defined before a single
 % document is read, so "did not run" and "ran and found nothing" are different
@@ -431,6 +432,19 @@ end
 changedIdx = [];
 rebuilt = {};
 for k = 1:n
+    % THE OLD CLASS NAMES ARE READ ON PURPOSE (DID-matlab #397). These two
+    % reads are this pass's whole selector: it folds the pre-#73 classes, so
+    % they cannot be renamed to the current `relative_time_reference` (which
+    % is what the fold writes). Nothing mints them any more: jSessionAnchor
+    % writes a `relative_time_reference` to the session entity since
+    % e8c4e1ce (2026-10-21), no NDI-matlab V2 writer names them, and they
+    % are not did_v1 classes (did-schema tools/veta_record.py,
+    % _DELETE_NO_V1_PROVENANCE), so a v1 document of that name has no
+    % migrator and quarantines in v1_to_v2. So on today's pipeline this loop
+    % folds nothing and `anchors_seen` is 0; a non-zero `anchors_seen` is
+    % the signal that an old-shape anchor reached the batch. The pass stays
+    % until its callers drop it (NDI-matlab +ndi/+migrate/local.m calls it,
+    % so that call goes first).
     isRelative = strcmp(anchorClass{k}, 'session_relative_reference');
     isBounded  = strcmp(anchorClass{k}, 'session_bounded_reference');
     if ~isRelative && ~isBounded; continue; end
@@ -600,7 +614,7 @@ end
 
 % --- validate through the same door every other pass uses ------------------
 % The bodies are tagged schema_version == TargetVersion, so v1_to_v2
-% short-circuits them (isAlreadyTarget) to ensureClassBlocks + validate. A body
+% short-circuits them (isAlreadyTarget) to validate. A body
 % that cannot validate lands in `quarantine` and the ORIGINAL is kept, so a bad
 % fold degrades to "not folded" rather than to a lost document.
 out = did2.convert.v1_to_v2(rebuilt, ...
@@ -822,8 +836,15 @@ if isfield(x, 'seconds') && isnumeric(x.seconds) && isscalar(x.seconds) ...
     return;
 end
 % No canonical value. Derive one ONLY from a source pair that names seconds.
-if ~isfield(x, 'source_value') || ~isnumeric(x.source_value) ...
-        || ~isscalar(x.source_value) || ~isfinite(x.source_value)
+% What the source wrote is source_value (old numeric shape) or source_numeric
+% (new; [numeric shape details] (2), Jess Haley, 2026-11-17).
+src = [];
+if isfield(x, 'source_numeric') && ~isempty(x.source_numeric)
+    src = x.source_numeric;
+elseif isfield(x, 'source_value')
+    src = x.source_value;
+end
+if ~isnumeric(src) || ~isscalar(src) || ~isfinite(src)
     status = 'blank';
     return;
 end
@@ -831,7 +852,7 @@ if ~isSecondsUnit(fieldOr(x, 'source_unit', ''))
     status = 'unreadable_unit';
     return;
 end
-x.seconds = double(x.source_value);
+x.seconds = double(src);
 c = x;
 status = 'ok';
 end
