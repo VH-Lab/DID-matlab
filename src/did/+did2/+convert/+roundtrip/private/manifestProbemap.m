@@ -65,7 +65,12 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %   above, devicestring from the rig and the relation's conditions, and
 %   subjectstring the local_identifier of the entity the element `observes`
 %   (or is `derived_from`, an element with no underlying element), the
-%   element's subject. These rows follow the statements' rows: the round trip
+%   element's subject; with neither, the v1 subject the run's migration
+%   report carries for the element (carry-172, did2.convert.
+%   carriedElementSubject: NDI-matlab's second pass removes the `observes`
+%   of a stimulator no statement names and holds its subject there,
+%   [one-field carry in the migration report], Jess Haley, 2026-11-19).
+%   These rows follow the statements' rows: the round trip
 %   compares a probe map's rows as an unordered set ([probe map rows compared
 %   as a set], Jess Haley, 2026-11-09; private/sameProbemapSeveralRows), the
 %   way NDI finds a probe's rows (ndi.probe.epochprobemapmatch: name,
@@ -225,7 +230,14 @@ end
 
 function id = elementSubjectId(elementId, ctx)
 % the entity an element `observes`, else the one it is `derived_from` (the
-% lineage relation +migrators_j/element.m writes; +roundtrip/element.m reads it)
+% lineage relation +migrators_j/element.m writes; +roundtrip/element.m reads it),
+% else the v1 subject the run's migration report carries for it: NDI-matlab's
+% second pass removes the `observes` of a stimulator no statement names (and
+% of a recording probe with no recording observation) and holds its v1
+% subject there (carry-172; [stimulator subject carried as needing
+% information], [one-field carry in the migration report], [recording probe
+% subject carried the same way], Jess Haley, 2026-11-19), read by
+% did2.convert.carriedElementSubject
 id = '';
 derived = '';
 for k = ctxReferrers(ctx, elementId)
@@ -245,6 +257,9 @@ for k = ctxReferrers(ctx, elementId)
     end
 end
 id = derived;
+if isempty(id)
+    id = did2.convert.carriedElementSubject(elementId);
+end
 end
 
 function [rowText, why] = rowOf(st, ctx, prefixes)
