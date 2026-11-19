@@ -40,7 +40,8 @@ function [result, report] = resolveDeferredBaths(result, options)
 %       result.passthrough
 %   BATCH-PASS-ADDS: relative_time_reference(bath anchor),
 %       manipulation(bath), formulation, chemical, observation(bath),
-%       entity(tissue part), assertion(tissue kind), directed_relation(part_of),
+%       entity(pass-1 region part), assertion(pass-1 region part kind),
+%       directed_relation(pass-1 region part_of),
 %       result.deferred_bath_anchors
 %   BATCH-PASS-CHANGES: NONE -- it only appends; the deferred stimulus_bath
 %       entries leave the quarantine, not the batch

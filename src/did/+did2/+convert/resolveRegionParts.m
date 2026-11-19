@@ -70,17 +70,23 @@ function [result, report] = resolveRegionParts(result, options)
 %   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
 %   pass order from these; [migration reliability practices] (c), Jess Haley,
 %   2026-10-26). Read from this file's code, class by class.
-%   BATCH-PASS-READS: entity(tissue part), assertion(tissue kind),
-%       assertion(tissue laterality), directed_relation(part_of),
-%       observation(anatomical site), manipulation(co-anchored with an
-%       anatomical site)
-%   BATCH-PASS-ADDS: assertion(tissue laterality)
-%   BATCH-PASS-CHANGES: entity(tissue part), assertion(tissue kind),
-%       directed_relation(part_of), manipulation(co-anchored with an
-%       anatomical site), observation(anatomical site)
+%   BATCH-PASS-READS: entity(pass-1 region part),
+%       assertion(pass-1 region part kind),
+%       assertion(pass-1 region part laterality),
+%       directed_relation(pass-1 region part_of), observation(side site),
+%       manipulation(of a side site's source)
+%   BATCH-PASS-ADDS: assertion(re-keyed region part laterality)
+%   BATCH-PASS-CHANGES: entity(pass-1 region part),
+%       assertion(pass-1 region part kind),
+%       directed_relation(pass-1 region part_of), observation(side site),
+%       manipulation(of a side site's source)
 %   BATCH-PASS-REMOVES: NONE -- it drops duplicate copies of a document that
 %       stays (one copy per id) and the side observations it attaches
 %       (CHANGES); it folds no class away
+%   The region parts it reads are the ones pass 1 and resolveDeferredBaths
+%   write; the parts NDI's second pass mints later (pathSPromotion) take the
+%   same computed ids and are found there, never copied, so this pass need
+%   not see them.
 %
 %   REPORT (also RESULT.region_part_resolution), denominators first:
 %     documents_inspected, region_part_documents_seen (the part entities,
