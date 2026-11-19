@@ -41,8 +41,8 @@ verifyEqual(testCase, rep.archive_series_other, 1);
 verifyEqual(testCase, rep.channel_groups_non_specimen, 3);
 verifyEqual(testCase, rep.group_owners_digital, 1);
 verifyEqual(testCase, rep.group_owners_auxiliary, 1);
-verifyEqual(testCase, rep.group_owners_analog_output_manipulation, 1);
-verifyEqual(testCase, rep.group_owners_analog_output_observation, 0);
+verifyEqual(testCase, rep.group_owners_analog_output_manipulations, 1);
+verifyEqual(testCase, rep.group_owners_analog_output_observations, 0);
 verifyEqual(testCase, rep.group_owner_kept_recording_no_device, 0);
 verifyEqual(testCase, rep.group_owner_entity_wired_device, 2, 'di and ao: the stimulator');
 verifyEqual(testCase, rep.group_owner_entity_acquisition_system_unwired, 1, 'ax: nothing wired');
@@ -97,8 +97,8 @@ function testWithoutTheRigsDeviceTheRecordingKeepsEveryGroup(testCase)
 verifyEqual(testCase, rep.channel_groups_non_specimen, 3);
 verifyEqual(testCase, rep.group_owner_kept_recording_no_device, 3);
 verifyEqual(testCase, rep.group_owners_digital + rep.group_owners_auxiliary ...
-    + rep.group_owners_analog_output_manipulation ...
-    + rep.group_owners_analog_output_observation, 0);
+    + rep.group_owners_analog_output_manipulations ...
+    + rep.group_owners_analog_output_observations, 0);
 rec = recordingOf(result, 'ns_b_probe');
 assertNotEmpty(testCase, rec);
 for slot = {'ai_group1_seg.nbf_#', 'di_group1_seg.nbf_#', 'ax_group1_seg.nbf_#', ...
