@@ -145,6 +145,77 @@ verifyFalse(testCase, r.carried);
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'openminds_subject, lab-made strain', {});
 end
 
+function testAGeneticStrainTypeIriResolvesItsNodeAndRoundTrips(testCase)
+% Decided by Jess Haley, 2026-11-19 [openMINDS ids rebuild the subject terms]
+% and [knockin is NCIT Knock-in] (did-schema did_v2_go_forward_class_audit.md;
+% Waltham-Data-Science/did-schema#212): a GeneticStrainType term with an
+% openMINDS instance IRI but no node resolves its node from the IRI. Dab's and
+% JH's documents, as the writer stores them (Dab 4126945ae9a1feaa_40c388eb7d9d9f11:
+% name 'knockin', preferredOntologyIdentifier '', the IRI as openminds_id).
+% Before this they were carried (carry-116). Independent of the term
+% registry: the node is the decision's (did2.convert.openmindsInstanceNode).
+cases = {'wildtype', 'BAO:0000089'; 'transgenic', 'OBI:1000048'; 'knockin', 'NCIT:C22492'};
+for k = 1:size(cases, 1)
+    [name, node] = cases{k, :};
+    v1 = geneticStrainType(sprintf('41268b6f5c6a3d4e_0e0000000000004%d', k), name, ...
+        ['https://openminds.om-i.org/instances/geneticStrainType/' name]);
+    out = runRaw(v1);
+    verifyEmpty(testCase, out.quarantine, name);
+    verifyEmpty(testCase, out.passthrough, [name ': converted, not carried']);
+    verifyNumElements(testCase, out.migrated, 1, name);
+    a = out.migrated{1};
+    verifyEqual(testCase, char(a.get('statement.variable').name), 'genetic strain type', name);
+    verifyEqual(testCase, char(a.get('term.value').node), node, [name ': the node from the IRI']);
+    verifyNotEmpty(testCase, char(a.get('term.value').name), name);
+    r = did2.convert.roundtrip.check(v1, out.migrated);
+    verifyFalse(testCase, r.carried, name);
+    did2.unittest.helpers.verifyRoundTrip(testCase, r, ['openminds_subject, ' name], {});
+    verifyTrue(testCase, any(strcmp(r.equivalent, 'openminds.openminds_id')), ...
+        [name ': the id is read back from the node']);
+    verifyTrue(testCase, any(strcmp(r.equivalent, ...
+        'openminds.fields.preferredOntologyIdentifier')), [name ': v1''s empty node']);
+end
+end
+
+function testAGeneticStrainTypeIriWithNoDecidedNodeIsStillCarried(testCase)
+% CONTROLS for the test above. (1) An instance the decision does not name
+% (knockout) keeps carry-116. (2) A decided instance under another openMINDS
+% type gives it no node. (3) A term that names a node of its own that is not
+% the decided one does not rebuild the IRI, so it is carried.
+v1 = geneticStrainType('41268b6f5c6a3d4e_0e00000000000051', 'knockout', ...
+    'https://openminds.om-i.org/instances/geneticStrainType/knockout');
+verifyCarried(testCase, v1, '[carry-116]');
+v1 = subjectTerm('41268b6f5c6a3d4e_0e00000000000052', 'Species', 'wildtype', '', '', '');
+v1.openminds.openminds_id = 'https://openminds.om-i.org/instances/geneticStrainType/wildtype';
+verifyCarried(testCase, v1, '[carry-116]');
+v1 = geneticStrainType('41268b6f5c6a3d4e_0e00000000000053', 'wildtype', ...
+    'https://openminds.om-i.org/instances/geneticStrainType/wildtype');
+v1.openminds.fields.preferredOntologyIdentifier = 'OBI:1000048';
+verifyCarried(testCase, v1, '[carry-116]');
+end
+
+function testTheRoundTripReadsTheGeneticStrainTypeIdThroughTheNode(testCase)
+% CONTROL for the round trip read: the migrated wildtype term compared with a
+% v1 document whose IRI names another decided instance (transgenic) reports
+% the id lost; compared with v1 stating the decided node itself (no IRI) it
+% is clean, the other spelling the round trip reads.
+v1 = geneticStrainType('41268b6f5c6a3d4e_0e00000000000054', 'wildtype', ...
+    'https://openminds.om-i.org/instances/geneticStrainType/wildtype');
+out = runRaw(v1);
+verifyEmpty(testCase, out.passthrough, 'converted');
+other = v1;
+other.openminds.openminds_id = 'https://openminds.om-i.org/instances/geneticStrainType/transgenic';
+r = did2.convert.roundtrip.check(other, out.migrated);
+verifyFalse(testCase, r.ok, 'another instance''s IRI is not the same term');
+verifyTrue(testCase, any(strcmp({r.lost.path}, 'openminds.openminds_id')), ...
+    'the id is reported lost');
+stated = v1;
+stated.openminds.openminds_id = '';
+stated.openminds.fields.preferredOntologyIdentifier = 'BAO:0000089';
+r = did2.convert.roundtrip.check(stated, out.migrated);
+did2.unittest.helpers.verifyRoundTrip(testCase, r, 'wildtype stated by its node', {});
+end
+
 function testAFieldOutsideTheSubjectTemplateCarriesIt(testCase)
 f = subjectFixtures();
 v1 = f{1, 2};
@@ -282,6 +353,14 @@ v1 = termDocument('openminds_subject', id, type, name, node, definition, synonym
 v1 = did2.unittest.helpers.setDependency(v1, 'subject_id', '41268b6f5c6a3d4e_0e000000000000a1');
 v1.depends_on(2) = struct('name', 'openminds', 'value', '');
 v1 = jsondecode(jsonencode(v1));
+end
+
+function v1 = geneticStrainType(id, name, openmindsId)
+% openMINDSobj2ndi_document(term, sessionId, 'subject', subjectId) for a
+% GeneticStrainType controlled term that names no node, its openMINDS
+% instance IRI as the id (Dab's and JH's wildtype, knockin, transgenic)
+v1 = subjectTerm(id, 'GeneticStrainType', name, '', '', '');
+v1.openminds.openminds_id = openmindsId;
 end
 
 function v1 = labStrain(id, name, openmindsId)

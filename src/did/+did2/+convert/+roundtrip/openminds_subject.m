@@ -62,6 +62,22 @@ if isfield(v1, 'openminds')
             'term through the registry''s `equivalent` list ([openMINDS subject ' ...
             'leftovers], [term equivalents recorded], Jess Haley, 2026-10-27)']);
     end
+    if isDecidedNode(v1.openminds.openminds_type, node)
+        % A NODE FROM THE openMINDS IRI ([openMINDS ids rebuild the subject
+        % terms], [knockin is NCIT Knock-in], Jess Haley, 2026-11-19;
+        % Waltham-Data-Science/did-schema#212). The migrator writes a decided
+        % node (did2.convert.openmindsInstanceNode) for a GeneticStrainType
+        % term that names none, so v1 states the term in two spellings: the
+        % node, or no node and the openMINDS IRI. The inverse rebuilds the
+        % node; a v1 document that leaves it empty states the same term when
+        % its id names that node, which the `openminds_id` row above checks
+        % through openmindsIdRebuilds (an id that names another term is lost
+        % there, not here).
+        spec.same(end+1) = struct('path', 'openminds.fields.preferredOntologyIdentifier', ...
+            'fn', @(a, b) isEmptyText(a), 'why', ['a GeneticStrainType node ' ...
+            'resolved from its openMINDS IRI ([openMINDS ids rebuild the subject ' ...
+            'terms], [knockin is NCIT Knock-in], Jess Haley, 2026-11-19)']);
+    end
     if endsWith(v1.openminds.openminds_type, '/Species')
         % [species text is the openMINDS equivalent] (Decided by Jess Haley,
         % 2026-10-29, did-schema V_eta_go_forward_class_audit.md): "a v1
@@ -79,6 +95,28 @@ if isfield(v1, 'openminds')
         end
     end
 end
+end
+
+function tf = isDecidedNode(openmindsType, node)
+% NODE is a node did2.convert.openmindsInstanceNode decides for an instance
+% of the openMINDS type OPENMINDSTYPE
+tf = false;
+if isempty(node)
+    return;
+end
+[~, ~, table] = did2.convert.openmindsInstanceNode('');
+for k = 1:numel(table)
+    [n, ~] = did2.convert.openmindsInstanceNode(['openminds:' table(k).key], openmindsType);
+    if ~isempty(n) && sameCurie(n, node)
+        tf = true;
+        return;
+    end
+end
+end
+
+function tf = isEmptyText(v)
+% the v1 value is empty text: the document names no node of its own
+tf = (ischar(v) || (isstring(v) && isscalar(v))) && isempty(strtrim(char(v)));
 end
 
 function tf = isText(v)

@@ -33,6 +33,16 @@ function tf = openmindsIdRebuilds(node, openmindsId, ix, uriBase)
 %   did2.convert.migrators_j.openminds_subject carries every document that
 %   states one. did2.convert.roundtrip.openminds_subject reads the id back
 %   through this function ([term equivalents recorded], the round trip read).
+%
+%   DECIDED INSTANCES. An openMINDS controlled-term instance that names no
+%   node of its own, but whose node the team decided
+%   (did2.convert.openmindsInstanceNode: GeneticStrainType wildtype,
+%   transgenic, knockin), rebuilds exactly when NODE is that decided node; the
+%   registry's `equivalent` list is not read for it. Decided by Jess Haley,
+%   2026-11-19 [openMINDS ids rebuild the subject terms] and [knockin is NCIT
+%   Knock-in] (did-schema did_v2_go_forward_class_audit.md;
+%   Waltham-Data-Science/did-schema#212): the migrator resolves the node from
+%   the IRI, and the round trip reads the id back through this function.
 
 arguments
     node {mustBeText}
@@ -45,6 +55,13 @@ tf = false;
 node = strtrim(char(node));
 openmindsId = strtrim(char(openmindsId));
 if isempty(node) || isempty(openmindsId)
+    return;
+end
+% THE DECIDED INSTANCES (see DECIDED INSTANCES above): read before the
+% registry, so the answer does not depend on the schema in use
+decided = did2.convert.openmindsInstanceNode(openmindsId);
+if ~isempty(decided)
+    tf = sameNode(decided, node);
     return;
 end
 if isempty(ix)
@@ -82,6 +99,20 @@ tf = any(ismember(forms, e.equivalent));
 end
 
 % ===================== helpers =============================================
+
+function tf = sameNode(a, b)
+%SAMENODE Two CURIEs name one node: equal, or equal once the prefix's
+%   spelling is set aside (did2.schema.curieKey; [spelling is notation]).
+tf = strcmp(a, b);
+if tf
+    return;
+end
+try
+    tf = strcmp(char(did2.schema.curieKey(a)), char(did2.schema.curieKey(b)));
+catch
+    tf = strcmpi(a, b);
+end
+end
 
 function b = registeredUriBase()
 %REGISTEREDURIBASE The `openminds` prefix's `uri_base` in the shared schema's
