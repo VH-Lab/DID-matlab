@@ -20,7 +20,10 @@ function out = fillField(def, value, path)
 %   node), or a cellstr/string array of names when it is an array.
 %
 %   A field with no sub-fields is a LEAF and is checked for its declared type,
-%   scalarity, enum and numeric bounds. An unknown leaf type is an error: a
+%   scalarity, enum and numeric bounds. The type `number_or_text` admits a
+%   real number (one, unless mustBeScalar is false) or one row of text, and
+%   nothing else; it is for a field that keeps the source's value in the
+%   source's own type (a condition's `source_numeric`). An unknown leaf type is an error: a
 %   builder that cannot check a type must not pretend it did.
 %
 %   A `structure` with no declared sub-fields cannot be checked and is passed
@@ -280,6 +283,27 @@ switch fieldType
     case 'matrix'
         if ~(isnumeric(value) || islogical(value))
             error('did2:build:typeMismatch', '"%s" must be a numeric array, got %s.', path, class(value));
+        end
+    case 'number_or_text'
+        % [source numeric is number or text] (Jess Haley, 2026-11-19, did-schema
+        % did_v2_numeric_shape_plan.md [numeric step 3 leftovers] (1)): a field
+        % that keeps what the source wrote in the source's own type -- a number
+        % (0.03) where v1 stored a number, text ("0.030") where v1 stored text.
+        % A real number, or one row of text; nothing else (not true/false, not
+        % a struct or a cell). A text value is kept verbatim.
+        if isstring(value) && isscalar(value)
+            value = char(value);
+        end
+        if ischar(value) && (isempty(value) || isrow(value))
+            % text, as given
+        elseif isnumeric(value) && isreal(value)
+            value = double(value);
+            if ~isArray && ~isscalar(value)
+                error('did2:build:notScalar', '"%s" must be a single number, or text.', path);
+            end
+        else
+            error('did2:build:typeMismatch', ...
+                '"%s" must be a number or text (declared type %s), got %s.', path, fieldType, class(value));
         end
     otherwise
         error('did2:build:unknownType', ...
