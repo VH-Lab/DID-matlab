@@ -237,8 +237,11 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   exists to END that, not to spread it.
 %
 %   So the unresolved path emits NO observation and instead returns
-%   UNRESOLVEDLABEL, which migrators_j.element records as an `assertion` with value kind `term` on
-%   the element-subject:
+%   UNRESOLVEDLABEL, which migrators_j.element records as a migration-report
+%   note, `modality_unresolved` with the label as its DETAIL (did2.convert.
+%   reportNote; [variable terms batch 1], Jess Haley, 2026-11-19). Until that
+%   decision it was an `assertion` with value kind `term` on the
+%   element-subject:
 %
 %       subject_statement.variable.name = 'modality unresolved'
 %       term.value.name                 = the element type (or the best-known label)

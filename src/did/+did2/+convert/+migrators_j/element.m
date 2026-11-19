@@ -505,10 +505,12 @@ elseif strcmpi(strtrim(type), 'spikes')
     % relation that belongs to a different decision.
 end
 if ~isempty(unresolvedLabel)
-    % Guard A's queryable worklist entry, built from declared fields only --
-    % see the jRecordingObservation header for why the signed
-    % `modality_unresolved` flag has no schema home yet.
-    bodies{end+1} = kindAssertion(preBody, elementId, 'modality unresolved', ...
+    % Guard A's worklist entry. [variable terms batch 1] (Decided by Jess
+    % Haley, 2026-11-19, did-schema did_v2_go_forward_class_audit.md): it is a
+    % note for the migration report (`modality_unresolved`, DETAIL the label),
+    % not an assertion; until then it was a 'modality unresolved' term
+    % assertion on the element, which the round trip still reads.
+    did2.convert.reportNote('modality_unresolved', 'element', elementId, ...
         unresolvedLabel);
 end
 

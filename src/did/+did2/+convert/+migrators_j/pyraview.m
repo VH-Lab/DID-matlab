@@ -111,7 +111,9 @@ function bodies = pyraview(preBody)
 %                                        jEpochDocId
 %     epochid.epochid                    defers to epochMint, then names the epoch
 %     epochclocktimes.clocktype, t0_t1   the anchor's clock, start and duration
-%     pyraview.label                     the observation's variable
+%     pyraview.label                     the observation's notes (its
+%                                        variable's name before [variable
+%                                        terms batch 1])
 %     pyraview.dataType                  the observation's data type
 %     pyraview.channels                  the channel dimension
 %     pyraview.nativeRate,               a level's rate and start where the
@@ -274,10 +276,23 @@ end
 
 % ---- the observation (the signal is in the per-level bodies) -----------------
 [datumType, sourceDatumType] = jDatumType(dataType);
+% [variable terms batch 1] (Decided by Jess Haley, 2026-11-19, did-schema
+% did_v2_go_forward_class_audit.md): the variable is AFO:AFR_0001916
+% "voltage", looked up by node, and the v1 `label` (the signal's own name,
+% NDI's makePyraviewDoc.m writes the filter band) is kept, exactly as written,
+% in the observation's `notes`, as [image label goes to the observation's
+% notes] keeps image.label (Claude's placement of the label, reported with
+% the build).
+% Before that decision the label WAS the variable's name ('signal' when
+% empty); the round trip reads both.
+obsNotes = {};
+if ~isempty(label)
+    obsNotes = {'Notes', label};
+end
 obs = jStatement(preBody, 'observation', subjectId, ...
-    jLabel(firstNonEmpty(label, 'signal')), [], ...
+    did2.convert.registeredTerm('AFO:AFR_0001916', 'voltage'), [], ...
     'DataBody', true, 'DatumType', datumType, 'SourceDatumType', sourceDatumType, ...
-    'TimeReferenceIds', {anchor.base.id}, 'Id', obsId, 'ValueKind', 'voltage');
+    'TimeReferenceIds', {anchor.base.id}, 'Id', obsId, 'ValueKind', 'voltage', obsNotes{:});
 
 fileList = {};
 if isfield(preBody, 'files') && isstruct(preBody.files) ...
