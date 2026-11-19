@@ -65,6 +65,17 @@ function bodies = spike_interface_sorting_outputs(preBody)
 %   carry-100).
 %   did2.convert.roundtrip.SpikeInterfaceSortingOutputs rebuilds the v1
 %   document from the passthrough; testRawV1RoundTripSpikeParameters compares.
+%
+%   CARRIED AS v1, WITH A NOTE. Decided by Jess Haley, 2026-11-19 [spike
+%   interface sorting carried as v1] (did-schema
+%   did_v2_go_forward_class_audit.md): "it is carried as v1 with a carry row
+%   and waits for a dataset that holds it ... no NDI second pass is built for
+%   it now". A template-shaped document is therefore not a bare passthrough:
+%   the migrator writes a `carried_as_v1` note for it, so v1_to_v2 carries it
+%   whole (the untouched v1 source, stamped did_v1) and the migration report
+%   lists it. Its carry row is not in the register yet (did-schema #286, "Build
+%   pending: did-schema (its carry row)"), so the note cites the decision and
+%   no row; when the row lands, the note's tag and the marker name it.
 
 arguments
     preBody (1,1) struct
@@ -85,8 +96,15 @@ end
 [~, collision, unplaced] = jRawAccount(preBody, struct( ...
     'SpikeInterfaceSortingOutputs', {{'sorter_name', 'sample_rate', 'unit'}}, ...
     'files', {{'file_list', 'file_info'}}), {});
-jRawCarry('spike_interface_sorting_outputs', preBody, collision, unplaced, 'carry-100');
-bodies = {preBody};   % a passthrough, or the carry of the untouched v1 source
+carried = jRawCarry('spike_interface_sorting_outputs', preBody, collision, unplaced, 'carry-100');
+if ~carried
+    % [spike interface sorting carried as v1] (Jess Haley, 2026-11-19)
+    % carry-register: none (the class's row is pending in did-schema #286)
+    did2.convert.reportNote('carried_as_v1', 'spike_interface_sorting_outputs', ...
+        jCarryId(preBody), ['awaiting_home: the whole document (no v2 home until ' ...
+        'a dataset holds one; [spike interface sorting carried as v1])']);
+end
+bodies = {preBody};   % the carry of the untouched v1 source
 end
 
 % ===================== small helpers =======================================

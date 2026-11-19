@@ -111,7 +111,11 @@ function bodies = hartley_calc(preBody)
 %   THE HARTLEY NUMBERS ARE DATA ([hartley numbers stored, copies not], Decided
 %   by Jess Haley, 2026-11-03): S, KXV, KYV, ORDER as covariates of one body,
 %   dimension EMPTY:0000260 "frame", owned by the spike-triggered average
-%   (hartleyNumbersBody). `T` is not written when it is an exact copy of the
+%   (hartleyNumbersBody); the four covariates' variables are the terms of
+%   [hartley column terms] (Decided by Jess Haley, 2026-11-19): S EMPTY:0000449
+%   "contrast polarity", KXV EMPTY:0000450 "horizontal spatial frequency
+%   component", KYV EMPTY:0000451 "vertical spatial frequency component",
+%   ORDER NCIT:C25390 "Index" (hartleyNumberColumns). `T` is not written when it is an exact copy of the
 %   delay axis (batch 2). The same decision says the frame times and the spike
 %   times are not stored and the round trip rebuilds them; on the corpora the
 %   round trip has no document to rebuild them from (the presentation's timing
@@ -834,8 +838,11 @@ function [body, unplaced] = hartleyNumbersBody(preBody, hrc, ownerId)
 %   [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03):
 %   computed by the stimulus program's hartleystim / hartleynumbers, code the
 %   database does not hold, so they are stored, one row per frame. The four
-%   column variables are NOT decided: they are written as plain labels
-%   ('hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER'), pending terms.
+%   column variables are the nodes of [hartley column terms] (Decided by Jess
+%   Haley, 2026-11-19; hartleyNumberColumns), written through the term
+%   registry (did2.convert.registeredTerm); before that decision they were the
+%   plain labels 'hartley S', 'hartley KXV', 'hartley KYV', 'hartley ORDER',
+%   which the round trip still reads.
 %
 %   Returns [] when the block holds no numbers (the current writer moves them to
 %   hartley_numbers.bin and leaves empty arrays). UNPLACED names why the block
@@ -881,7 +888,7 @@ for k = 1:size(COLUMNS, 1)
         continue;
     end
     vals{end+1} = v; %#ok<AGROW>
-    names{end+1} = COLUMNS{k, 2}; %#ok<AGROW>
+    names{end+1} = did2.convert.registeredTerm(COLUMNS{k, 2}, COLUMNS{k, 3}); %#ok<AGROW>
 end
 if ~isempty(unplaced) || isempty(vals)
     return;
@@ -892,7 +899,7 @@ covList = cell(1, numel(vals));
 for k = 1:numel(vals)
     % in the new numeric shape (did2.build.numericItem): numeric, source_numeric
     covList{k} = did2.build.composite('data', 'covariates', did2.build.numericItem(struct( ...
-        'variable', jLabel(names{k}), 'along', 0, ...
+        'variable', names{k}, 'along', 0, ...
         'quantity', struct('value', vals{k}, 'source_value', vals{k}))));
 end
 o = jOpts(preBody, 'Notes', ...
@@ -903,10 +910,21 @@ body = did2.build.sampledBody(ownerId, dims, 'Covariates', did2.build.list(covLi
 end
 
 function c = hartleyNumberColumns()
-%HARTLEYNUMBERCOLUMNS v1 field -> the plain label its covariate is written
-%   under (pending terms; the round trip reads the same table).
-c = {'S', 'hartley S'; 'KXV', 'hartley KXV'; 'KYV', 'hartley KYV'; ...
-    'ORDER', 'hartley ORDER'};
+%HARTLEYNUMBERCOLUMNS v1 field -> {node, name} of its covariate's variable,
+%   and the plain label written before the terms were decided.
+%
+%   [hartley column terms] (Decided by Jess Haley, 2026-11-19, did-schema
+%   did_v2_go_forward_class_audit.md): "S ... a new EMPTY term 'contrast
+%   polarity'"; "KXV a new EMPTY term 'horizontal spatial frequency
+%   component'"; "KYV a new EMPTY term 'vertical spatial frequency
+%   component'"; "ORDER ... NCIT:C25390 'Index'". The round trip
+%   (did2.convert.roundtrip.hartley_calc) reads the same table, by node first
+%   and then by either name.
+c = { ...
+    'S',     'EMPTY:0000449', 'contrast polarity',                      'hartley S'; ...
+    'KXV',   'EMPTY:0000450', 'horizontal spatial frequency component', 'hartley KXV'; ...
+    'KYV',   'EMPTY:0000451', 'vertical spatial frequency component',   'hartley KYV'; ...
+    'ORDER', 'NCIT:C25390',   'Index',                                  'hartley ORDER'};
 end
 
 function out = withoutRestatedLagSetting(preBody, hrc)
