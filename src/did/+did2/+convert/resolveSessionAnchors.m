@@ -432,6 +432,19 @@ end
 changedIdx = [];
 rebuilt = {};
 for k = 1:n
+    % THE OLD CLASS NAMES ARE READ ON PURPOSE (DID-matlab #397). These two
+    % reads are this pass's whole selector: it folds the pre-#73 classes, so
+    % they cannot be renamed to the current `relative_time_reference` (which
+    % is what the fold writes). Nothing mints them any more: jSessionAnchor
+    % writes a `relative_time_reference` to the session entity since
+    % e8c4e1ce (2026-10-21), no NDI-matlab V2 writer names them, and they
+    % are not did_v1 classes (did-schema tools/veta_record.py,
+    % _DELETE_NO_V1_PROVENANCE), so a v1 document of that name has no
+    % migrator and quarantines in v1_to_v2. So on today's pipeline this loop
+    % folds nothing and `anchors_seen` is 0; a non-zero `anchors_seen` is
+    % the signal that an old-shape anchor reached the batch. The pass stays
+    % until its callers drop it (NDI-matlab +ndi/+migrate/local.m calls it,
+    % so that call goes first).
     isRelative = strcmp(anchorClass{k}, 'session_relative_reference');
     isBounded  = strcmp(anchorClass{k}, 'session_bounded_reference');
     if ~isRelative && ~isBounded; continue; end

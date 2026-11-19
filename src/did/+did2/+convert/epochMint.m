@@ -1150,8 +1150,15 @@ edgeMemo = containers.Map('KeyType', 'char', 'ValueType', 'double');
 % document or the original passthrough (whichever survived), so asking "what
 % class is it now" cannot tell an emitted fold from a withheld one -- which is
 % precisely the number to report.
+% The standalone `method` document (did-schema #88; the class was
+% `method_parameters` before, and jCalculation / the spike-settings migrators
+% emit `method`). The report counters keep their `method_parameters_*` names:
+% they are report keys tools/census_digest.py and runCorpusDiscovery read, and
+% renaming them would break the comparison with earlier runs. The source name
+% 'method_parameters' below is did2.validate.epochStrings' label for the parked
+% string, not a class name.
 for k = 1:n
-    if ~strcmp(rows(k).class_name, 'method_parameters'); continue; end
+    if ~strcmp(rows(k).class_name, 'method'); continue; end
     report.method_parameters_seen = report.method_parameters_seen + 1;
     if ~isempty(depValueOf(bodies{k}, 'epoch_id'))
         continue;   % already filled (a re-run); find-or-create, not create
@@ -1192,12 +1199,6 @@ for k = 1:n
         if isempty(b.method.parameters)
             b.method = rmfield(b.method, 'parameters');
         end
-    end
-    if isfield(b, 'method_parameters') && isstruct(b.method_parameters) ...
-            && isfield(b.method_parameters, 'other') ...
-            && isstruct(b.method_parameters.other) ...
-            && isfield(b.method_parameters.other, 'epochid')
-        b.method_parameters.other = rmfield(b.method_parameters.other, 'epochid');
     end
     bodies{k} = b;
     changedIdx(end+1)      = k;                %#ok<AGROW>
@@ -1989,8 +1990,8 @@ for j = 1:numel(changedIdx)
     if armIdx > 0
         report.arming_bodies_carried = report.arming_bodies_carried + 1;
     elseif ~isempty(rows(changedIdx(j)).class_name) ...
-            && strcmp(rows(changedIdx(j)).class_name, 'method_parameters')
-        % MEASURED, NOT REPAIRED, and deliberately so. `method_parameters.epoch_id`
+            && strcmp(rows(changedIdx(j)).class_name, 'method')
+        % MEASURED, NOT REPAIRED, and deliberately so. `method.epoch_id`
         % is OPTIONAL, so an epoch that quarantined leaves this body carrying an
         % edge to a document not in the batch -- an orphan. That path predates
         % this rebuild and changing it would change a current result, so it is
@@ -2835,8 +2836,8 @@ function cn = classNameOf(b)
 %CLASSNAMEOF The class name, except that an `entity` (did-schema #88: one
 %   entity class with a bound type) answers its TYPE ('session', 'epoch',
 %   ...), so the rows below keep comparing on 'session' and 'epoch'. The
-%   standalone `method` (#88; `method_parameters` before) answers
-%   'method_parameters', the name the epoch_id stamping loop looks for. A
+%   standalone `method` (#88; `method_parameters` before) answers its own
+%   name, 'method', which the epoch_id stamping loop looks for. A
 %   statement answers its DIRECTION ('observation', ...; an old-vintage joined
 %   leaf is read as its direction too); its value kind is `rows(k).value_kind`
 %   (did2.convert.statementKind).
@@ -2852,7 +2853,7 @@ if strcmp(cn, 'entity') && isfield(b, 'entity') && isstruct(b.entity) ...
     t = did2.build.vocabularyHandle('entity_type', b.entity.type);
     if ~isempty(t); cn = t; end
 elseif strcmp(cn, 'method')
-    cn = 'method_parameters';
+    % its own name (did-schema #88); no alias to the pre-#88 class
 else
     cn = did2.convert.statementKind(b);
 end
@@ -3188,12 +3189,15 @@ function report = measureIngestionProbemap(report, rows, bodies, n)
 %     A #30 recording-observation (+migrators_j/private/jRecordingObservation.m,
 %     driven from +migrators_j/element.m:144-148) is emitted ONE PER ELEMENT with
 %     a SESSION 'during' anchor -- jSessionAnchor(preBody,'during'), a
-%     `session_relative_reference` -- NEVER an epoch anchor. Its own header says
-%     so: "one observation per element is emitted, with the shared session
-%     'during' anchor -- coarse but true. Per-epoch observations are the second
-%     pass" (:108-118). This pass runs BEFORE resolveSessionAnchors
-%     (runCorpusDiscovery.m: epoch_mint at :171, session_anchor_fold at :208), so
-%     the anchor is still class `session_relative_reference` when read here.
+%     `relative_time_reference` whose referent is the session entity (it was a
+%     `session_relative_reference` before #73, folded later by
+%     resolveSessionAnchors; nothing mints that class now) -- NEVER an epoch
+%     anchor. Its own header says so: "one observation per element is emitted,
+%     with the shared session 'during' anchor -- coarse but true. Per-epoch
+%     observations are the second pass".
+%     (Since 2026-10-21 pass 1 emits no such observation at all: the per-epoch
+%     recording observations are minted after this pass by
+%     resolveEpochProbemap; testEpochProbemapMeasurement pins that.)
 %
 %   So `recording_obs_epoch_scoped` is expected 0 -- there is NO per-epoch #30
 %   observation for a per-epoch probemap observation to duplicate -- and that 0
@@ -3267,17 +3271,19 @@ for k = 1:n
     recSeen = recSeen + 1;
     trId = depValueOf(bodies{k}, 'time_reference_1');
     if isempty(trId); trId = depValueOf(bodies{k}, 'time_reference_id'); end
+    % The session anchor is a `relative_time_reference` whose referent is the
+    % session entity (jSessionAnchor; the pre-#73 `session_relative_reference`
+    % and `session_bounded_reference` classes no longer exist and nothing mints
+    % them). Anything not epoch-scoped is session-scoped, so it needs no
+    % class-name test of its own.
     if isempty(trId) || ~isKey(classById, trId)
         recUnresolved = recUnresolved + 1;
-    elseif any(strcmp(classById(trId), ...
-            {'session_relative_reference', 'session_bounded_reference'}))
-        recSession = recSession + 1;
     elseif isKey(bodyById, trId) ...
             && referenceIsEpochScoped(bodyById(trId), classById)
         recEpoch = recEpoch + 1;
     else
-        % an absolute_reference, or a relative_reference anchored to a session
-        % DOCUMENT -- neither is epoch-scoped.
+        % the session anchor, an absolute reference, or a relative reference
+        % anchored to anything but an epoch -- none is epoch-scoped.
         recSession = recSession + 1;
     end
     subjId = depValueOf(bodies{k}, 'subject_id');
@@ -3497,9 +3503,8 @@ tf = any(ismember(kinds, superNames));
 end
 
 function tf = referenceIsEpochScoped(refBody, classById)
-%REFERENCEISEPOCHSCOPED True when a reference document's `relative_to` names an
-%   `epoch`. Used only for reference classes other than the session anchors the
-%   switch already handles -- a robustness path, expected never to fire today.
+%REFERENCEISEPOCHSCOPED True when a reference document's referent
+%   (`referent_id`, or the pre-#88 `relative_to`) names an `epoch`.
 tf = false;
 if ~isstruct(refBody); return; end
 target = depValueOf(refBody, 'relative_to');

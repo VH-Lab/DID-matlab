@@ -162,26 +162,30 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   THE BODY CARRIES NO BYTES IN PASS 1, ON PURPOSE
 %   ---------------------------------------------------------------------
 %   The element document has no attachments. For an INGESTED session the
-%   recording archives hang off `daqreader_epochdata_ingested`, whose migrator
-%   says so in its own header:
+%   recording archives hang off `daqreader_epochdata_ingested`. That migrator's
+%   header once said the archives' landing pad, a `sampled_body` on a
+%   `<modality>_observation`, was still to be built under did-schema OPEN_WORK #30
+%   (HISTORICAL-BUILD-CLAIM: the wording was corrected there and is corrected
+%   here; it is not quoted again so it cannot be cited as evidence).
 %
-%       src/did/+did2/+convert/+migrators_j/daqreader_epochdata_ingested.m
-%         "epochtable                      -> relative_reference     BUILT BELOW
-%          the attached recording archives -> sampled_body on a
-%                                             <modality>_observation  #30, NOT BUILT"
-%
-%   THAT QUOTE IS STALE IN THE SOURCE AND HAS BEEN CORRECTED THERE (2026-08-15);
-%   it is kept here because the SECOND sentence below is what this file relies
-%   on and that half is still true. "#30, NOT BUILT" is too broad -- #30 is
-%   signed (2026-08-10, 2026-08-13) and THIS FUNCTION is its assembler, live
-%   from `element.m:118`. Quoting a sibling's build claim as evidence is how a
-%   wrong sentence in one file becomes a citation in another; cite the SIGNATURE
-%   or the emitter, not another comment.
-%
-%   This function builds the landing pad that quote names. Re-pointing the bytes
-%   onto it is the other half of #30 and needs the epoch<->element join, i.e. the
-%   second pass -- because the subject is an INPUT to this function, not
-%   something it resolves.
+%   What #30 became (did-schema `did_v2_recording_observation_plan.md`):
+%   TEAM-SIGN-OFF [raw recording observation] (2026-08-10, 2026-08-13), amended
+%   by "Decided by Jess Haley, 2026-10-27 [Guard A amended]" (did-schema #104,
+%   closed 2026-10-29), with [epoch files as data bodies] and [ingested epoch
+%   documents retired] (2026-10-21). All of it is built:
+%     - THIS FUNCTION is the assembler for an element's recording observation,
+%       called from `element.m`;
+%     - the per-epoch recording observations, with the epoch's files (an
+%       ingested session's archive segments included) as `opaque_body` data
+%       bodies, are minted by the batch post-pass
+%       `did2.convert.resolveEpochProbemap`, which also retires the v1
+%       `daqreader_*_epochdata_ingested` archive once every file it holds has a
+%       new owner. That pass does the epoch<->element join this function cannot
+%       do, because the subject is an INPUT to this function, not something it
+%       resolves.
+%   Quoting a sibling's build claim as evidence is how a wrong sentence in one
+%   file becomes a citation in another; cite the decision or the emitter, not
+%   another comment.
 %
 %   THE PARAGRAPH THAT STOOD HERE CHOSE THE WRONG ONE OF TWO BAD OPTIONS, and it
 %   is replaced rather than deleted because its REASONING was right. It said a
