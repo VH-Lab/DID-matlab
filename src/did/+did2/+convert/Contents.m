@@ -95,8 +95,8 @@
 %   carries a BATCH-PASS declaration read by tools/batch_pass_declarations.py)
 %     epochMint, foldGenericFiles, resolveClockAlignment, resolveDatasetEntities,
 %     resolveDeferredBaths, resolveEpochProbemap, resolveOpenmindsCitations,
-%     resolveRegionParts, resolveResponseParameters, resolveSessionAnchors,
-%     resolveValidIntervals (census only)
+%     resolveRegionParts, resolveResponseParameters, resolveValidIntervals
+%     (census only)
 %
 %   Subpackages
 %     +migrators_j     - the did_v1 -> V_eta per-document migrators, one file
