@@ -58,6 +58,28 @@ function [whereSQL, params, exact] = compileQuery(q, opts)
 %   compiles exactly (exact_string, hasfield, and/or of those, nested
 %   hasanyelement), and to the conservative 1=1 otherwise.
 %
+%   AN `isa` CAN LEAD when nothing else in its conjunction can and its class
+%   is small. With 'ClassCount' and 'SessionCount' given (function handles:
+%   the number of stored documents whose chain holds a class name, and the
+%   number of documents of a session id, '' for all; did2.database.sqlitedb
+%   gives both), a conjunction with no term SQLite can start from (see
+%   sessionScopeFollows) whose cheapest `isa` (or `or` of them) names at
+%   most 1/8 of the documents its session scope holds compiles that `isa`
+%   as the uncorrelated `documents.id IN (SELECT sc.doc_id FROM
+%   superclasses sc WHERE sc.classname = ?)`, which SQLite starts from
+%   through superclasses_classname, instead of the correlated EXISTS it
+%   tests on every document of the session. The two forms match the same
+%   documents, so only the plan changes; the counts are a hint, read once
+%   and kept by the database, and a stale count changes the speed and never
+%   the answer. Without the handles nothing changes. Measured on a SQLite
+%   3.45 file shaped like a migrated corpus (30,000 documents in one
+%   session, 5 daq systems): `isa daqsystem | isa acquisition_system` in a
+%   session took 83 ms through the session index and 0.08 ms from the class
+%   index; a class holding a quarter of a session's documents is slower
+%   from its class index (103 ms against 80 ms), hence the 1/8. Jess
+%   Haley, 2026-11-06 ([read speed margin]): "Speed can't be slower than
+%   v1. We need to match or beat."
+%
 %   QueryablePaths and QueryableArrayPaths may also be given already
 %   normalised, as the containers.Map (path -> affinity) this function
 %   builds from them: did2.database.sqlitedb builds the two maps once per
@@ -72,17 +94,26 @@ arguments
     opts.QueryablePaths = {}
     opts.QueryableArrayPaths = []
     opts.PresentClasses = []
+    opts.ClassCount = []
+    opts.SessionCount = []
 end
 
 [scalarMap, arrayMap] = did2.database.queryablePathMaps( ...
     opts.QueryablePaths, opts.QueryableArrayPaths);
+isaLead = 'off';
+if isa(opts.ClassCount, 'function_handle') && isa(opts.SessionCount, 'function_handle')
+    isaLead = 'auto';
+end
 ctx = struct( ...
     'queryablePaths', {scalarMap}, ...
     'queryableArrayPaths', {arrayMap}, ...
     'root', 'body', ...          % the JSON every body path is read from
     'inElement', false, ...      % inside a hasanyelement sub-query?
     'depth', 0, ...              % hasanyelement nesting depth (for aliases)
-    'presentClasses', {opts.PresentClasses});   % for exactness (arrayIsExact)
+    'presentClasses', {opts.PresentClasses}, ...   % for exactness (arrayIsExact)
+    'isaLead', isaLead, ...      % may an isa lead? 'auto' | 'force' | 'off' (isaLeadPlan)
+    'classCount', {opts.ClassCount}, ...
+    'sessionCount', {opts.SessionCount});
 [whereSQL, params] = compileSearchstructArray(q.searchstructure, ctx);
 if nargout > 2
     exact = arrayIsExact(q.searchstructure, ctx);
@@ -209,11 +240,12 @@ if isempty(ssArray)
     return;
 end
 parts = cell(1, numel(ssArray));
+[termCtx, isaLeader] = isaLeadPlan(ssArray, ctx);
 for k = 1:numel(ssArray)
-    [parts{k}, sub] = compileSearchstruct(ssArray(k), ctx);
+    [parts{k}, sub] = compileSearchstruct(ssArray(k), termCtx{k});
     params = [params, sub]; %#ok<AGROW>
 end
-parts = sessionScopeFollows(ssArray, parts, ctx);
+parts = sessionScopeFollows(ssArray, parts, ctx, isaLeader);
 if isscalar(parts)
     % A single conjunct doesn't need outer parens; this keeps the SQL
     % readable and lets `compileQuery(did2.query('x','regexp','y'))`
@@ -225,7 +257,7 @@ else
 end
 end
 
-function parts = sessionScopeFollows(ssArray, parts, ctx)
+function parts = sessionScopeFollows(ssArray, parts, ctx, isaLeader)
 % A conjunction that holds a term SQLite can START from (an uncorrelated
 % `documents.id IN (...)`: a named depends_on, an exact match on a queryable
 % scalar path, or an `or` of such) scopes by session WITHOUT the session
@@ -252,6 +284,9 @@ end
 leads = false(1, numel(ssArray));
 for k = 1:numel(ssArray)
     leads(k) = canLead(ssArray(k), ctx);
+end
+if isaLeader > 0
+    leads(isaLeader) = true;   % an isa compiled to lead (isaLeadPlan)
 end
 if ~any(leads)
     return;
@@ -305,6 +340,97 @@ for k = 1:numel(ssArray)
 end
 end
 
+function [termCtx, leader] = isaLeadPlan(ssArray, ctx)
+% Which term of the conjunction SSARRAY, if any, compiles its `isa` to lead
+% (see the help: "AN `isa` CAN LEAD"). TERMCTX{k} is the context term k is
+% compiled with; LEADER is that term's index, 0 for none. Every other term,
+% and every term when one that canLead is present, is compiled with
+% isaLead 'off', which is the SQL this file wrote before.
+off = ctx;
+off.isaLead = 'off';
+termCtx = repmat({off}, 1, numel(ssArray));
+leader = 0;
+if ctx.inElement || strcmp(isaLeadOf(ctx), 'off') || isempty(ssArray) || anyLeads(ssArray, off)
+    return;
+end
+cost = inf(1, numel(ssArray));
+for k = 1:numel(ssArray)
+    cost(k) = isaLeadCost(ssArray(k), ctx);
+end
+[c, k] = min(cost);
+if isinf(c)
+    return;
+end
+if strcmp(isaLeadOf(ctx), 'auto') && ~(8 * c <= scopeCount(ssArray, ctx))
+    return;
+end
+force = ctx;
+force.isaLead = 'force';
+termCtx{k} = force;
+leader = k;
+end
+
+function c = isaLeadCost(ss, ctx)
+% the documents an `isa` (or an `or` of terms that lead) would start from:
+% its class's stored count; 0 for a term that canLead; Inf for any other
+c = inf;
+op = char(ss.operation);
+if isempty(op) || op(1) == '~'
+    return;
+end
+off = ctx;
+off.isaLead = 'off';
+switch op
+    case 'isa'
+        try
+            c = double(ctx.classCount(char(ss.param1)));
+        catch
+            c = inf;   % no count: the isa does not lead
+        end
+    case 'or'
+        c = isaLeadCostArray(asStructArray(ss.param1), ctx) + ...
+            isaLeadCostArray(asStructArray(ss.param2), ctx);
+    otherwise
+        if canLead(ss, off)
+            c = 0;
+        end
+end
+end
+
+function c = isaLeadCostArray(ssArray, ctx)
+% the cheapest term of a conjunction to start from (an `or` branch)
+c = inf;
+for k = 1:numel(ssArray)
+    c = min(c, isaLeadCost(ssArray(k), ctx));
+end
+end
+
+function n = scopeCount(ssArray, ctx)
+% the documents the conjunction would otherwise walk: those of the session
+% its exact base.session_id term names, else all of them
+sid = '';
+for k = 1:numel(ssArray)
+    if strcmp(char(ssArray(k).operation), 'exact_string') ...
+            && strcmp(char(ssArray(k).field), sessionIdPath())
+        sid = char(ssArray(k).param1);
+        break;
+    end
+end
+try
+    n = double(ctx.sessionCount(sid));
+catch
+    n = 0;   % no count: no isa leads
+end
+end
+
+function m = isaLeadOf(ctx)
+% the context's isaLead ('off' for a context built without one)
+m = 'off';
+if isfield(ctx, 'isaLead')
+    m = ctx.isaLead;
+end
+end
+
 function [sql, params] = compileSearchstruct(ss, ctx)
 op = ss.operation;
 isNeg = ~isempty(op) && op(1) == '~';
@@ -342,7 +468,7 @@ switch op
         params = [pa, pb];
         return;
     case 'isa'
-        [sql, params] = compileIsa(ss.param1, isNeg);
+        [sql, params] = compileIsa(ss.param1, isNeg, strcmp(isaLeadOf(ctx), 'force'));
         return;
     case 'depends_on'
         [sql, params] = compileDependsOn(ss.param1, ss.param2, isNeg, ctx);
@@ -381,11 +507,18 @@ end
 % document-level operators
 % -----------------------------------------------------------------------
 
-function [sql, params] = compileIsa(className, isNeg)
-% `isa` consults the `superclasses` sidecar table.
+function [sql, params] = compileIsa(className, isNeg, lead)
+% `isa` consults the `superclasses` sidecar table. LEAD (isaLeadPlan): the
+% same set as the uncorrelated IN, which SQLite can start from.
 className = char(className);
 existsSQL = ['EXISTS (SELECT 1 FROM superclasses sc ' ...
     'WHERE sc.doc_id = documents.id AND sc.classname = ?)'];
+if nargin > 2 && lead && ~isNeg
+    sql = ['documents.id IN (SELECT sc.doc_id FROM superclasses sc ' ...
+        'WHERE sc.classname = ?)'];
+    params = {className};
+    return;
+end
 if isNeg
     sql = ['(NOT ' existsSQL ')'];
 else

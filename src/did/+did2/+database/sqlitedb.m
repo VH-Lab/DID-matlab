@@ -98,6 +98,8 @@ classdef sqlitedb < handle
         queryableArrayPaths = {}     % cellstr mirror, passed to compileQuery
         alwaysRecheck (1,1) logical = false   % test hook: recheck even an exact query
         presentClassMap = []         % classname -> true for every class in a stored chain; [] = not read
+        leadCounts = []              % the counts compileQuery's isa lead reads (leadClassCount); [] = none read
+        writesSinceCounts = 0        % documents added or removed since leadCounts was read
         derivedAny = true   % add: any derived row stored at the start of this add (none: no drop to run)
         queryableScalarMap = []      % path -> affinity, built once for compileQuery
         queryableArrayMap = []       % path -> affinity, built once for compileQuery
@@ -222,6 +224,7 @@ classdef sqlitedb < handle
                 end
                 obj.insertFileRows(plan);
                 obj.presentClassMap = [];   % the stored chains changed
+                obj.writesSinceCounts = obj.writesSinceCounts + numel(list);
                 mksqlite(obj.dbid, 'COMMIT');
             catch err
                 try mksqlite(obj.dbid, 'ROLLBACK'); catch, end
@@ -260,6 +263,7 @@ classdef sqlitedb < handle
                 rethrow(err);
             end
             obj.presentClassMap = [];   % the stored chains changed
+            obj.writesSinceCounts = obj.writesSinceCounts + 1;
             % The bytes this document ingested go with it, unless another
             % document still records the same uid.
             for k = 1:numel(stored)
@@ -408,7 +412,9 @@ classdef sqlitedb < handle
             [whereSQL, params, exact] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
                 'QueryableArrayPaths', obj.compileArrayPaths(), ...
-                'PresentClasses', obj.presentClasses());
+                'PresentClasses', obj.presentClasses(), ...
+                'ClassCount', @(c) obj.leadClassCount(c), ...
+                'SessionCount', @(sid) obj.leadSessionCount(sid));
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ...
                 ' ORDER BY rowid ASC'];
             rows = obj.verifiedRead(sql, params);
@@ -453,7 +459,9 @@ classdef sqlitedb < handle
             [whereSQL, params, exact] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
                 'QueryableArrayPaths', obj.compileArrayPaths(), ...
-                'PresentClasses', obj.presentClasses());
+                'PresentClasses', obj.presentClasses(), ...
+                'ClassCount', @(c) obj.leadClassCount(c), ...
+                'SessionCount', @(sid) obj.leadSessionCount(sid));
             sql = ['SELECT documents.id AS doc_id, edge_out.name AS name, ' ...
                 'edge_out.document_id AS document_id, ' ...
                 'json_extract(documents.body, ''$.document_class.schema_version'') AS stamp ' ...
@@ -527,7 +535,9 @@ classdef sqlitedb < handle
             [whereSQL, params, exact] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
                 'QueryableArrayPaths', obj.compileArrayPaths(), ...
-                'PresentClasses', obj.presentClasses());
+                'PresentClasses', obj.presentClasses(), ...
+                'ClassCount', @(c) obj.leadClassCount(c), ...
+                'SessionCount', @(sid) obj.leadSessionCount(sid));
             m = obj.compileScalarPaths();
             am = obj.compileArrayPaths();
             % each path: its sidecar ('s' scalar, 'a' array, '' none) and kind
@@ -673,7 +683,9 @@ classdef sqlitedb < handle
             [whereSQL, params, exact] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
                 'QueryableArrayPaths', obj.compileArrayPaths(), ...
-                'PresentClasses', obj.presentClasses());
+                'PresentClasses', obj.presentClasses(), ...
+                'ClassCount', @(c) obj.leadClassCount(c), ...
+                'SessionCount', @(sid) obj.leadSessionCount(sid));
             rows = struct('doc_id', {}, 'values', {});
             if ~exact || obj.alwaysRecheck
                 docs = obj.search(q);
@@ -1044,7 +1056,9 @@ classdef sqlitedb < handle
             [whereSQL, params] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
                 'QueryableArrayPaths', obj.compileArrayPaths(), ...
-                'PresentClasses', obj.presentClasses());
+                'PresentClasses', obj.presentClasses(), ...
+                'ClassCount', @(c) obj.leadClassCount(c), ...
+                'SessionCount', @(sid) obj.leadSessionCount(sid));
             sql = ['SELECT id, body FROM documents WHERE ' whereSQL ' ORDER BY rowid ASC'];
             plan = mksqlite(obj.dbid, ['EXPLAIN QUERY PLAN ' sql], params{:});
             r = struct('sql', sql, 'params', {params}, 'plan', plan);
@@ -1060,7 +1074,9 @@ classdef sqlitedb < handle
             [~, ~, tf] = did2.database.compileQuery(q, ...
                 'QueryablePaths', obj.compileScalarPaths(), ...
                 'QueryableArrayPaths', obj.compileArrayPaths(), ...
-                'PresentClasses', obj.presentClasses());
+                'PresentClasses', obj.presentClasses(), ...
+                'ClassCount', @(c) obj.leadClassCount(c), ...
+                'SessionCount', @(sid) obj.leadSessionCount(sid));
         end
 
         function testHookAlwaysRecheck(obj, tf)
@@ -1291,6 +1307,61 @@ classdef sqlitedb < handle
                 end
             end
             m = obj.presentClassMap;
+        end
+
+        function n = leadClassCount(obj, className)
+            % the stored documents whose chain holds CLASSNAME (the
+            % superclasses sidecar): compileQuery lets an `isa` of a small
+            % class lead its search (see compileQuery, "AN `isa` CAN LEAD").
+            % A hint only: it picks the plan, never the answer, so it is
+            % kept until a tenth of the documents (at least 100) have been
+            % added or removed since it was read.
+            c = obj.leadCountCache();
+            className = char(className);
+            if isKey(c.class, className)
+                n = c.class(className);
+                return;
+            end
+            r = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM superclasses WHERE classname = ?', className);
+            n = double(r(1).n);
+            c.class(className) = n;
+        end
+
+        function n = leadSessionCount(obj, sid)
+            % the stored documents of session SID ('' for all of them), for
+            % the same choice as leadClassCount
+            c = obj.leadCountCache();
+            sid = char(sid);
+            if isKey(c.session, sid)
+                n = c.session(sid);
+                return;
+            end
+            if isempty(sid)
+                r = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM documents');
+            else
+                r = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM documents WHERE session_id = ?', sid);
+            end
+            n = double(r(1).n);
+            c.session(sid) = n;
+        end
+
+        function c = leadCountCache(obj)
+            % the count maps (handles, filled as they are asked), read again
+            % once a tenth of the documents (at least 100) changed
+            if ~isempty(obj.leadCounts) && obj.writesSinceCounts > ...
+                    max(100, 0.1 * obj.leadCounts.total)
+                obj.leadCounts = [];
+            end
+            if isempty(obj.leadCounts)
+                obj.ensureConnection();
+                r = mksqlite(obj.dbid, 'SELECT COUNT(*) AS n FROM documents');
+                obj.leadCounts = struct('total', double(r(1).n), ...
+                    'class', containers.Map('KeyType', 'char', 'ValueType', 'double'), ...
+                    'session', containers.Map('KeyType', 'char', 'ValueType', 'double'));
+                obj.leadCounts.session('') = obj.leadCounts.total;
+                obj.writesSinceCounts = 0;
+            end
+            c = obj.leadCounts;
         end
 
         function m = compileScalarPaths(obj)
