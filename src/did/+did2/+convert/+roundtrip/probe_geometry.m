@@ -116,8 +116,13 @@ end
 model = '';
 for k = find(~used)
     b = bodies{k};
-    [~, vname] = termParts(getIn(b, 'statement', 'variable'));
-    if strcmp(classNameOf(b), 'assertion') && strcmpi(vname, 'probe model') && isempty(model)
+    % [variable terms batch 1] (Jess Haley, 2026-11-19): NCIT:C99285 "Model
+    % Number", by node; 'probe model' (no node) before that decision
+    [vnode, vname] = termParts(getIn(b, 'statement', 'variable'));
+    vnode = strtrim(char(vnode));
+    isModel = strcmpi(vnode, 'NCIT:C99285') ...
+        || (isempty(vnode) && any(strcmpi(vname, {'probe model', 'Model Number'})));
+    if strcmp(classNameOf(b), 'assertion') && isModel && isempty(model)
         [~, model] = termParts(getIn(b, 'term', 'value'));
         probes = [probes, edgeIds(b, 'entity_id')]; %#ok<AGROW>
         used(k) = true;
