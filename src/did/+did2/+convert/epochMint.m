@@ -511,6 +511,8 @@ report = struct( ...
     'epoch_extent_duplicate_clock',        0, ...
     'epoch_extent_conflicting_clock',      0, ...
     'epoch_extent_refused_no_system',      0, ...
+    'epoch_extent_referent_device',        0, ...
+    'epoch_extent_referent_acquisition_system', 0, ...
     ... % [agreeing untied sources count as one] (Jess Haley, 2026-11-12):
     ... % `..._untied_epochs` is the DENOMINATOR of the untied decision (distinct
     ... % (session, epoch) pairs holding at least one untied source); every one
@@ -971,8 +973,21 @@ for k = 1:n
         untiedByKey(ukey) = held;
         continue;
     end
+    % [a rig's clock belongs to its device] (Jess Haley, 2026-11-19, did-schema
+    % docs/plans/did_v2_standing_wiring_plan.md): the reference's referent is
+    % the rig's device entity (the acquisition_system's `device_id`, minted by
+    % +migrators_j/daqsystem.m), not the configuration; a system with no
+    % device (a batch migrated before) keeps the system, as before.
+    owner = clockOwnerOf(sysIdx, sysId);
+    if strcmp(owner, sysId)
+        report.epoch_extent_referent_acquisition_system = ...
+            report.epoch_extent_referent_acquisition_system + numel(entries);
+    else
+        report.epoch_extent_referent_device = ...
+            report.epoch_extent_referent_device + numel(entries);
+    end
     for i = 1:numel(entries)
-        entries{i}.system = sysId;
+        entries{i}.system = owner;
         entries{i}.source = rows(k).doc_id;
     end
     key = pairKey(rows(k).session_id, es);
@@ -3008,7 +3023,10 @@ if isempty(clk) || strcmp(clk, 'no_time') || strncmp(clk, 'approx_', 7)
     why = 'clock not placed'; return;
 end
 if numel(t) < 2 || ~all(isfinite(t(1:2))); why = 'no finite t0_t1'; return; end
-ek = extentKey(epochId, sysId, clk);
+% the clock is the rig's device's ([a rig's clock belongs to its device]):
+% the reference is keyed on, and refers to, the device when the system has one
+owner = clockOwnerOf(sysIdx, sysId);
+ek = extentKey(epochId, owner, clk);
 if isKey(extentByKey, ek)
     prior = extentByKey(ek);
     if abs(prior{2} - t(1)) > 1e-9 * max(1, abs(t(1))) ...
@@ -3023,7 +3041,7 @@ sec = struct('node', 'om:second-Time', 'name', 'second');
 try
     % its id derived from the (epoch, system, clock) it is the extent of
     % (did2.convert.mintId; practice (b) of [migration reliability practices])
-    ref = did2.build.relativeTimeReference(sysId, 'Clock', clk, ...
+    ref = did2.build.relativeTimeReference(owner, 'Clock', clk, ...
         'Start', t(1), 'StartSourceValue', t(1), 'StartSourceUnit', sec, ...
         'StartApproximate', false, ...
         'Duration', t(2) - t(1), 'DurationSourceValue', t(2) - t(1), ...
@@ -3700,7 +3718,9 @@ function [refs, stats] = epochExtentReferences(entries, sessionDocumentId, ...
 %
 %   [device clocks on one epoch] (Jess Haley, 2026-10-26): each reference's
 %   `referent_id` is the ACQUISITION SYSTEM whose clock it is (entries{k}.system,
-%   tied by the caller), no longer the session; the epoch HOLDS the references
+%   tied by the caller), no longer the session; since [a rig's clock belongs to
+%   its device] (Jess Haley, 2026-11-19) the caller ties it to the system's
+%   DEVICE entity (clockOwnerOf), so entries{k}.system is the device's id; the epoch HOLDS the references
 %   (`time_reference_id`), as under #60 option A. Uniqueness is by clock AND
 %   referent: two systems' dev_local_time are two references.
 %
@@ -3773,6 +3793,7 @@ idx.probemap = containers.Map('KeyType', 'char', 'ValueType', 'any');
 idx.softwareOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
 idx.navOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
 idx.manifests = containers.Map('KeyType', 'char', 'ValueType', 'char');
+idx.deviceOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
 for k = 1:n
     b = bodies{k};
     if ~isstruct(b); continue; end
@@ -3794,6 +3815,8 @@ for k = 1:n
             if ~isempty(sw); idx.softwareOf(id) = sw; end
             nav = depValueOf(b, 'epoch_file_pattern_id');
             if ~isempty(nav); idx.navOf(id) = nav; end
+            dev = depValueOf(b, 'device_id');
+            if ~isempty(dev); idx.deviceOf(id) = dev; end
             key = pairKey(sid, nm);
             if isKey(idx.systems, key)
                 idx.systems(key) = [idx.systems(key), {id}];
@@ -3874,6 +3897,18 @@ for i = 2:numel(lines)
     if ~isempty(colon); dev = strtrim(dev(1:colon-1)); end
     if isempty(dev); continue; end
     rowsOut{end+1} = struct('lid', lid, 'device', dev); %#ok<AGROW>
+end
+end
+
+function owner = clockOwnerOf(idx, sysId)
+%CLOCKOWNEROF What a rig's clock is the clock of: the rig's device entity, the
+%   `device_id` of the acquisition_system SYSID (Decided by Jess Haley,
+%   2026-11-19 [a rig's clock belongs to its device], did-schema
+%   docs/plans/did_v2_standing_wiring_plan.md), or SYSID itself when the
+%   system names no device (a batch migrated before the device was minted).
+owner = sysId;
+if ~isempty(sysId) && isKey(idx.deviceOf, sysId)
+    owner = idx.deviceOf(sysId);
 end
 end
 
