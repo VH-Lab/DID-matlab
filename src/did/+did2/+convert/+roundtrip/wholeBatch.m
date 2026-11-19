@@ -651,15 +651,6 @@ a(end+1) = struct('name', 'metadata editor id and datestamp', ...
     'decision', '[metadata editor id and datestamp not kept] (Jess Haley, 2026-11-19)', ...
     'classes', {{'metadata_editor'}}, 'paths', {{'base.id', 'base.datestamp'}}, ...
     'id', true, 'when', []);
-% [openMINDS minted ids are an accepted loss] (Decided by Jess Haley,
-% 2026-11-19; Waltham-Data-Science/did-schema#212): "If these are just
-% artifacts, accept the loss". A converted openminds_subject's per-document
-% minted `<Type>/<uuid>` id (did2.convert.openmindsMintedId) is not kept.
-% Accepted only when v1's id is such an id (mintedOpenmindsId)
-a(end+1) = struct('name', 'openMINDS minted id', ...
-    'decision', '[openMINDS minted ids are an accepted loss] (Jess Haley, 2026-11-19)', ...
-    'classes', {{'openminds_subject'}}, 'paths', {{'openminds.openminds_id'}}, ...
-    'id', false, 'when', @mintedOpenmindsId);
 [a.listed] = deal(false);
 [a.pathsOf] = deal([]);
 % [removed file locations are an accepted loss] (Decided by Jess Haley,
@@ -736,16 +727,6 @@ for k = 1:numel(fi)
         end
     end
 end
-end
-
-function tf = mintedOpenmindsId(v1, ~, ~)
-% V1's openminds_id is a per-document minted id of its own openMINDS type
-tf = false;
-if ~isstruct(v1) || ~isfield(v1, 'openminds') || ~isstruct(v1.openminds) ...
-        || ~isfield(v1.openminds, 'openminds_id') || ~isfield(v1.openminds, 'openminds_type')
-    return;
-end
-tf = did2.convert.openmindsMintedId(v1.openminds.openminds_id, v1.openminds.openminds_type);
 end
 
 function tf = copyrightEmitted(~, docs, ~)

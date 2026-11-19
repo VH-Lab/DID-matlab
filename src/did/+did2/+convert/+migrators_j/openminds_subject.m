@@ -120,14 +120,7 @@ end
 omId = jGetChar(block, 'openminds_id');
 isLabStrain = strcmp(lower(typeSuffix(jGetChar(block, 'openminds_type'))), 'strain') ...
     && isempty(node);
-% [openMINDS minted ids are an accepted loss] (Decided by Jess Haley,
-% 2026-11-19; Waltham-Data-Science/did-schema#212): a per-document minted id
-% (`<Type>/<uuid>`, did2.convert.openmindsMintedId) is an artifact: the
-% document converts to its term assertion, no global_identifier is written
-% for the id, and the whole-batch round trip lists it as an accepted loss. No
-% strain entity is minted per id (NDI's second pass keeps one per strain).
-isMinted = did2.convert.openmindsMintedId(omId, jGetChar(block, 'openminds_type'));
-if ~isempty(strtrim(omId)) && ~isLabStrain && ~isMinted ...
+if ~isempty(strtrim(omId)) && ~isLabStrain ...
         && ~did2.convert.openmindsIdRebuilds(node, omId)
     % carry-register: carry-116
     did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...
