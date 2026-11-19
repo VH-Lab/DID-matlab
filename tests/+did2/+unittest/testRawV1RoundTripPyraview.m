@@ -114,6 +114,34 @@ verifyTrue(testCase, r.carried, 'all: carried?');
 did2.unittest.helpers.verifyRoundTrip(testCase, r, 'all', {});
 end
 
+function testTheVariableIsVoltageAndTheLabelIsKeptInTheNotes(testCase)
+% [variable terms batch 1] (Decided by Jess Haley, 2026-11-19, did-schema
+% did_v2_go_forward_class_audit.md): the observation's variable is
+% AFO:AFR_0001916 "voltage", looked up by node, and the v1 label is kept
+% exactly as written in the observation's notes. An observation migrated
+% before the decision has no node and the label as its variable's name; the
+% round trip reads both back to the same label.
+v1 = writerShape('high');
+out = runRaw(stamped(v1));
+assertEmpty(testCase, out.quarantine);
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+isObs = cellfun(@(d) isfield(d, 'statement') && strcmp(char(d.document_class.class_name), 'observation'), docs);
+assertEqual(testCase, nnz(isObs), 1);
+obs = docs{isObs};
+verifyEqual(testCase, char(obs.statement.variable.node), 'AFO:AFR_0001916');
+verifyEqual(testCase, char(obs.statement.notes), 'high');
+ctx = [docs, {epochEntity(v1)}];
+rebuilt = did2.convert.roundtrip.pyraview(ctx);
+verifyEqual(testCase, rebuilt.pyraview.label, 'high');
+old = docs;
+o = old{isObs};
+o.statement.variable = struct('node', '', 'name', 'high');
+o.statement = rmfield(o.statement, 'notes');
+old{isObs} = o;
+rebuiltOld = did2.convert.roundtrip.pyraview([old, {epochEntity(v1)}]);
+verifyEqual(testCase, rebuiltOld.pyraview.label, 'high', 'the old spelling is read too');
+end
+
 function testEachLevelKeepsItsFileInfo(testCase)
 % [pyraview level keeps its file info] (Jess Haley, 2026-10-27): the level body
 % of file levelK.bin carries the v1 files.file_info entry named levelK.bin,

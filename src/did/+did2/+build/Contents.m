@@ -102,7 +102,7 @@
 %
 %   A class the schema's class_disposition_meta.json lists as retired takes no
 %   new document (Jess Haley, 2026-10-24, [V2 builder refuses retired];
-%   strictMode 'RetiredClasses', armed; off while did2.convert migrates):
+%   strictMode 'RetiredClasses', armed, during migration too):
 %   did2:build:retiredClass, naming the replacement and the decision. A schema
 %   without that file refuses nothing.
 %

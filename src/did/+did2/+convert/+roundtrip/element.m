@@ -128,6 +128,19 @@ function [v1, spec] = element(bodies, ctx)
 %   the retired relation stated. Several specimens are reported, not chosen.
 %   They are read, never placed.
 %
+%   THE SUBJECT CARRIED IN THE MIGRATION REPORT. Decided by Jess Haley,
+%   2026-11-19 (did-schema docs/plans/did_v2_standing_wiring_plan.md)
+%   [stimulator subject carried as needing information], [one-field carry in
+%   the migration report], [recording probe subject carried the same way]:
+%   NDI-matlab's second pass removes the `observes` of a stimulator no
+%   statement names, and of a recording probe with no recording observation,
+%   and holds its v1 subject in the run's migration report as a carried field
+%   (carry-172, did2.convert.carryElementSubject). When BODIES holds no
+%   lineage relation and no observation in CTX names this entity as its
+%   instrument, that entry (did2.convert.carriedElementSubject, for the
+%   entity's base.id) is `subject_id`, with `direct` true. With no entry,
+%   both are lost and the check reports them.
+%
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.element.
 
 arguments
@@ -223,8 +236,8 @@ for k = find(~used)
 end
 % the `observes` relation resolveEpochProbemap retired: read from the
 % observations that carry its pair (see THE `observes` RELATION above)
+specimens = {};
 if isempty(subject) && isempty(underlying) && isempty(direct) && ~isempty(ctx)
-    specimens = {};
     for k = ctxReferrers(ctx, base.id)
         b = ctx.docs{k};
         if strcmp(classNameOf(b), 'observation') && isequal(edgeIds(b, 'instrument_id'), {base.id})
@@ -238,6 +251,15 @@ if isempty(subject) && isempty(underlying) && isempty(direct) && ~isempty(ctx)
     elseif numel(specimens) > 1
         spec.unplaced{end+1} = sprintf(['the observations this element is the ' ...
             'instrument of name %d specimens (a v1 element has one subject)'], numel(specimens));
+    end
+end
+% the subject NDI's second pass carried in the migration report when it
+% removed the `observes` (see THE SUBJECT CARRIED IN THE MIGRATION REPORT)
+if isempty(subject) && isempty(underlying) && isempty(direct) && isempty(specimens)
+    [carriedSubject, found] = did2.convert.carriedElementSubject(base.id);
+    if found
+        subject = carriedSubject;
+        direct = true;
     end
 end
 % no 'element type' assertion: the type is the one its device kind names

@@ -5,7 +5,9 @@ function tests = testBuildRetiredClasses
 %   V_eta_go_forward_class_audit.md): "did2.build refuses to create a new
 %   document of a class whose disposition is retire, naming its replacement
 %   where one is recorded; reading v1 and the generic migration are not
-%   affected."
+%   affected." The generic migration's exception is removed by [retired classes
+%   leave V2] step (4) (Jess Haley, 2026-10-25): did2.convert builds with the
+%   mode as the caller set it (testTheMigrationRefusesARetiredClass).
 %
 %   The list of retired classes is did-schema's class_disposition_meta.json.
 %   These tests write a fixture of it into a copy of the schema in
@@ -136,6 +138,38 @@ testCase.addTeardown(@() did2.schema.cache.strictMode('RetiredClasses', prev));
 verifyEqual(testCase, fieldnames(did2.schema.cache.shared().classDisposition), cell(0, 1));
 doc = did2.build.document(cls, fields, 'SessionId', testCase.TestData.sid);
 verifyEqual(testCase, doc.document_class.class_name, cls);
+end
+
+function testTheMigrationRefusesARetiredClass(testCase)
+% [retired classes leave V2] (Decided by Jess Haley, 2026-10-25), step (4):
+% the generic migration's exception to [V2 builder refuses retired] is removed,
+% so did2.convert.v1_to_v2 no longer turns strictMode 'RetiredClasses' off. A
+% fixture retires `entity`; a v1 subject, whose migrator builds an entity, is
+% then refused by the builder inside the migration and quarantined (not built
+% as a retired class). With the mode off, the same subject converts.
+useFixture(testCase, ['{"retired": [{"class_name": "entity", ' ...
+    '"replaced_by": ["a_replacement"], "decision": "fixture.md [fixture tag]"}]}']);
+v1 = did2.unittest.helpers.ndiDocument('subject', 'Id', 'aabb1122ccdd3344_00000000000000e1', ...
+    'SessionId', 'aabb1122ccdd3344_9900aabbccddeeff', 'Datestamp', '2024-06-01T12:00:00.000Z');
+v1.subject.local_identifier = 'mouse_9';
+v1.subject.description = '';
+v1 = jsondecode(jsonencode(v1));
+prevTerms = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prevTerms));
+prev = did2.schema.cache.strictMode('RetiredClasses', true);
+testCase.addTeardown(@() did2.schema.cache.strictMode('RetiredClasses', prev));
+result = did2.convert.v1_to_v2(v1, 'Validate', false, 'Audits', false);
+assertEqual(testCase, numel(result.quarantine), 1, ...
+    'the migration built a retired class: RetiredClasses was off while it ran');
+verifyEqual(testCase, result.quarantine(1).identifier, 'did2:build:retiredClass');
+verifyEmpty(testCase, result.migrated);
+verifyTrue(testCase, did2.schema.cache.strictMode('RetiredClasses'), ...
+    'the migration changed the RetiredClasses switch');
+% the control: the same document converts with the mode off
+did2.schema.cache.strictMode('RetiredClasses', false);
+result = did2.convert.v1_to_v2(v1, 'Validate', false, 'Audits', false);
+verifyEmpty(testCase, result.quarantine);
+verifyNotEmpty(testCase, result.migrated);
 end
 
 % ===================== helpers ==============================================

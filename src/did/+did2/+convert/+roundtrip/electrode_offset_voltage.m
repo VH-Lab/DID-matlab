@@ -43,9 +43,16 @@ if isempty(obs)
     spec.unplaced{end+1} = 'no observation was emitted';
     return;
 end
-[~, vname] = termParts(getIn(obs, 'statement', 'variable'));
-if ~strcmpi(vname, 'electrode offset voltage')
-    spec.unplaced{end+1} = sprintf('the observation''s variable is "%s", not electrode offset voltage', vname);
+% [variable terms batch 1] (Jess Haley, 2026-11-19): EMPTY:0000056
+% "microelectrode voltage offset", by node; an observation migrated before
+% that decision has no node and the label 'electrode offset voltage'
+[vnode, vname] = termParts(getIn(obs, 'statement', 'variable'));
+vnode = strtrim(char(vnode));
+if ~(strcmpi(vnode, 'EMPTY:0000056') ...
+        || (isempty(vnode) && any(strcmpi(vname, {'electrode offset voltage', ...
+        'microelectrode voltage offset'}))))
+    spec.unplaced{end+1} = sprintf('the observation''s variable is "%s" (%s), not electrode offset voltage', ...
+        vname, vnode);
 end
 base = rebuildBase(obs);
 sid = base.session_id;
