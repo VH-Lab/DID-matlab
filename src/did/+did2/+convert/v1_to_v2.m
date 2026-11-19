@@ -218,10 +218,11 @@ HAND_ON_CLASSES = {'syncrule', 'epochfiles_ingested', 'stimulus_response_scalar'
 % is for imports, so it is off while this runs and restored after
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 % A document whose v1 source states no creation time carries the time the
 % migration ran ([no invented values], Jess Haley, 2026-10-25): one time for the
 % whole call, unless a caller already pinned one for a longer run.
@@ -782,7 +783,19 @@ for k = 1:numel(bodies)
         % `migrated` (or quarantines the whole source body on the first
         % failure, as before).
         for bi = 1:numel(v2Bodies)
-            if carried || laterStep
+            % THE v1 SOURCE KEPT BESIDE WHAT ITS MIGRATOR ADDED ([retired
+            % classes leave V2] (1), Jess Haley, 2026-10-25: "the generic
+            % migration stops writing retired classes as V2 documents"; [handed-on
+            % are v1 as written], 2026-11-03): a HAND_ON_CLASSES migrator that
+            % returns its v1 source unchanged beside documents it added (the
+            % ingested-epoch clock lift, reached only by test fixtures that add
+            % an `epoch_id` edge) hands that source on as the v1 document it is,
+            % stamped did_v1 and never validated against v2, exactly as when it
+            % is returned alone; the added documents are v2.
+            sourceKept = ~carried && ~laterStep && numel(v2Bodies) > 1 ...
+                && any(strcmp(className, HAND_ON_CLASSES)) ...
+                && isequaln(v2Bodies{bi}, preBody);
+            if carried || laterStep || sourceKept
                 % A CARRIED DOCUMENT IS v1 END TO END ([generic stage is
                 % lossless], [passthrough stays v1: how], Jess Haley,
                 % 2026-10-24/25): the v1 source, no V_eta
@@ -834,7 +847,7 @@ for k = 1:numel(bodies)
                         v1NoSchemaNames, v1NoSchemaValues, className);
                 end
             end
-            if options.Validate && ~carried && ~laterStep
+            if options.Validate && ~carried && ~laterStep && ~sourceKept
                 try
                     doc.validate('SchemaCache', options.SchemaCache);
                 catch vErr
