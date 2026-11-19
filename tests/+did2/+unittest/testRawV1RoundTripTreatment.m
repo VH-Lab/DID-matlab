@@ -173,7 +173,10 @@ for k = 1:size(cases, 1)
     verifyEqual(testCase, age.time.value(1).source_numeric, days, label);   % the new numeric shape
     verifyEqual(testCase, age.time.value(1).seconds, days * 86400, label);
     verifyEqual(testCase, char(age.time.value(1).source_unit.name), 'day', label);
-    verifyEqual(testCase, edgeOf(age, 'entity_id'), edgeOf(manip, 'entity_id'), label);
+    % the age is the injected SUBJECT's; a dose at a body site is about the
+    % site's region part, `part_of` that subject ([region part ids computed],
+    % VH-Lab/DID-matlab #488), so the age is compared with the v1 subject
+    verifyEqual(testCase, edgeOf(age, 'entity_id'), edgeOf(v1, 'subject_id'), label);
     verifyEqual(testCase, edgeOf(age, 'time_reference_id'), ...
         edgeOf(manip, 'time_reference_id'), [label ': the injection''s time reference']);
     r = did2.convert.roundtrip.check(v1, out.migrated);
