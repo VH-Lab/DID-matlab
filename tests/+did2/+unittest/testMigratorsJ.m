@@ -2241,7 +2241,8 @@ end
 
 function testImageStackBecomesBodyBackedObservation(testCase)
 % UPDATED for did-schema #88: an image stack folds to an intensity_observation
-% (variable 'image intensity'; the v1 label rides on statement.notes; the
+% (variable NCIT:C221750 "Imaging Signal Intensity" by node since [variable
+% terms batch 1], 'image intensity' before; the v1 label rides on statement.notes; the
 % acquisition timestamp is a whole-statement condition) + a sampled_body whose
 % data.keys carry one key per dimension in dimension_order, owned by the
 % observation (owner_id), datum_order 'F' (a MATLAB array, column-major) + the
@@ -2264,7 +2265,7 @@ verifyEqual(testCase, nLeafJ(out.migrated, 'sampled_body'), 1);
 verifyEqual(testCase, nLeafJ(out.migrated, 'relative_time_reference'), 1);
 obs = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(obs), 'observation+intensity');
-verifyEqual(testCase, obs.get('statement.variable').name, 'image intensity');
+verifyEqual(testCase, obs.get('statement.variable').node, 'NCIT:C221750');
 verifyEqual(testCase, obs.get('statement.notes'), 'a two-photon stack');
 verifyEqual(testCase, depVal(obs, 'entity_id'), 'subj_007');
 verifyEqual(testCase, obs.get('value.data_type'), 'uint16');
@@ -4843,7 +4844,10 @@ obs = out{find(strcmp(names, 'observation+voltage'), 1)};
 verifyEqual(testCase, obs.base.id, 'pv_1');
 verifyTrue(testCase, logical(obs.value.data_body));   % #88: the value lives in bodies
 verifyEqual(testCase, obs.value.data_type, 'int16');
-verifyEqual(testCase, obs.statement.variable.name, 'lfp');
+% [variable terms batch 1] (Jess Haley, 2026-11-19): AFO:AFR_0001916 "voltage"
+% by node; the v1 label, exactly as written, in the observation's notes
+verifyEqual(testCase, obs.statement.variable.node, 'AFO:AFR_0001916');
+verifyEqual(testCase, obs.statement.notes, 'lfp');
 verifyEqual(testCase, depValue(obs, 'entity_id'), 'sub_7');
 % every level body shares the statement (the observation) and owns one file;
 % levels are told apart by dt (native 1/1000 vs decimated 1/500)
@@ -5590,7 +5594,8 @@ out = did2.convert.migrators_j.ontology_image(ontologyImageVintageA());
 verifyEqual(testCase, numel(out), 2);
 o = out{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(o), 'observation+term');
-verifyEqual(testCase, o.statement.variable.name, 'imaged region');
+% [variable terms batch 1] (Jess Haley, 2026-11-19): NCIT:C13717 by node
+verifyEqual(testCase, o.statement.variable.node, 'NCIT:C13717');
 verifyEqual(testCase, o.term.value.node, regNode('uberon:0002436'));
 verifyEqual(testCase, o.term.value.name, 'primary visual cortex');
 verifyEqual(testCase, depValue(o, 'entity_id'), 'elem_9');
@@ -6085,7 +6090,8 @@ verifyEqual(testCase, lr.length.value.meters(2), 2e-5, 'AbsTol', 1e-12);
 
 % probe_model, not the invented probe_type
 assertion = out{find(strcmp(names, 'assertion+term'), 1)};
-verifyEqual(testCase, assertion.statement.variable.name, 'probe model');
+% [variable terms batch 1] (Jess Haley, 2026-11-19): NCIT:C99285 by node
+verifyEqual(testCase, assertion.statement.variable.node, 'NCIT:C99285');
 verifyEqual(testCase, assertion.term.value.name, 'linear');
 end
 
