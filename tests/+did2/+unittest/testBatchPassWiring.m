@@ -1146,7 +1146,7 @@ end
 
 % ===================== the passes refuse another target ==================
 
-function testBothNewPassesRefuseANonVEtaTarget(testCase)
+function testEpochMintRefusesANonVEtaTarget(testCase)
 % V_eta is the only migration target. Asking a pass for another target is an
 % argument error, never a silent no-op that could be read as "ran, found
 % nothing".
@@ -1154,11 +1154,9 @@ r = struct('migrated', {{}}, 'quarantine', [], ...
     'summary', struct('total', 0, 'migrated_count', 0, 'quarantine_count', 0));
 verifyError(testCase, @() did2.convert.epochMint(r, 'Validate', false, ...
     'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
-verifyError(testCase, @() did2.convert.resolveSessionAnchors(r, 'Validate', false, ...
-    'TargetVersion', 'V_none'), 'MATLAB:validators:mustBeMember');
 end
 
-function testBothNewPassesAttachADenominatorOnAnEmptyBatch(testCase)
+function testEpochMintAttachesADenominatorOnAnEmptyBatch(testCase)
 % "Ran and found nothing" must be readable as such. An empty V_eta batch sets
 % `ran` TRUE with every counter at 0, which must not print the same as a
 % pass that did not run.
@@ -1169,12 +1167,6 @@ r = struct('migrated', {{}}, 'quarantine', [], ...
     'TargetVersion', 'did_v2');
 verifyTrue(testCase, repA.ran);
 verifyEqual(testCase, repA.epochs_minted, 0);
-
-[~, repB] = did2.convert.resolveSessionAnchors(r, 'Validate', false, ...
-    'TargetVersion', 'did_v2');
-verifyTrue(testCase, repB.ran);
-verifyEqual(testCase, repB.anchors_seen, 0);
-verifyEqual(testCase, repB.refused_total, 0);
 end
 
 % ===================== foldGenericFiles ================================

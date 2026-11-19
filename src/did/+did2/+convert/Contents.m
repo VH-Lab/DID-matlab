@@ -92,7 +92,7 @@
 %   carries a BATCH-PASS declaration read by tools/batch_pass_declarations.py)
 %     epochMint, foldGenericFiles, resolveClockAlignment, resolveDatasetEntities,
 %     resolveDeferredBaths, resolveEpochProbemap, resolveOpenmindsCitations,
-%     resolveResponseParameters, resolveSessionAnchors, resolveValidIntervals
+%     resolveResponseParameters, resolveValidIntervals
 %     (census only)
 %
 %   Subpackages
