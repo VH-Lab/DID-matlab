@@ -659,7 +659,7 @@ if isempty(stars)
         [sql, params] = compileSessionIdScalar(op, target, isNeg);
         return;
     end
-    if ~ctx.inElement && scalarPathIsIndexed(prefix, ctx)
+    if ~ctx.inElement && scalarPathIsIndexed(prefix, ctx) && scalarSidecarCanDecide(op, target)
         [sql, params] = compileScalarFromScalarSidecar(op, prefix, target, isNeg, ctx);
         return;
     end
@@ -731,6 +731,26 @@ switch op
         tf = isnumeric(target) && isscalar(target);
     otherwise
         tf = false;
+end
+end
+
+function tf = scalarSidecarCanDecide(op, target)
+% May a term on a queryable scalar path be answered from
+% queryable_scalar_elem? An empty text value is not found there (no row
+% holds it as value_text: mksqlite binds an empty char as NULL), so a text
+% operator that an empty value satisfies in the evaluator -- exact_string
+% '' and exact_string_anycase '' (charEq('', '') is true) -- reads the body
+% with json_extract instead, plain and negated (DID-matlab #413). A
+% wildcard the sidecar cannot decide (sidecarCanDecide: an empty one, or
+% stars alone) reads the body too, as on the array sidecar; that only
+% widens it, and the recheck decides. A path absent from the body (or JSON
+% null) is still not an empty value: json_extract gives NULL, which no
+% `= ''` matches, as the evaluator's charEq([], '') is false.
+switch op
+    case {'exact_string', 'exact_string_anycase', 'wildcard'}
+        tf = sidecarCanDecide(op, target);
+    otherwise
+        tf = true;
 end
 end
 
@@ -905,7 +925,7 @@ switch op
         if isNum
             predicate = sprintf('CAST(%s AS REAL) = ?', valueExpr);
             params = {double(target)};
-            [exactPred, exactParams] = guarded(numGuard(typeExpr), predicate, params);
+            [exactPred, exactParams] = guarded(numGuard(typeExpr, valueExpr), predicate, params);
         else
             % Arrays / matrices: full equality is hard in pure SQL.
             % Permissive pre-filter; post-filter enforces equality.
@@ -932,7 +952,7 @@ exactParams = {};
 if isnumeric(target) && isscalar(target)
     predicate = sprintf('CAST(%s AS REAL) %s ?', valueExpr, sqlOp);
     params = {double(target)};
-    [exactPred, exactParams] = guarded(numGuard(typeExpr), predicate, params);
+    [exactPred, exactParams] = guarded(numGuard(typeExpr, valueExpr), predicate, params);
 else
     predicate = '1=1';
     params = {};
@@ -952,12 +972,19 @@ switch typeExpr
 end
 end
 
-function g = numGuard(typeExpr)
+function g = numGuard(typeExpr, valueExpr)
 % As textGuard, for a number. A JSON true/false is not one: the evaluator
 % reads it as a logical, which no numeric operator matches.
+%
+% A REAL/INTEGER column (NUMCOL) is not known to hold a number: its
+% affinity keeps a text that does not look like one as TEXT (sqlitedb
+% writes a scalar path's value as given), and CAST('abc' AS REAL) is 0, so
+% a negated range would drop that text, which the evaluator never compares
+% and so matches under the negation (DID-matlab #493). The guard is the
+% stored value's SQLite type.
 switch typeExpr
     case 'NUMCOL'
-        g = '';
+        g = sprintf('typeof(%s) IN (''integer'', ''real'')', valueExpr);
     case {'TEXTCOL', ''}
         g = [];
     otherwise

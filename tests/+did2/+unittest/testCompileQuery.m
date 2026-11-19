@@ -451,6 +451,28 @@ q = did2.query('demoA.value', 'exact_string', 'a1');
 verifySubstring(testCase, sql, 'json_extract(body, ''$.demoA.value'')');
 end
 
+function testAnEmptyTextTargetOnAQueryablePathReadsTheBody(testCase)
+% An empty value is not found in queryable_scalar_elem (DID-matlab #413), so
+% a text operator an empty value satisfies reads the body; a non-empty
+% target still uses the index.
+paths = struct('path', {'demoA.value'}, 'affinity', {'TEXT'});
+targets = {{'exact_string', ''}, {'~exact_string', ''}, {'exact_string_anycase', ''}, ...
+    {'wildcard', ''}, {'wildcard', '*'}, {'~wildcard', '**'}};
+for k = 1:numel(targets)
+    q = did2.query('demoA.value', targets{k}{1}, targets{k}{2});
+    sql = did2.database.compileQuery(q, 'QueryablePaths', paths);
+    verifySubstring(testCase, sql, 'json_extract(body, ''$.demoA.value'')');
+    testCase.verifyFalse(contains(sql, 'queryable_scalar_elem'), ...
+        sprintf('%s ''%s'' read the scalar sidecar', targets{k}{1}, targets{k}{2}));
+end
+sql = did2.database.compileQuery(did2.query('demoA.value', 'exact_string', 'a'), ...
+    'QueryablePaths', paths);
+verifySubstring(testCase, sql, 'queryable_scalar_elem');
+sql = did2.database.compileQuery(did2.query('demoA.value', 'wildcard', 'a*'), ...
+    'QueryablePaths', paths);
+verifySubstring(testCase, sql, 'queryable_scalar_elem');
+end
+
 function testNegationOfAQueryableScalarIsNotIn(testCase)
 % A document without the value must match the negation, as it did with
 % `(column IS NULL OR NOT ...)`: NOT IN over the rows that do match.
