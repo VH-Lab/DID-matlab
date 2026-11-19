@@ -169,8 +169,15 @@ verifyEqual(testCase, char(did2.unittest.helpers.classKey(toRef)), ...
 % Decided by Jess Haley, 2026-10-26 [device clocks on one epoch] (3): the
 % alignment is between the two PER-SYSTEM references -- referent the
 % acquisition system the endpoint names -- each HELD by its endpoint's epoch.
-verifyEqual(testCase, depValueOf(fromRef, 'referent_id'), 'daq_sync');
-verifyEqual(testCase, depValueOf(toRef, 'referent_id'), 'daq_bpod');
+% Since [a rig's clock belongs to its device] (Jess Haley, 2026-11-19,
+% did-schema docs/plans/did_v2_standing_wiring_plan.md) the referent is the
+% rig's DEVICE entity, which the acquisition system names by `device_id`.
+devSync = depValueOf(docWithId(out, 'daq_sync'), 'device_id');
+devBpod = depValueOf(docWithId(out, 'daq_bpod'), 'device_id');
+verifyNotEmpty(testCase, devSync, 'the sync rig names no device');
+verifyEqual(testCase, depValueOf(fromRef, 'referent_id'), devSync);
+verifyEqual(testCase, depValueOf(toRef, 'referent_id'), devBpod);
+verifyEqual(testCase, char(did2.unittest.helpers.classKey(docWithId(out, devSync))), 'device');
 eA = docWithId(out, epochId('t00001'));
 eB = docWithId(out, epochId('t00002'));
 verifyTrue(testCase, any(strcmp(depValuesOf(eA, 'time_reference_id'), fromId)), ...

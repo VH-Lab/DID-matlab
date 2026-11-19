@@ -290,6 +290,41 @@ verifySubstring(testCase, sql, 'sc.classname = ?');
 verifyEqual(testCase, params, {'demoA'});
 end
 
+function testIsaLeadsOnlyWhenItsClassIsSmall(testCase)
+% with the class and session counts (did2.database.sqlitedb gives them) an
+% isa with nothing else to start from leads when its class holds at most 1/8
+% of the session: the uncorrelated IN, and the session test written with a
+% unary +; otherwise, without the counts, negated, or beside a term that
+% leads, the SQL is what it was
+counts = containers.Map({'small', 'big'}, {10, 500});
+opts = {'ClassCount', @(c) counts(c), 'SessionCount', @(s) 1000};
+sess = did2.query('base.session_id', 'exact_string', 'sid1');
+small = did2.query('', 'isa', 'small');
+big = did2.query('', 'isa', 'big');
+[sql, params] = did2.database.compileQuery(small & sess, opts{:});
+verifySubstring(testCase, sql, 'documents.id IN (SELECT sc.doc_id FROM superclasses sc WHERE sc.classname = ?)');
+verifySubstring(testCase, sql, '(+documents.session_id = ?)');
+verifyEqual(testCase, params, {'small', 'sid1'});
+sql = did2.database.compileQuery((small | small) & sess, opts{:});
+verifyEqual(testCase, numel(strfind(sql, 'IN (SELECT sc.doc_id')), 2);
+verifySubstring(testCase, sql, '(+documents.session_id = ?)');
+% only the cheaper of two leads
+sql = did2.database.compileQuery(big & small & sess, opts{:});
+verifyEqual(testCase, numel(strfind(sql, 'IN (SELECT sc.doc_id')), 1);
+verifySubstring(testCase, sql, 'EXISTS (SELECT 1 FROM superclasses sc');
+for q = {big & sess, (small | big) & sess, did2.query('', '~isa', 'small') & sess, ...
+        small & did2.query('', 'depends_on', 'parent', 'id-1') & sess}
+    sql = did2.database.compileQuery(q{1}, opts{:});
+    verifyFalse(testCase, contains(sql, 'IN (SELECT sc.doc_id'), sql);
+end
+sql = did2.database.compileQuery(big & sess, opts{:});
+verifyFalse(testCase, contains(sql, '+documents.session_id'), sql);
+% without the counts: unchanged
+sql = did2.database.compileQuery(small & sess);
+verifyFalse(testCase, contains(sql, 'IN (SELECT sc.doc_id'), sql);
+verifyFalse(testCase, contains(sql, '+documents.session_id'), sql);
+end
+
 function testIsaNegated(testCase)
 q = did2.query('', '~isa', 'demoA');
 [sql, ~] = did2.database.compileQuery(q);
