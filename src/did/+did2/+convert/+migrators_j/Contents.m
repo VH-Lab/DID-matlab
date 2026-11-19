@@ -653,11 +653,13 @@
 %         it from this line. The daqreader migrator it hands on to writes the
 %         acquisition_reader document.
 %     daqsystem
-%         Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
-%         (configuration off `base`) + a `software` entity for its own implementation
-%         class + the rig's `device` entity. 1 -> 3 (1 -> 2 when there is no class
-%         name; no device when the rig has no name). base.id AND base.name PRESERVED
-%         on the acquisition_system.
+%         Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_configuration`
+%         (`acquisition_system` until [acquisition configuration renamed], Jess Haley
+%         2026-11-19; written as the class the loaded schema holds) (configuration off
+%         `base`) + a `software` entity for its own implementation class + the rig's
+%         `device` entity. 1 -> 3 (1 -> 2 when there is no class name; no device when
+%         the rig has no name). base.id AND base.name PRESERVED on the
+%         acquisition_system.
 %     dataset_remote
 %         Brainstorm-J migrator: did_v1 dataset_remote -> the remote copy as a
 %         first-class relation. A dataset_remote records that a local dataset is
