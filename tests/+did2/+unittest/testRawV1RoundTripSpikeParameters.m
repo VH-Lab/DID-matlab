@@ -34,7 +34,9 @@ function tests = testRawV1RoundTripSpikeParameters
 %   (carry-002/003/004: the run's os and interpreter, which no method keeps);
 %   the same documents with those four app fields empty (the "converted
 %   shape", DID-side) convert and lose nothing. The cluster documents convert
-%   and lose nothing. SpikeInterfaceSortingOutputs passes through. No
+%   and lose nothing. SpikeInterfaceSortingOutputs is carried whole as v1,
+%   with a note ([spike interface sorting carried as v1], Jess Haley,
+%   2026-11-19). No
 %   writer-shaped document loses a field: there are no known findings.
 tests = functiontests(localfunctions);
 end
@@ -125,6 +127,27 @@ verifyEqual(testCase, char(raw.migrated{1}.get('document_class.class_name')), ..
     'SpikeInterfaceSortingOutputs');
 out = did2.convert.v1_to_v2({v1}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine, 'a passthrough with no V_eta class is counted, not quarantined');
+end
+
+function testTheSortingOutputsAreCarriedWholeAsV1WithANote(testCase)
+% [spike interface sorting carried as v1] (Decided by Jess Haley, 2026-11-19,
+% did-schema did_v2_go_forward_class_audit.md): "it is carried as v1 with a
+% carry row and waits for a dataset that holds it". A template-shaped v1
+% document is handed on whole: one document, the untouched v1 source stamped
+% did_v1, with a `carried_as_v1` note naming the decision, listed in the
+% migration report's carried documents.
+v1 = sortingOutputs();
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+verifyEmpty(testCase, out.quarantine);
+verifyEqual(testCase, numel(out.migrated), 1, 'one document, the v1 source');
+verifyTrue(testCase, carried, 'not carried as the untouched v1 source');
+verifyEqual(testCase, char(out.migrated{1}.get('document_class.schema_version')), 'did_v1');
+verifyTrue(testCase, contains(notes, '[spike interface sorting carried as v1]'), notes);
+n = out.summary.migration_notes;
+verifyTrue(testCase, isfield(n, 'carried_as_v1') ...
+    && isfield(n.carried_as_v1.by_class, 'spike_interface_sorting_outputs') ...
+    && n.carried_as_v1.by_class.spike_interface_sorting_outputs == 1, ...
+    'the note is counted once, under its class');
 end
 
 function testTheConvertedDocumentsValidate(testCase)
@@ -223,7 +246,7 @@ f = { ...
     'sorting_parameters, converted shape', convertedShape(writerSorting()), 'converted'; ...
     'kilosort_clusters', writerCluster('kilosort'), 'converted'; ...
     'kiasort_clusters', writerCluster('kiasort'), 'converted'; ...
-    'SpikeInterfaceSortingOutputs, template', sortingOutputs(), 'passthrough'};
+    'SpikeInterfaceSortingOutputs, template', sortingOutputs(), 'carried'};
 end
 
 function n = extractionFields()
