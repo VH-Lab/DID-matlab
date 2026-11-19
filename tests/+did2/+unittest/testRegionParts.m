@@ -181,9 +181,10 @@ verifyEqual(testCase, r.side_observations_seen, 1);
 verifyEqual(testCase, r.sides_attached, 1);
 verifyEqual(testCase, r.parts_rekeyed, 1);
 verifyEqual(testCase, r.rekey_quarantined, 0);
+% (the labels are the registry's; they make only the local identifier)
 nid = did2.convert.regionPartIds('subj_007', ...
-    struct('node', 'UBERON:0002436', 'name', ''), ...
-    struct('node', 'UBERON:0002812', 'name', ''));
+    struct('node', 'UBERON:0002436', 'name', 'primary visual cortex'), ...
+    struct('node', 'UBERON:0002812', 'name', 'left cerebral hemisphere'));
 % the part's id matches its content: (subject, region, side)
 for id = {nid.part, nid.kind, nid.laterality, nid.relation}
     verifyEqual(testCase, countId(out.migrated, id{1}), 1, id{1});
