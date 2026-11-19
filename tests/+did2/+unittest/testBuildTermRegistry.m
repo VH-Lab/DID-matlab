@@ -150,6 +150,83 @@ verifyNumElements(testCase, c, 1);
 verifyEqual(testCase, c.field, 'chemical.value.substance');
 end
 
+% ============ a fit's coefficient and constraint symbols ====================
+% did-schema docs/plans/did_v2_go_forward_class_audit.md, Decided by Jess
+% Haley: [unbound term fields sorted] (2026-11-10) item (2), a model fit's
+% `coefficients.variable` and `constraints.variable` are open by design (a
+% model's own symbols, a term or a label); [tuning fit coefficients named by
+% symbol] (2026-11-11), a fit names "each coefficient (and each constraint)
+% by its symbol in the writer's equation". So a symbol such as 's' or 'C' is
+% not looked up in the term registry in those two slots, and only there.
+
+function testAFitsConstraintSymbolPassesArmed(testCase)
+needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', true);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+nr = did2.convert.tuningFitModels('contrast', 'naka_rushton_RB');
+% a standalone model_fit: Naka-Rushton RB, constraints n = 1 and s = 1
+f = did2.build.fitEntry(did2.build.term(nr.node, nr.name), ...
+    'Target', 'model_fit.value', ...
+    'Coefficients', {symbol('Rm'), 12.1; symbol('c50'), 0.3}, ...
+    'Fields', struct('constraints', did2.build.list(item('n', 1), item('s', 1))));
+verifyEqual(testCase, f.constraints(2).variable.name, 's');
+verifyEqual(testCase, f.coefficients(1).variable.name, 'Rm');
+% one constraint, on a tuning curve's fit (movshon: C = 0)
+mv = did2.convert.tuningFitModels('sf', 'movshon');
+g = did2.build.fitEntry(did2.build.term(mv.node, mv.name), ...
+    'Coefficients', {symbol('k'), 1; symbol('fc'), 2}, ...
+    'Fields', struct('constraints', did2.build.list(item('C', 0))));
+verifyEqual(testCase, g.constraints(1).variable.name, 'C');
+end
+
+function testAFitsCoefficientSymbolStillPassesArmed(testCase)
+needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', true);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+nr = did2.convert.tuningFitModels('contrast', 'naka_rushton_RBNS');
+f = did2.build.fitEntry(did2.build.term(nr.node, nr.name), ...
+    'Target', 'model_fit.value', ...
+    'Coefficients', {symbol('Rm'), 12.1; symbol('c50'), 0.3; symbol('n'), 2; symbol('s'), 1});
+verifyEqual(testCase, f.coefficients(4).variable.name, 's');
+end
+
+function testTheSameSymbolInANonExemptSlotIsStillRefused(testCase)
+% control: the exemption is the two fit paths, not the name. 's' as a fit's
+% model or as a condition's variable is still looked up, and refused.
+needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', true);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+verifyError(testCase, @() did2.build.fitEntry(symbol('s'), ...
+    'Target', 'model_fit.value', ...
+    'Fields', struct('constraints', did2.build.list(item('s', 1)))), ...
+    'did2:build:unregisteredTerm');
+verifyError(testCase, @() did2.build.condition(symbol('s'), 'Value', 1), ...
+    'did2:build:unregisteredTerm');
+end
+
+function testTheCensusDoesNotListAFitsSymbols(testCase)
+% the unregistered-terms census is filled by the same check, so it lists
+% the control and not the exempt symbols
+needRegistry(testCase);
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+prevC = did2.build.unregisteredTerms('-collect', true);
+testCase.addTeardown(@() did2.build.unregisteredTerms('-collect', prevC));
+did2.build.unregisteredTerms('-reset');
+testCase.addTeardown(@() did2.build.unregisteredTerms('-reset'));
+did2.build.fitEntry(symbol('a model nobody registered'), ...
+    'Target', 'model_fit.value', ...
+    'Coefficients', {symbol('Rm'), 12.1; symbol('c50'), 0.3}, ...
+    'Fields', struct('constraints', did2.build.list(item('n', 1), item('s', 1))));
+did2.build.fitEntry(symbol('a model nobody registered'), ...
+    'Fields', struct('constraints', did2.build.list(item('C', 0))));
+L = did2.build.unregisteredTerms();
+verifyEqual(testCase, unique({L.name}), {'a model nobody registered'}, ...
+    'only the model is recorded, not Rm, c50, n, s or C');
+verifyFalse(testCase, any(contains({L.field}, 'constraints')));
+verifyFalse(testCase, any(contains({L.field}, 'coefficients')));
+end
+
 % ===================== helpers ==============================================
 
 function ix = needRegistry(testCase)
@@ -182,4 +259,25 @@ r = jsondecode(['{"terms": [' ...
     '{"node": "NCIT:C28007", "name": "Median", "status": "decided"},' ...
     '{"node": "UBERON:0000033", "name": "head", "status": "decided"},' ...
     '{"node": "", "name": "body midpoint", "status": "staged"}]}']);
+end
+
+function t = symbol(name)
+% a coefficient's symbol as a label ({node '', name}), as the migrators write it
+arguments
+    name {mustBeText}
+end
+t = struct('node', '', 'name', char(name));
+end
+
+function c = item(name, x)
+% a constraint {variable, numeric} (new numeric shape) or {variable, value} (old)
+arguments
+    name {mustBeText}
+    x (1,1) double
+end
+if strcmp(did2.build.numericShape(), 'new')
+    c = struct('variable', symbol(name), 'numeric', x);
+else
+    c = struct('variable', symbol(name), 'value', x);
+end
 end

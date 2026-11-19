@@ -13,10 +13,20 @@ function checkTerm(def, t, path)
 %     - a schema with no term registry (did-schema main);
 %     - a field whose binding lists its own values (entity.type, a
 %       relation, a clock): that list already governs it;
-%     - a model fit's coefficient names (model_fit ... coefficients.variable):
-%       a coefficient is named by its symbol in the model's equation ('a',
-%       'b'), which tells the fit's own coefficients apart; its node still
-%       says what kind of coefficient it is.
+%     - a model fit's coefficient and constraint names (model_fit ...
+%       coefficients.variable, model_fit ... constraints.variable): each is
+%       named by its symbol in the model's equation ('a', 'b', 'Rm', 's'),
+%       which tells the fit's own coefficients apart; its node, when it has
+%       one, still says what kind of coefficient it is. Decided by Jess
+%       Haley in did-schema docs/plans/did_v2_go_forward_class_audit.md:
+%       [unbound term fields sorted] (2026-11-10) item (2), a fit's
+%       `coefficients.variable` and `constraints.variable` are open by
+%       design (a model's own symbols, a term or a label); [tuning fit
+%       coefficients named by symbol] (2026-11-11), a fit names "each
+%       coefficient (and each constraint) by its symbol in the writer's
+%       equation". The exemption is the field's path alone, so the
+%       unregistered-terms census (did2.build.unregisteredTerms, filled
+%       only here) skips exactly what the builder lets through.
 %
 %   A statement's own value term (term.value, a chemical's substance) IS
 %   checked, like a variable (Jess Haley, 2026-10-20: value terms are
@@ -36,7 +46,7 @@ if ~armed && ~collecting
     return;
 end
 if hasValueSet(def) ...
-        || ~isempty(regexp(path, '\.coefficients(\(\d+\))?\.variable$', 'once'))
+        || ~isempty(regexp(path, '\.(coefficients|constraints)(\(\d+\))?\.variable$', 'once'))
     return;
 end
 ix = did2.schema.termIndex();
