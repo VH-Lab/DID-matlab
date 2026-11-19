@@ -1,15 +1,15 @@
-function b = jBase(id, sessionId, name, datestamp)
+function b = jBase(id, sessionId, datestamp)
 %JBASE Build a V_eta `base` block, with the sentinel rule in ONE place.
 %
-%   B = jBase(ID, SESSIONID, NAME, DATESTAMP) returns the struct every emitted
-%   V_eta body needs as its `base` block. All four arguments are optional in
+%   B = jBase(ID, SESSIONID, DATESTAMP) returns the struct every emitted
+%   V_eta body needs as its `base` block. All three arguments are optional in
 %   the sense that '' is accepted for each; what is NOT optional is the shape,
 %   which is why this exists.
 %
 %   ---------------------------------------------------------------------
-%   WHY A HELPER, WHEN THE BLOCK IS FOUR FIELDS
+%   WHY A HELPER, WHEN THE BLOCK IS THREE FIELDS
 %   ---------------------------------------------------------------------
-%   Because the four fields were being written out by hand at 65+ sites, and
+%   Because the fields were being written out by hand at 65+ sites, and
 %   one of them carries a RULE rather than a value:
 %
 %       base.datestamp is mustBeNonEmpty, and a v1 document may carry none.
@@ -42,7 +42,6 @@ function b = jBase(id, sessionId, name, datestamp)
 arguments
     id (1,:) char = ''
     sessionId (1,:) char = ''
-    name (1,:) char = ''
     datestamp (1,:) char = ''
 end
 
@@ -54,5 +53,8 @@ if isempty(ds)
     ds = did2.convert.migrationTime();
 end
 
-b = struct('id', id, 'session_id', sessionId, 'name', name, 'datestamp', ds);
+% no `name`: V2 `base` has none ([v1 name goes to the class's own name
+% field], [base.name kept until retire classes leave], Jess Haley, did-schema
+% did_v2_go_forward_class_audit.md)
+b = struct('id', id, 'session_id', sessionId, 'datestamp', ds);
 end

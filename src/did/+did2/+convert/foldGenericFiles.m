@@ -1676,7 +1676,8 @@ for k = 1:numel(chain)
 end
 end
 
-function base = freshBase(src, id, name)
+function base = freshBase(src, id)
+% no `name`: V2 `base` has none ([base.name kept until retire classes leave])
 sessionId = ''; ds = did2.convert.migrationTime();
 if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
     sessionId = did2.schema.cache.sessionIdOf(src);
@@ -1686,7 +1687,7 @@ if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
     end
 end
 base = struct('id', char(id), 'session_id', sessionId, ...
-    'name', name, 'creation_timestamp', ds);
+    'creation_timestamp', ds);
 end
 
 function cn = classNameOf(b)
