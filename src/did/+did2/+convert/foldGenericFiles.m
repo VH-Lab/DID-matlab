@@ -423,7 +423,7 @@ function [result, report] = foldGenericFiles(result, options)
 %   carried dimensions and covariates go, after the level completion has read
 %   them, as on every other carrier.
 %
-%   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
+%   See also: did2.convert.v1_to_v2,
 %   did2.unittest.testFoldGenericFiles, did2.unittest.testBatchPassWiring.
 
 arguments
@@ -445,10 +445,11 @@ restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 
 % DENOMINATOR FIRST AND UNCONDITIONALLY (Operating Rule 5). The report is
 % attached BEFORE a single document is read, so "the pass never ran" and "the
@@ -1675,7 +1676,8 @@ for k = 1:numel(chain)
 end
 end
 
-function base = freshBase(src, id, name)
+function base = freshBase(src, id)
+% no `name`: V2 `base` has none ([base.name kept until retire classes leave])
 sessionId = ''; ds = did2.convert.migrationTime();
 if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
     sessionId = did2.schema.cache.sessionIdOf(src);
@@ -1685,7 +1687,7 @@ if isstruct(src) && isfield(src, 'base') && isstruct(src.base)
     end
 end
 base = struct('id', char(id), 'session_id', sessionId, ...
-    'name', name, 'creation_timestamp', ds);
+    'creation_timestamp', ds);
 end
 
 function cn = classNameOf(b)

@@ -57,7 +57,6 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       calculation(spike waveforms), observation(session-scoped recording),
 %       observation(pyraview),
 %       relative_time_reference(session anchor of a recording observation),
-%       relative_reference(folded session anchor),
 %       relative_time_reference(epoch anchor), result.epoch_mint
 %   BATCH-PASS-ADDS: observation(recording per epoch),
 %       manipulation(stimulator per epoch), opaque_body(epoch file by location),
@@ -163,11 +162,9 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   the same wall as epochMint, resolveSessionAnchors and jEpochDocId.
 %
 %   ---------------------------------------------------------------------
-%   ORDER: AFTER epochMint (it needs the `epoch` documents to anchor to) AND
-%   AFTER resolveSessionAnchors (so the #30 observations it retires have already
-%   had their session anchors folded to `relative_reference`, and so this pass
-%   mints its OWN 'during' anchor as a final `relative_reference` directly rather
-%   than a pass-1 handle needing a later fold).
+%   ORDER: AFTER epochMint (it needs the `epoch` documents to anchor to). It
+%   mints its OWN 'during' anchor as a final reference directly rather than a
+%   pass-1 handle needing a later fold.
 %   ---------------------------------------------------------------------
 %
 %   ---------------------------------------------------------------------
@@ -244,7 +241,6 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   Options mirror the sibling passes (Validate / SchemaCache / TargetVersion).
 %
 %   See also: did2.convert.v1_to_v2, did2.convert.epochMint,
-%   did2.convert.resolveSessionAnchors,
 %   did2.convert.migrators_j (element, epochfiles_ingested).
 
 arguments
@@ -266,10 +262,11 @@ restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 
 % DENOMINATOR FIRST, and unconditionally (Operating Rule 5). Every field is
 % defined before a single document is read, so "did not run" and "ran and found

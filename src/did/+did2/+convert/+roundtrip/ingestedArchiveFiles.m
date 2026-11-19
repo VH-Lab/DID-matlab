@@ -17,7 +17,7 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %   `sampled_body` (a numeric array shaped by its dimensions, or for a text
 %   body a cellstr). Without it, R.evmktx is built from the documents only
 %   (types, numbers, order) and its times and codes are 'not read'. The
-%   default reader did2.convert.roundtrip.ingestedArchiveFiles('readFloat64', ...)
+%   default reader did2.convert.roundtrip.ingestedArchiveFiles('readBody', ...)
 %   is not given here: the caller says where the bytes are (see READING
 %   BODIES).
 %
@@ -58,7 +58,23 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %       row's offset, scale, time channel and sample rate, when they are
 %       NDI's defaults, are notation ([spelling is notation]): not stored,
 %       rebuilt by the round trip; a channel list whose event or marker rows
-%       differ from the defaults ... is kept whole as v1".
+%       differ from the defaults ... is kept whole as v1";
+%   and by Jess Haley, 2026-11-19 (did-schema
+%   docs/plans/did_v2_standing_wiring_plan.md):
+%     [time channel row is notation] "a time channel's own `channel_list.bin`
+%       row is rebuilt from its time group: number the time group's, sample
+%       rate the group's, offset 0, scale 1, name the standard prefix and
+%       number; the file is removed only when the rebuild matches exactly,
+%       else it is kept whole as v1 and counted";
+%     [text channel entries are a JSON array] "an unpacked text channel's
+%       times are an uncompressed array of 64-bit floats ...; its entries are
+%       one uncompressed UTF-8 JSON array of strings in the same order,
+%       format EDAM format_3464 "JSON"";
+%     [time group with several time channels split] "when an ingested
+%       archive's one uneven time group file holds several time channels,
+%       each time channel becomes its own keyed `time` value, and each
+%       channel group keys to the time value of the time channel its rows' v1
+%       `time_channel` names".
 %   This function is that round trip's rebuild; the comparison with the v1
 %   files is did2.convert.roundtrip.compareIngestedArchiveFiles. The document
 %   inverse (did2.convert.roundtrip.daqreader_mfdaq_epochdata_ingested) reads
@@ -125,15 +141,21 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %       R.notation. A list whose event or marker rows differ (CED Spike2
 %       sets an event's time channel to its own number) does not compare
 %       exactly, and NDI-matlab's second pass keeps it whole as v1.
-%       A time row (a `t<n>` channel) is NOT rebuilt: its number,
-%       time_channel, offset and scale have no v2 home once the evenly spaced
-%       time body is removed, so a v1 list holding one (Intan's `t1`) does
-%       not rebuild exactly and stays (NDI-matlab's rule,
-%       ndi.vintage.ingestedChannelList, VH-Lab/NDI-matlab#1251, writes none
-%       either). Each time channel the groups point at is listed in
-%       R.no_home (row NaN). The rows here follow that rule: the sample rate
-%       rounded to a whole number when within 1e-9 of one, NaN read back as
-%       JSON null accepted.
+%       A time row ([time channel row is notation]): one per whole number
+%       T >= 0 that some group's "time channel" covariate names, as
+%       NDI-matlab's readers rebuild it (ndi.vintage.ingestedChannelList):
+%       name `t<T>`, type time, time_channel T (the decision names none;
+%       every NDI reader that writes a time row points it at itself: Intan
+%       `t1` 1, CED Spike2 `t<n>` n), sample rate that of the groups whose
+%       every channel names T when they agree on one (else NaN: an unevenly
+%       spaced group's time is keyed, so it has none), offset 0, scale 1,
+%       number T, group and dataclass by the writer's rule; its
+%       time_channel, offset and scale are listed in R.notation. A time
+%       channel a group names that the v1 list does not hold (Intan's
+%       auxiliary t2, VH-Lab/NDI-matlab#1249) is rebuilt too, so that list
+%       does not compare exactly; NDI-matlab's second pass keeps it. The
+%       rows here follow that rule: the sample rate rounded to a whole
+%       number when within 1e-9 of one, NaN read back as JSON null accepted.
 %     evmktx_group<g>_seg.nbf_1
 %                    one entry per group of unpacked event channels (group by
 %                    the writer's rule), the channels in row order. Each
@@ -155,6 +177,33 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %                    BODIES and a time row was rebuilt (the evenly spaced
 %                    time NDI's second pass removes): m = 1 ..
 %                    ceil(samples / chunk) of an analog group pointing at it.
+%     a split time group  [time group with several time channels split]:
+%                    the time values' sampled_bodies whose `filename` is the
+%                    v1 group's `ti_group<g>_seg.nbf_#` and whose condition
+%                    "time channel" (EMPTY:0000374) counts the time channel
+%                    each holds (NDI-matlab's second pass,
+%                    ndi.migrate.internal.ingestedArchiveBodies, writes one
+%                    per time channel, each holding that column of the v1
+%                    file). They are ONE v1 file series: its names
+%                    `ti_group<g>_seg.nbf_<m>`, m = 1 .. the bodies' member
+%                    count, are in R.time_segments (no document holds the v1
+%                    file's location, so the document inverse rebuilds the
+%                    name, not the location), and no split body gets member
+%                    names of its own. R.split_time says, per group, which
+%                    body is which column (the time channels in increasing
+%                    number, the order NDI's writer lists them and so the v1
+%                    file's columns) and, with 'ReadBody', the content of each
+%                    segment: the columns side by side, chunk rows per
+%                    segment, plus the epoch's start (the first start on the
+%                    time references the group bodies' owners name: the
+%                    bodies hold seconds from the epoch's start, v1 the
+%                    epoch's clock). ReadBody(BODY) must return the body's
+%                    values (n x 1); the bodies are compressed as NDI's ingest
+%                    compresses time (ndi.compress.compress_time, in
+%                    NDI-compress, not a DID-matlab requirement), so the
+%                    caller who has NDI-compress reads them. THE FILE ITSELF
+%                    IS NOT WRITTEN, as for the events file; it is compared
+%                    on its content (compareIngestedArchiveFiles).
 %
 %   FINDING THE UNPACKED CHANNELS. The observations whose conditions hold a
 %   channel-type condition of an event, marker or text channel (EMPTY:0000376,
@@ -166,11 +215,15 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %
 %   READING BODIES. [unpacked event bodies are uncompressed]: times and codes
 %   are little-endian 64-bit floats. FN = @(b) did2.convert.roundtrip.
-%   ingestedArchiveFiles('readFloat64', b, LOCATE) reads one: its members
+%   ingestedArchiveFiles('readBody', b, LOCATE) reads one: its members
 %   body_data_0.. in order, each at LOCATE(file_info entry) (a local path, ''
 %   when not here), concatenated and shaped by the dimensions (datum_order
-%   'F' or empty: first dimension fastest; 'C': last). A text body's encoding
-%   is not decided, so the default reader does not read one.
+%   'F' or empty: first dimension fastest; 'C': last); a body whose format
+%   is EDAM:format_3464 "JSON" (a text channel's entries, [text channel
+%   entries are a JSON array]) is read as one UTF-8 JSON array of strings,
+%   a 1xN cell of character rows as NDI-compress's expander gives a text
+%   channel's entries. 'readFloat64' reads the float64 bodies only (as
+%   before).
 %
 %   R, the denominators first (Operating Rule 5):
 %     documents_inspected  bodies given + batch documents indexed
@@ -192,7 +245,14 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 %                      is still among BODIES), state ('rebuilt' | 'not read'
 %                      | 'not rebuilt'), why, channeltype, channel, T, D,
 %                      data, data_description}
-%     time_segments    cellstr of rebuilt `ti_group…` names
+%     time_segments    cellstr of rebuilt `ti_group…` names (the removed
+%                      evenly spaced time, and the split time groups' files)
+%     split_time       struct array {name (the series, `ti_group<g>_seg.nbf_#`),
+%                      group, channels (time channels, column order),
+%                      body_ids, value_ids (the time values owning them),
+%                      segments (the v1 file names), state ('rebuilt' | 'not
+%                      read' | 'not rebuilt'), why, t0, data (a cell, one
+%                      matrix per segment: rows x channels)}
 %     t0               the epoch start added back to event times (NaN: none)
 %
 %   See also did2.convert.roundtrip.compareIngestedArchiveFiles,
@@ -200,6 +260,10 @@ function R = ingestedArchiveFiles(bodies, batch, varargin)
 
 if ischar(bodies) && strcmp(bodies, 'readFloat64')
     R = readFloat64(batch, varargin{:});
+    return;
+end
+if ischar(bodies) && strcmp(bodies, 'readBody')
+    R = readBody(batch, varargin{:});
     return;
 end
 opts = struct('ReadBody', []);
@@ -223,7 +287,7 @@ R = struct('documents_inspected', numel(bodies) + numel(ctx.docs), ...
     'channel_list', emptyRows(), ...
     'no_home', struct('row', {}, 'field', {}, 'value', {}, 'why', {}), ...
     'notation', struct('row', {}, 'field', {}, 'value', {}, 'why', {}), ...
-    'evmktx', emptyEvmktx(), 'time_segments', {{}}, 't0', NaN);
+    'evmktx', emptyEvmktx(), 'time_segments', {{}}, 'split_time', emptySplit(), 't0', NaN);
 
 % the time-value bodies an uneven group is keyed to belong to the archive too
 bodies = withKeyedTimeBodies(bodies, ctx);
@@ -234,6 +298,7 @@ hasChannelList = false;
 hasTimeBody = false;
 slots = {};
 ownerIds = {};
+splitBodies = struct('slot', {}, 'number', {}, 'body', {});   % [time group with several time channels split]
 for k = 1:numel(bodies)
     b = bodies{k};
     cn = classOf(b);
@@ -248,6 +313,15 @@ for k = 1:numel(bodies)
     if strcmp(slot, 'channel_list.bin'); hasChannelList = true; end
     if ~isempty(regexp(slot, '^ti_group\d+_seg\.nbf_#$', 'once')); hasTimeBody = true; end
     if strcmp(cn, 'sampled_body'); R.shape = 'second pass'; end
+    tcSplit = splitTimeChannel(b, cn, slot);
+    if isfinite(tcSplit)
+        % one column of a split time group: the group's files are rebuilt
+        % once, below; this body gets no member names of its own
+        splitBodies(end+1) = struct('slot', slot, 'number', tcSplit, 'body', b); %#ok<AGROW>
+        R.members(end+1) = struct('body_id', id, 'class_name', cn, 'slot', slot, ...
+            'names', {{}}, 'file_index', [], 'why', '');
+        continue;
+    end
     [names, why, info] = memberNames(b, cn, slot);
     [~, ~, fidx] = memberCount(b);
     R.members(end+1) = struct('body_id', id, 'class_name', cn, 'slot', slot, ...
@@ -277,21 +351,26 @@ for c = 1:numel(chans)
         'eventmarktext'); %#ok<AGROW>
 end
 
-% ---- the time rows (no home of their own: R.no_home) ----------------------
+% ---- the time rows ([time channel row is notation]) -----------------------
 tRows = emptyRows();
 tcs = [];
 for g = 1:numel(groups)
     v = groups(g).tc(isfinite(groups(g).tc));
     tcs = unique([tcs, v(:)']);
 end
+tcs = tcs(tcs >= 0 & tcs == round(tcs));
 for t = tcs
-    sr = NaN;
+    % [time channel row is notation]: the rate of the groups whose every
+    % channel names T, when they agree (ndi.vintage.ingestedChannelList)
+    rates = [];
     for g = 1:numel(groups)
-        if all(groups(g).tc == t) && isfinite(groups(g).sr)
-            sr = groups(g).sr;
-            break;
+        if ~isempty(groups(g).tc) && all(groups(g).tc == t) && isfinite(groups(g).sr)
+            rates(end+1) = groups(g).sr; %#ok<AGROW>
         end
     end
+    rates = unique(rates);
+    sr = NaN;
+    if isscalar(rates); sr = rates; end
     tRows(end+1) = row(sprintf('t%d', t), 'time', t, sr, 0, 1, t, writerGroup('t', t), 'time'); %#ok<AGROW>
 end
 
@@ -302,7 +381,7 @@ if hasChannelList
 elseif strcmp(R.shape, 'pass 1')
     R.channel_list_why = 'no channel_list.bin body, and no converted channel group or unpacked channel';
 else
-    all_ = rows;
+    all_ = [rows, tRows];
     nhOffset = numel(all_);
     order = writerOrder(all_);
     remap = zeros(1, numel(all_));
@@ -311,11 +390,11 @@ else
         R.no_home(h).row = remap(R.no_home(h).row);
     end
     all_ = all_(order);
-    for t = 1:numel(tRows)
-        R.no_home(end+1) = struct('row', NaN, 'field', 'time row', ...
-            'value', tRows(t).number, 'why', ['a time channel the groups point at: its own ' ...
-            'row (number, time_channel, offset, scale) has no v2 home, so it is not ' ...
-            'rebuilt (as ndi.vintage.ingestedChannelList); a v1 list that has one is kept']); %#ok<AGROW>
+    for r = find(strcmp({all_.type}, 'time'))
+        R.notation(end+1) = struct('row', r, 'field', 'time_channel, offset, scale', ...
+            'value', [all_(r).time_channel 0 1], ...
+            'why', ['[time channel row is notation] (Jess Haley, 2026-11-19): a time ' ...
+            'channel''s own row, rebuilt from the groups that name it, not stored']); %#ok<AGROW>
     end
     evOrder = eventOrder(evRows);
     evRows = evRows(evOrder);
@@ -343,6 +422,16 @@ if ~isempty(chans)
         R.evmktx(end+1) = e;
     end
     R.t0 = chans(1).t0;
+end
+
+% ---- the split time groups ([time group with several time channels split])
+splitSlots = {};
+if ~isempty(splitBodies); splitSlots = unique({splitBodies.slot}, 'stable'); end
+for i = 1:numel(splitSlots)
+    sb = splitBodies(strcmp({splitBodies.slot}, splitSlots{i}));
+    st = splitTimeOf(sb, ownerIds, ctx, opts.ReadBody);
+    R.split_time(end+1) = st;
+    R.time_segments = [R.time_segments, st.segments];
 end
 
 % ---- the evenly spaced time segments the second pass removed --------------
@@ -691,8 +780,12 @@ for c = 1:numel(chans)
                 if strcmp(chans(c).type, 'marker')
                     d = double(d);
                     if isvector(d); d = d(:); end
-                elseif ischar(d)
-                    d = {d};
+                else
+                    % a text channel's entries, as NDI-compress's expander
+                    % gives them: a 1xN cell of character rows
+                    if ischar(d); d = {d}; end
+                    d = cellfun(@(x) reshape(char(x), 1, []), reshape(d, 1, []), ...
+                        'UniformOutput', false);
                 end
                 e.D{c} = d;
         end
@@ -735,6 +828,117 @@ for i = 1:numel(channeltype)
             end
     end
 end
+end
+
+% =========================================================================
+% a split time group ([time group with several time channels split])
+% =========================================================================
+
+function tc = splitTimeChannel(b, cn, slot)
+% the time channel a split time group's body holds: a sampled_body of a time
+% group's slot whose condition "time channel" (EMPTY:0000374) has a count;
+% NaN for any other body
+tc = NaN;
+if ~strcmp(cn, 'sampled_body') || isempty(regexp(slot, '^ti_group\d+_seg\.nbf_#$', 'once'))
+    return;
+end
+for c = asCellOf(blockField(b, 'conditions'))
+    if ~strcmp(textOf(getPath(getPath(c{1}, 'variable'), 'node')), 'EMPTY:0000374'); continue; end
+    n = getPath(c{1}, 'count');
+    if isempty(n); n = getPath(c{1}, 'numeric'); end
+    if isnumeric(n) && isscalar(n) && isfinite(n)
+        tc = double(n);
+        return;
+    end
+end
+end
+
+function st = splitTimeOf(sb, ownerIds, ctx, readBody)
+% one split time group: its columns in time-channel order, its v1 file
+% names, and (READBODY) the content of each segment
+[~, o] = sort([sb.number]);
+sb = sb(o);
+slot = sb(1).slot;
+g = str2double(regexp(slot, '^ti_group(\d+)_seg', 'tokens', 'once'));
+st = emptySplit();
+st(1).name = slot;
+st.group = g;
+st.channels = [sb.number];
+st.body_ids = arrayfun(@(x) baseId(x.body), sb, 'UniformOutput', false);
+st.value_ids = arrayfun(@(x) strjoin(edgeList(x.body, 'owner_id'), ' '), sb, 'UniformOutput', false);
+st.segments = {};
+st.state = 'rebuilt';
+st.why = '';
+st.t0 = NaN;
+st.data = {};
+counts = arrayfun(@(x) memberCount(x.body), sb);
+ns = NaN(1, numel(sb)); chunks = NaN(1, numel(sb));
+for k = 1:numel(sb)
+    [~, ns(k), chunks(k)] = timeOf(sb(k).body);
+end
+if numel(unique(st.channels)) ~= numel(st.channels)
+    st.state = 'not rebuilt';
+    st.why = sprintf('two bodies of %s hold the same time channel', slot);
+    return;
+end
+if any(counts ~= counts(1)) || ~isequaln(ns, repmat(ns(1), size(ns))) ...
+        || ~isequaln(chunks, repmat(chunks(1), size(chunks)))
+    st.state = 'not rebuilt';
+    st.why = sprintf(['the time channels of %s differ in their members (%s), samples or ' ...
+        'chunk: one v1 file holds them side by side'], slot, mat2str(counts));
+    return;
+end
+st.segments = arrayfun(@(m) sprintf('ti_group%d_seg.nbf_%d', g, m), 1:counts(1), ...
+    'UniformOutput', false);
+if isempty(readBody)
+    st.state = 'not read';
+    st.why = 'no body reader given (ReadBody): the columns and names only';
+    return;
+end
+% the epoch's start: the first start on the time references the archive's
+% bodies' owners name (the recording observations; a time value names none)
+for i = 1:numel(ownerIds)
+    st.t0 = firstStart(docOf(ctx, ownerIds{i}), ctx);
+    if isfinite(st.t0); break; end
+end
+if ~isfinite(st.t0)
+    st.state = 'not rebuilt';
+    st.why = 'no owner of the archive''s bodies names a time reference with a start';
+    return;
+end
+n = ns(1); chunk = chunks(1);
+if ~isfinite(n) || ~isfinite(chunk) || chunk <= 0
+    st.state = 'not rebuilt';
+    st.why = sprintf('the time dimension of %s states no samples or chunk', slot);
+    return;
+end
+cols = NaN(n, numel(sb));
+for k = 1:numel(sb)
+    try
+        v = double(readBody(sb(k).body));
+    catch err
+        st.state = 'not rebuilt';
+        st.why = sprintf('reading time channel t%d: %s', sb(k).number, err.message);
+        return;
+    end
+    if numel(v) ~= n
+        st.state = 'not rebuilt';
+        st.why = sprintf('time channel t%d holds %d value(s), its time dimension %d', ...
+            sb(k).number, numel(v), n);
+        return;
+    end
+    cols(:, k) = v(:);
+end
+cols = cols + st.t0;
+for m = 1:counts(1)
+    r = ((m - 1) * chunk + 1):min(m * chunk, n);
+    st.data{m} = cols(r, :);
+end
+end
+
+function s = emptySplit()
+s = struct('name', {}, 'group', {}, 'channels', {}, 'body_ids', {}, 'value_ids', {}, ...
+    'segments', {}, 'state', {}, 'why', {}, 't0', {}, 'data', {});
 end
 
 function bodies = withKeyedTimeBodies(bodies, ctx)
@@ -857,6 +1061,36 @@ if numel(dims) >= 2 && prod(dims) == numel(v)
         v = reshape(v, dims);
     end
 end
+end
+
+function v = readBody(b, locate)
+% a JSON body (a text channel's entries) as a 1xN cell of character rows;
+% any other, readFloat64
+if nargin < 2 || isempty(locate); locate = @defaultLocate; end
+fmt = getPath(blockField(b, 'format'), 'node');
+if ~strcmp(textOf(fmt), 'EDAM:format_3464')
+    v = readFloat64(b, locate);
+    return;
+end
+infos = asCellOf(getPath(getPath(b, 'files'), 'file_info'));
+names = cellfun(@(f) textOf(getPath(f, 'name')), infos, 'UniformOutput', false);
+i = find(strcmp(names, 'body_data_0'), 1);
+if isempty(i)
+    error('did2:convert:roundtrip:noMember', 'The body has no member body_data_0.');
+end
+p = locate(infos{i});
+if isempty(p)
+    error('did2:convert:roundtrip:notHere', 'Member body_data_0 is not on this computer.');
+end
+fid = fopen(p, 'r');
+bytes = fread(fid, Inf, 'uint8=>uint8');
+fclose(fid);
+x = jsondecode(native2unicode(reshape(bytes, 1, []), 'UTF-8'));
+if ischar(x); x = {x}; elseif isempty(x) && ~iscell(x); x = {}; end
+if ~iscell(x) || ~all(cellfun(@ischar, x))
+    error('did2:convert:roundtrip:notText', 'The body does not hold a JSON array of strings.');
+end
+v = cellfun(@(e) reshape(e, 1, []), reshape(x, 1, []), 'UniformOutput', false);
 end
 
 function p = defaultLocate(fi)

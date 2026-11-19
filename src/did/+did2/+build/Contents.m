@@ -97,12 +97,14 @@
 %   condition, parameter, dimension or covariate) and every value term (term.value, a
 %   chemical's substance) must be in the schema's term registry (tenet T19;
 %   strictMode 'TermRegistry', armed): did2:build:unregisteredTerm. A model
-%   fit's coefficient names are the fit's own and are not checked.
+%   fit's variable, coefficient and constraint names are the fit's own
+%   symbols and are not checked ([unbound term fields sorted], [tuning fit coefficients named
+%   by symbol]).
 %   unregisteredTerms collects them instead, so one run can list them all.
 %
 %   A class the schema's class_disposition_meta.json lists as retired takes no
 %   new document (Jess Haley, 2026-10-24, [V2 builder refuses retired];
-%   strictMode 'RetiredClasses', armed; off while did2.convert migrates):
+%   strictMode 'RetiredClasses', armed, during migration too):
 %   did2:build:retiredClass, naming the replacement and the decision. A schema
 %   without that file refuses nothing.
 %

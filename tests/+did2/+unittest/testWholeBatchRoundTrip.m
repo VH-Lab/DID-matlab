@@ -241,7 +241,6 @@ bodies = {sessionV1('wb_sess_doc', sid), subjectV1('wb_spec', sid, 'L'), ...
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 verifyEqual(testCase, rep.manifests_renamed, 1, 'the manifest is renamed');
@@ -306,7 +305,6 @@ end
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 assertEqual(testCase, rep.mode_statements_dropped_unrecorded, 1, 'premise');
@@ -368,7 +366,6 @@ end
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 result = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 % premise: the idle stimulator is still a device entity under its v1 id
@@ -451,7 +448,6 @@ bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), .
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 assert(rep.manifests_renamed == 1 && rep.wiring_several_rows_merged == 1, ...
@@ -846,7 +842,6 @@ end
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 end
@@ -872,7 +867,6 @@ bodies{3}.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, .
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
-result = did2.convert.resolveSessionAnchors(result, 'Validate', true, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
@@ -884,6 +878,52 @@ for k = 1:numel(r.failures)
     if strcmp(r.failures(k).source_id, 'wb_probe_o')
         verifyFalse(testCase, any(startsWith(r.failures(k).lost, 'depends_on')), describe(r));
         verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.direct')), describe(r));
+    end
+end
+end
+
+function testAProbeWithASortedUnitReadsItsSubjectFromItsRecordingOnly(testCase)
+% the probe's `observes` relation is retired by its recording observation; the
+% spike train of a unit sorted from it ([spike trains as epoch bodies]) is a
+% second observation with the probe as instrument and the UNIT as entity. The
+% unit (`derived_from` the probe) is not the probe's specimen, so subject_id
+% and direct are rebuilt from the recording alone (Soph corpus run
+% 44473899940: 61 probes reported "1 + their units" specimens and lost both)
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = '41268b6f5c6a3d4e_00000000000000b4';
+probe = elementV1('wb_probe_u', sid, 'p', 1, 'n-trode', 'wb_spec_u');
+probe.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+    'value', {'', 'wb_spec_u'});
+unit = elementV1('wb_unit_u', sid, 'p_1', 1, 'spikes', 'wb_spec_u');
+unit.depends_on = struct('name', {'underlying_element_id', 'subject_id'}, ...
+    'value', {'wb_probe_u', 'wb_spec_u'});
+unit.element.ndi_element_class = 'ndi.neuron';
+unit.element.direct = 0;
+bodies = {sessionV1('wb_sess_doc_u', sid), subjectV1('wb_spec_u', sid, 'L'), ...
+    probe, unit, elementEpochV1('wb_ee_u', sid, 'wb_unit_u', 't0001'), ...
+    daqsystemV1('wb_daq_u', sid, 'intan1', 'wb_nav_u'), ...
+    manifestV1('wb_efi_u', sid, 't0001', 'wb_nav_u', ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'p\t1\tn-trode\tintan1:ai27-28,45;di0-2\tL\n']))};
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+% [sorted units are cells or groups]: a unit its sorting run labels single
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2', ...
+    'UnitQualityLabels', {'wb_unit_u', 'single'});
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'did_v2');
+assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
+    'premise: the pass retired the probe''s observes relation');
+assertEqual(testCase, rep.spike_trains_emitted, 1, ...
+    'premise: the unit has a spike train whose instrument is the probe');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, 'element'), describe(r));
+for k = 1:numel(r.failures)
+    if strcmp(r.failures(k).source_id, 'wb_probe_u')
+        verifyFalse(testCase, any(startsWith(r.failures(k).lost, 'depends_on')), describe(r));
+        verifyFalse(testCase, any(strcmp(r.failures(k).lost, 'element.direct')), describe(r));
+        verifyFalse(testCase, any(contains(r.failures(k).unplaced, 'specimens')), describe(r));
     end
 end
 end
@@ -1170,6 +1210,25 @@ v1.base = struct('id', id, 'session_id', sid, 'name', '', ...
     'datestamp', '2024-06-01T12:00:00.000Z');
 v1.element = struct('ndi_element_class', 'ndi.probe.timeseries.mfdaq', ...
     'name', name, 'reference', reference, 'type', type, 'direct', 1);
+end
+
+function v1 = elementEpochV1(id, sid, elementId, epochId)
+% an element_epoch as ndi.element/addepoch writes it, its samples attached as
+% epoch_binary_data.vhsb
+v1 = struct();
+v1.document_class = struct('class_name', 'element_epoch', 'class_version', '1.0.0', ...
+    'superclasses', [struct('class_name', 'base', 'class_version', '1.0.0'), ...
+                     struct('class_name', 'epochid', 'class_version', '1.0.0')]);
+v1.depends_on = struct('name', 'element_id', 'value', elementId);
+v1.base = struct('id', id, 'session_id', sid, 'name', '', ...
+    'datestamp', '2024-06-01T12:00:00.000Z');
+v1.element_epoch = struct('epoch_clock', 'dev_local_time', 't0_t1', [0 10]);
+v1.epochid = struct('epochid', epochId);
+v1.files = struct('file_list', {{'epoch_binary_data.vhsb'}}, ...
+    'file_info', struct('name', 'epoch_binary_data.vhsb', 'locations', ...
+        struct('delete_original', 0, 'uid', 'vhsb_u', ...
+            'location', ['/data/' epochId '/unit.vhsb'], 'parameters', '', ...
+            'location_type', 'file', 'ingest', 1)));
 end
 
 function v1 = daqsystemV1(id, sid, name, navId)

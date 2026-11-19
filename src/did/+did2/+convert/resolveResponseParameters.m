@@ -293,7 +293,7 @@ function [result, report] = resolveResponseParameters(result, options)
 %     SchemaCache    ([] or a did2.schema.cache)  override the shared cache
 %     TargetVersion  (1,:) char, default 'V_eta'  the only target accepted
 %
-%   See also: did2.convert.v1_to_v2, did2.convert.resolveSessionAnchors,
+%   See also: did2.convert.v1_to_v2,
 %   did2.convert.epochMint, did2.convert.resolveDeferredBaths,
 %   did2.convert.migrators_j.stimulus_response_scalar,
 %   did2.convert.migrators_j.stimulus_response_scalar_parameters_basic.
@@ -311,10 +311,11 @@ end
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 
 % DENOMINATOR FIRST, and unconditionally. Every field is defined before a single
 % document is read, so "did not run" (ran == false, every counter 0) and "ran

@@ -100,7 +100,7 @@ function [result, report] = resolveClockAlignment(result, options)
 %   THIS FILE HAS BEEN EXECUTED. test-migrators-quick.yml and the V_eta e2e are
 %   the first things with an opinion.
 %
-%   See also: did2.convert.resolveSessionAnchors, did2.convert.epochMint,
+%   See also: did2.convert.epochMint,
 %   did2.convert.migrators_j.syncgraph.
 
 arguments
@@ -116,10 +116,11 @@ end
 % collected when did2.build.unregisteredTerms('-collect') is on).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
-% The generic migration is not affected by [V2 builder refuses retired]
-% (Jess Haley, 2026-10-24): strictMode 'RetiredClasses' is off while it runs.
-prevRetiredClasses = did2.schema.cache.strictMode('RetiredClasses', false);
-restoreRetiredClasses = onCleanup(@() did2.schema.cache.strictMode('RetiredClasses', prevRetiredClasses)); %#ok<NASGU>
+% [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
+% left as the caller set it (armed by default), so no step of the migration
+% builds a document of a retire class. Its exception for the generic migration
+% (2026-10-24) is removed by [retired classes leave V2] step (4) (Jess Haley,
+% 2026-10-25), once the corpora showed nothing needs it.
 
 report = struct( ...
     'documents_inspected',          0, ...
