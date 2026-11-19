@@ -5964,6 +5964,21 @@ def render_report(r, out):
         # exists to remove, one field further down.
         p("  silent-loss: %s edge-family cardinality violation(s)"
           % sl.get("family_violation_count", "?"))
+        # DID-matlab #399: what the cardinality check looked at, printed
+        # unconditionally; a report without the block says so.
+        cdn = sl.get("cardinality_denominator")
+        if isinstance(cdn, dict):
+            p("      DENOMINATOR: %s doc(s) declaring a numbered family checked; "
+              "%s (class, family) pair(s); %s (document, family) check(s)"
+              % (cdn.get("docs_checked", "?"), cdn.get("families_declared", "?"),
+                 cdn.get("family_checks", "?")))
+            if cdn.get("family_checks") == 0:
+                p("      *** no document declares a numbered family, so the rule")
+                p("      *** COULD NOT FIRE. Zero above means 'untested', not"
+                  " 'clean'.")
+        else:
+            p("      DENOMINATOR: NOT REPORTED (this report carries no "
+              "cardinality_denominator; the zero is 'not measured')")
         for v in aslist(sl.get("family_count_violation"))[:10]:
             p("      %8s  %s.%s  declared %s, found %s"
               % (v.get("count", "?"), v.get("class_name", "?"),
@@ -6210,6 +6225,11 @@ def rollup(reports, out):
                "members_examined": 0, "members_resolved": 0,
                "members_unresolved": 0, "members_no_key": 0,
                "members_keyed_by_node": 0, "members_keyed_by_name": 0}
+    # #63 rollup denominators (DID-matlab #399), and how many reports carried
+    # them: a report written before silentLoss emitted the block is "not
+    # reported", never a zero.
+    card_den = {"docs_checked": 0, "families_declared": 0, "family_checks": 0}
+    card_den_reports = 0
     inspected = 0
     addends = []
     quarantine = 0
@@ -6256,6 +6276,14 @@ def rollup(reports, out):
                 uni_den[k] += int(ud.get(k) or 0)
             except (TypeError, ValueError):
                 pass
+        cdn = sl.get("cardinality_denominator")
+        if isinstance(cdn, dict):
+            card_den_reports += 1
+            for k in card_den:
+                try:
+                    card_den[k] += int(cdn.get(k) or 0)
+                except (TypeError, ValueError):
+                    pass
 
     p("")
     p("=" * 72)
@@ -6298,6 +6326,27 @@ def rollup(reports, out):
         total = sum(table.values())
         p("")
         p("  %s: %d document(s) across %d row(s)" % (label, total, len(table)))
+        if table is families:
+            # DID-matlab #399: the cardinality table's denominator, printed
+            # first and unconditionally, as the uniqueness table's is. Summed
+            # families_declared counts a (class, family) pair once PER
+            # CORPUS, so it is labelled as a sum.
+            p("      DENOMINATOR: %d of %d silent-loss report(s) carried a "
+              "cardinality denominator"
+              % (card_den_reports, with_silent_loss))
+            p("      DENOMINATOR: %d document(s) declaring a numbered family "
+              "checked; %d (document, family) check(s); %d (class, family) "
+              "pair(s), summed over corpora"
+              % (card_den["docs_checked"], card_den["family_checks"],
+                 card_den["families_declared"]))
+            if card_den_reports < with_silent_loss:
+                p("      *** %d report(s) carried NO cardinality denominator:"
+                  % (with_silent_loss - card_den_reports))
+                p("      *** their part of the zero is 'not measured'.")
+            if card_den["family_checks"] == 0:
+                p("      *** NOTHING IN REACH DECLARES A NUMBERED FAMILY, or no")
+                p("      *** report said what it checked. The rule could not")
+                p("      *** fire; the zero is 'untested', not 'clean'.")
         if table is uniques:
             # The uniqueness row set is the one where an empty table is
             # AMBIGUOUS, so its denominators print beside it rather than three
