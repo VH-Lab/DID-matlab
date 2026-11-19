@@ -1024,9 +1024,9 @@
 %     treatment
 %         Brainstorm-J migrator: did_v1 treatment -> a `manipulation` whose value kind
 %         is the one the treatment's term states for its number, or a dose / immersion
-%         for a ChEBI substance (+ an optional site `observation` with value kind
-%         `term` + the shared session anchor); otherwise the v1 document carried
-%         whole.
+%         for a ChEBI substance (+ the region part of its body site, or a site
+%         `observation` for a side + the shared session anchor); otherwise the v1
+%         document carried whole.
 %     treatment_drug
 %         Brainstorm-J migrator: did_v1 treatment_drug -> an immersion (`manipulation`
 %         valued by its formulation) or a `manipulation` with value kind `dose`,

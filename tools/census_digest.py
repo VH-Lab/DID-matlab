@@ -182,8 +182,12 @@ POST_PASSES = [
         ("parts_rekeyed", "parts RE-KEYED"),
         ("parts_rekeyed_onto_existing_part", "  onto a sided part already in the batch"),
         ("rekey_quarantined", "re-key QUARANTINED (not applied)"),
+        ("edges_renamed", "edges renamed onto a re-keyed part's ids"),
+        ("manipulations_retargeted", "side documents' manipulations moved onto the part"),
         ("documents_removed", "documents removed"),
         ("documents_added", "documents added"),
+        ("migrated_before", "batch before"),
+        ("migrated_after", "  after"),
     ]),
 
     # `documents_removed_unattributed` IS A GATE AND MUST READ 0. It is the keep

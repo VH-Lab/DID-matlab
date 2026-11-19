@@ -2914,7 +2914,7 @@ otr.ontologyTableRow = struct('variableNames', strjoin(keys, ','), ...
     'names', strjoin(keys, ','), 'ontologyNodes', nodes, 'data', data);
 end
 
-function kind = regionKindJ(testCase, migrated, subjectId)
+function kind = regionKindJ(testCase, migrated, subjectId, m)
 %REGIONKINDJ The region part the first document (a manipulation) is about, in
 %   its final shape ([region parts], [site scaffolding not a loss] (2),
 %   [region part ids computed], VH-Lab/DID-matlab #488): a `tissue` entity
@@ -2923,7 +2923,9 @@ function kind = regionKindJ(testCase, migrated, subjectId)
 %   `term.value` the site -- and a `part_of` relation to SUBJECTID, each id the
 %   computed one. No site observation is left.
 kind = [];
-m = migrated{1};
+if nargin < 4
+    m = migrated{1};
+end
 partId = depVal(m, 'entity_id');
 part = [];
 rel = [];
@@ -2945,7 +2947,8 @@ verifyEqual(testCase, part.get('entity.type').name, 'tissue');
 assertNotEmpty(testCase, kind, 'the region part has no anatomical-structure assertion');
 assertNotEmpty(testCase, rel, 'the region part has no part_of relation');
 verifyEqual(testCase, depVal(rel, 'parent_id'), subjectId);
-verifyEqual(testCase, rel.get('directed_relation.relation').name, 'part_of');
+% the relation term as the schema stores it: BFO:0000050, named "part of"
+verifyEqual(testCase, rel.get('directed_relation.relation').node, 'BFO:0000050');
 ids = did2.convert.regionPartIds(subjectId, kind.get('term.value'), []);
 verifyEqual(testCase, partId, ids.part, 'the part id is not the computed one');
 verifyEqual(testCase, kind.get('base.id'), ids.kind);
@@ -3247,7 +3250,9 @@ if isempty(m); return; end
 verifyEqual(testCase, m.get('document_class.class_name'), 'manipulation');
 verifyEqual(testCase, m.get('base.id'), 'aabb1122ccdd3344_5500000000000004', ...
     'the bath keeps the stimulus_bath id');
-verifyEqual(testCase, depVal(m, 'entity_id'), subjId);
+% about the region part of its location (CNS), part_of the subject
+% (regionKindJ below)
+verifyNotEqual(testCase, depVal(m, 'entity_id'), subjId);
 verifyNotEmpty(testCase, depVal(m, 'time_reference_id'));
 verifyEmpty(testCase, depVal(m, 'formulation_id'), ...
     'the formulation is the value (value_id), not a dose''s formulation_id');
@@ -3283,11 +3288,12 @@ anchor = firstOfClassJ(out.migrated, 'relative_time_reference');
 verifyNotEmpty(testCase, anchor);
 rel = anchor.get('relative_time_reference.value').relation;
 verifyEqual(testCase, rel.name, 'intervalDuring');
-% the bath location is carried as a term_observation (not dropped)
-locObs = firstOfClassJ(out.migrated, 'observation+term');
-verifyNotEmpty(testCase, locObs);
-verifyEqual(testCase, locObs.get('term.value').name, 'CNS');
-verifyEqual(testCase, depVal(locObs, 'entity_id'), subjId);
+% INVERTED 2026-11-19 ([site scaffolding not a loss] (2), [region part ids
+% computed], VH-Lab/DID-matlab #488): the bath at an anatomical location is
+% about that location's region part, written in its final shape (not dropped,
+% and no longer a site observation for NDI's second pass to promote)
+kind = regionKindJ(testCase, out.migrated, subjId, m);
+verifyEqual(testCase, kind.get('term.value').name, 'CNS');
 end
 
 function testDeferredGenericBathHasNoLocationObservation(testCase)
