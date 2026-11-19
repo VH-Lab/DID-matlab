@@ -445,6 +445,7 @@ verifyEqual(testCase, check(testCase, did2.query('demoA.value', '~exact_string',
     sort({'a1', 'a2', 'b1', 'c1', 'c2', 'c3', 'v1'}));
 check(testCase, did2.query('demoA.value', 'exact_string_anycase', ''), false);
 check(testCase, did2.query('demoA.value', '~exact_string_anycase', ''), false);
+% the evaluator's wildcard matches no empty value, '' and '*' included
 check(testCase, did2.query('demoA.value', 'wildcard', ''), false);
 check(testCase, did2.query('demoA.value', 'wildcard', '*'), false);
 check(testCase, did2.query('demoA.value', '~wildcard', '*'), false);

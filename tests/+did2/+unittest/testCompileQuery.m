@@ -454,10 +454,10 @@ end
 function testAnEmptyTextTargetOnAQueryablePathReadsTheBody(testCase)
 % An empty value is not found in queryable_scalar_elem (DID-matlab #413), so
 % a text operator an empty value satisfies reads the body; a non-empty
-% target still uses the index.
+% target, and a wildcard (which matches no empty value), still use the index.
 paths = struct('path', {'demoA.value'}, 'affinity', {'TEXT'});
 targets = {{'exact_string', ''}, {'~exact_string', ''}, {'exact_string_anycase', ''}, ...
-    {'wildcard', ''}, {'wildcard', '*'}, {'~wildcard', '**'}};
+    {'~exact_string_anycase', ''}};
 for k = 1:numel(targets)
     q = did2.query('demoA.value', targets{k}{1}, targets{k}{2});
     sql = did2.database.compileQuery(q, 'QueryablePaths', paths);
@@ -468,7 +468,7 @@ end
 sql = did2.database.compileQuery(did2.query('demoA.value', 'exact_string', 'a'), ...
     'QueryablePaths', paths);
 verifySubstring(testCase, sql, 'queryable_scalar_elem');
-sql = did2.database.compileQuery(did2.query('demoA.value', 'wildcard', 'a*'), ...
+sql = did2.database.compileQuery(did2.query('demoA.value', 'wildcard', '*'), ...
     'QueryablePaths', paths);
 verifySubstring(testCase, sql, 'queryable_scalar_elem');
 end

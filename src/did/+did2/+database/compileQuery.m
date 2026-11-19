@@ -740,14 +740,13 @@ function tf = scalarSidecarCanDecide(op, target)
 % holds it as value_text: mksqlite binds an empty char as NULL), so a text
 % operator that an empty value satisfies in the evaluator -- exact_string
 % '' and exact_string_anycase '' (charEq('', '') is true) -- reads the body
-% with json_extract instead, plain and negated (DID-matlab #413). A
-% wildcard the sidecar cannot decide (sidecarCanDecide: an empty one, or
-% stars alone) reads the body too, as on the array sidecar; that only
-% widens it, and the recheck decides. A path absent from the body (or JSON
-% null) is still not an empty value: json_extract gives NULL, which no
-% `= ''` matches, as the evaluator's charEq([], '') is false.
+% with json_extract instead, plain and negated (DID-matlab #413). A path
+% absent from the body (or JSON null) is still not an empty value:
+% json_extract gives NULL, which no `= ''` matches, as the evaluator's
+% charEq([], '') is false. A wildcard stays on the sidecar: the evaluator's
+% regexp matches no empty value, not even with '*' or '' (testExactSql).
 switch op
-    case {'exact_string', 'exact_string_anycase', 'wildcard'}
+    case {'exact_string', 'exact_string_anycase'}
         tf = sidecarCanDecide(op, target);
     otherwise
         tf = true;
