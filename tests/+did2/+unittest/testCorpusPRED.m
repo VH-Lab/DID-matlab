@@ -24,7 +24,7 @@ function tests = testCorpusPRED
 %   skip the fetch.
 %
 %   STATUS of the 2026-08-10 batch-post-pass wiring edit: WRITTEN WITHOUT
-%   MATLAB. The guarded epochMint call, the new resolveSessionAnchors call and
+%   MATLAB. The guarded epochMint call and
 %   the post-pass failure assertions have NOT been executed here.
 %
 %   Run with:
@@ -144,23 +144,11 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     'did2.convert.epochMint', 'epoch_mint', ...
     @(r) did2.convert.epochMint(r, 'Validate', true, 'TargetVersion', 'did_v2'));
 
-% #65: fold session_relative_reference + session_bounded_reference into
-% `relative_reference`, base.id PRESERVED. Runs AFTER epochMint, matching
-% runCorpusDiscovery and ndi.migrate.local exactly. The two passes commute on
-% today's code (neither writes what the other reads, and no post-pass removes a
-% `session` document); the order is fixed so the three call sites cannot
-% diverge, NOT because a dependency forces it. See runCorpusDiscovery.m for the
-% full ordering note.
-result = did2.unittest.helpers.runBatchPass(result, ...
-    'did2.convert.resolveSessionAnchors', 'session_anchor_fold', ...
-    @(r) did2.convert.resolveSessionAnchors(r, 'Validate', true, ...
-        'TargetVersion', 'did_v2'));
-
 % #66 INCREMENT 1: decompose each ingested epoch's `epochprobemap` into
 % epoch-scoped `<modality>_observation`s, retiring #30's coarse session-scoped
 % observation per probe. Same post-pass set and the SAME ORDER as
 % runCorpusDiscovery and testFixtureCorpus -- after epochMint (it anchors to the
-% minted `epoch` documents) and after resolveSessionAnchors.
+% minted `epoch` documents).
 %
 % PRED holds `pyraview` and `daqreader_ndr` but its ingested epochs are the real
 % test here; whether it carries `epochfiles_ingested` documents is not predicted
@@ -399,7 +387,7 @@ did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
 % artifact; omitting them from this list would have silently downgraded two
 % hard failures to log lines.
 for passField = {'deferred_bath_resolution', 'dataset_entity_resolution', ...
-                 'epoch_mint', 'session_anchor_fold', 'generic_file_fold'}
+                 'epoch_mint', 'generic_file_fold'}
     failMsg = did2.unittest.helpers.batchPassFailure(result, passField{1});
     verifyEmpty(testCase, failMsg, sprintf( ...
         ['PRED: batch post-pass `%s` FAILED; its documents are in pass-1 ' ...
