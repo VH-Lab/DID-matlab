@@ -1657,6 +1657,71 @@ verifyFalse(testCase, failedSource(r, 'ing_w'), failureText(r, 'ing_w'));
 verifyGreaterThan(testCase, r.sources_compared, 0);
 end
 
+function testAStimulatorSubjectCarriedInTheReportRoundTripsTheWholeBatch(testCase)
+% [stimulator subject carried as needing information], [one-field carry in
+% the migration report] (Decided by Jess Haley, 2026-11-19, did-schema
+% docs/plans/did_v2_standing_wiring_plan.md): NDI-matlab's second pass
+% removes the `observes` of a stimulator no presentation, bath manipulation
+% or Stimulator manipulation names, and holds its v1 subject in the run's
+% migration report as a carried field (carry-172,
+% did2.convert.carryElementSubject). The whole-batch round trip reads it
+% there: the stimulator's subject_id and direct, and the subjectstring of
+% the probe-map row rebuilt from its wiring (manifestProbemap). Without the
+% entry (the control) the element and the manifest both fail. The run is
+% held by a run writer, as NDI-matlab's ndi.migrate.local holds it, so the
+% batch passes' own v1_to_v2 calls do not replace it.
+for withEntry = [true false]
+    did2.convert.migrationReport('begin');
+    cleanup = onCleanup(@() did2.convert.migrationReport('end'));
+    subj = subjectBody('spec_c', 'sess_c', 'L');
+    stim = elementBody('stim_c', 'sess_c', 'vis', '1', 'stimulator', 1, 'spec_c');
+    rec  = elementBody('rec_c', 'sess_c', 'cortex', '1', 'n-trode', 1, 'spec_c');
+    daq  = daqsystemBody('acqsys_c', 'sess_c', 'vis');
+    ing  = ingestedWithDeviceRows('ing_c', 'sess_c', 't0c', { ...
+        {'vis', '1', 'stimulator', 'vis:mk1', 'L'}, ...
+        {'cortex', '1', 'n-trode', 'vis:ai1-4', 'L'}});
+    ing.depends_on = struct('name', 'filenavigator_id', 'value', 'nav_acqsys_c');
+    bodies = {sessionBody('sd_c', 'sess_c', 'ref'), subj, stim, rec, daq, ing};
+    [out, rep] = decompose(bodies);
+    assertEqual(testCase, rep.stimulator_manipulations_not_written, 1, 'premise');
+    % what NDI's second pass does: the stimulator's `observes` goes, and
+    % (with the entry) its v1 subject is carried in the report
+    [out, nRemoved] = withoutObserves(out, 'stim_c');
+    assertEqual(testCase, nRemoved, 1, 'premise: pass 1 wrote one observes for the stimulator');
+    label = 'without the entry (control)';
+    if withEntry
+        label = 'with the entry';
+        did2.convert.carryElementSubject('stim_c', 'spec_c', ...
+            'no stimulus presentation, bath manipulation or Stimulator manipulation names it');
+    end
+    r = did2.convert.roundtrip.wholeBatch(bodies, out);
+    verifyGreaterThan(testCase, r.sources_compared, 0, label);
+    verifyEqual(testCase, failedSource(r, 'stim_c'), ~withEntry, ...
+        sprintf('%s: the stimulator: %s', label, failureText(r, 'stim_c')));
+    verifyEqual(testCase, failedSource(r, 'ing_c'), ~withEntry, ...
+        sprintf('%s: the manifest: %s', label, failureText(r, 'ing_c')));
+    clear cleanup
+end
+end
+
+function [result, n] = withoutObserves(result, childId)
+% RESULT with every `observes` directed_relation whose child is CHILDID
+% removed (what NDI-matlab's second pass does for a stimulator no statement
+% names), and how many were removed
+keep = true(1, numel(result.migrated));
+for k = 1:numel(result.migrated)
+    d = result.migrated{k};
+    if isa(d, 'did2.document'); d = d.toStruct(); end
+    if strcmp(char(d.document_class.class_name), 'directed_relation') ...
+            && strcmp(depVal(d, 'child_id'), childId) ...
+            && strcmp(did2.build.vocabularyHandle('relation', d.directed_relation.relation), 'observes')
+        keep(k) = false;
+    end
+end
+n = nnz(~keep);
+result.migrated = result.migrated(keep);
+end
+
 function w = wiringsOfChild(result, childId)
 % every `connected to` relation whose child is CHILDID
 w = {};
