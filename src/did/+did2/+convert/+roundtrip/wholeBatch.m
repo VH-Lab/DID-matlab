@@ -649,11 +649,15 @@ a(end+1) = struct('name', 'openMINDS Copyright instance id', ...
 % store ... the removed file's v1 storage record is an accepted loss".
 % Accepted only for the file_info entry of a file the rebuild says the second
 % pass removed (removedFileLocations): channel_list.bin when the channel list
-% is rebuilt from the documents, an evmktx file whose body is gone. The
-% evenly spaced time segments the second pass also removes are NOT covered
-% (the decision names only these two files): their locations are still lost
+% is rebuilt from the documents, an evmktx file whose body is gone.
+% [removed time segment locations are an accepted loss] (Decided by Jess
+% Haley, 2026-11-19: "yes, accept the loss for the time segments too"):
+% a removed evenly spaced time segment's (`ti_group<g>_seg.nbf_<m>`) v1
+% storage record is an accepted loss as well, again only when the segment is
+% removed (no time body remains and the documents rebuild it, R.time_segments)
 a(end+1) = struct('name', 'removed archive file location', ...
-    'decision', '[removed file locations are an accepted loss] (Jess Haley, 2026-11-18)', ...
+    'decision', ['[removed file locations are an accepted loss] (Jess Haley, 2026-11-18); ' ...
+        '[removed time segment locations are an accepted loss] (Jess Haley, 2026-11-19)'], ...
     'classes', {{'daqreader_mfdaq_epochdata_ingested'}}, 'paths', {{}}, ...
     'id', false, 'when', [], 'listed', false, 'pathsOf', @removedFileLocations);
 % [orphaned response settings are an accepted loss] (Decided by Jess Haley,
@@ -676,8 +680,11 @@ function paths = removedFileLocations(v1, docs, ctx)
 % (state 'rebuilt': no body of it remains, and the converted groups and
 % unpacked channels give its rows), an `evmktx_group<g>_seg.nbf_<m>` whose
 % events are rebuilt from the unpacked channels and whose body is gone
-% (carried false). Only the entry's `locations` (uid, location, ...); its
-% name is still compared
+% (carried false), and ([removed time segment locations are an accepted
+% loss]) a `ti_group<g>_seg.nbf_<m>` the rebuild lists in R.time_segments
+% (no time body remains: the evenly spaced time is the groups' covariate).
+% Only the entry's `locations` (uid, location, ...); its name is still
+% compared
 paths = {};
 if isempty(ctx) || ~isstruct(v1) || ~isfield(v1, 'files') || ~isstruct(v1.files) ...
         || ~isfield(v1.files, 'file_info') || ~isstruct(v1.files.file_info)
@@ -689,6 +696,7 @@ if strcmp(R.channel_list_state, 'rebuilt'); removed{end+1} = 'channel_list.bin';
 for e = 1:numel(R.evmktx)
     if ~R.evmktx(e).carried; removed{end+1} = R.evmktx(e).name; end %#ok<AGROW>
 end
+removed = [removed, reshape(R.time_segments, 1, [])];
 if isempty(removed); return; end
 fi = v1.files.file_info;
 leaves = flattenLeaves(struct('files', struct('file_info', fi)));

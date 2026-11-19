@@ -606,25 +606,18 @@ function testAnArchiveAfterTheSecondPassIsRebuiltByName(testCase)
 % removed files are not rebuilt (no v2 document names their uid; the file
 % stays in NDI's store, unreferenced). Those of channel_list.bin (entry 1)
 % and the events file (entry 6) are an accepted loss ([removed file
-% locations are an accepted loss], Jess Haley, 2026-11-18), listed and
-% counted; those of the evenly spaced time segments (entries 4 and 5), which
-% that decision does not name, are still lost
+% locations are an accepted loss], Jess Haley, 2026-11-18), and so are those
+% of the removed evenly spaced time segments (entries 4 and 5, [removed time
+% segment locations are an accepted loss], Jess Haley, 2026-11-19): listed
+% and counted, and nothing is lost
 [bodies, result] = archiveBatch(testCase, 'wb_arc2', 'bb');
 result2 = secondPassOf(result, false);
 r = did2.convert.roundtrip.wholeBatch(bodies, result2);
 cls = 'daqreader_mfdaq_epochdata_ingested';
 verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, cls), describe(r));
-f = archiveFailure(r, 'wb_arc2_arc');
-assertNotEmpty(testCase, f, describe(r));
-verifyEmpty(testCase, f.unplaced, describe(r));
-verifyEmpty(testCase, f.invented, describe(r));
-removedOnly = startsWith(f.lost, {'files.file_info(4).locations', ...
-    'files.file_info(5).locations'});
-verifyTrue(testCase, all(removedOnly), ['only the removed time segments'' locations: ' describe(r)]);
-for k = [4 5]
-    verifyTrue(testCase, any(strcmp(f.lost, sprintf('files.file_info(%d).locations.uid', k))), ...
-        sprintf('entry %d: %s', k, describe(r)));
-end
+% clean at the DID stage: nothing lost, invented or unplaced, only the two
+% segment lengths deferred to the second pass
+verifyEmpty(testCase, archiveFailure(r, 'wb_arc2_arc'), describe(r));
 name = 'removed archive file location';
 acc = r.accepted_losses(strcmp({r.accepted_losses.name}, name));
 assertNotEmpty(testCase, acc, describe(r));
@@ -632,15 +625,18 @@ verifyEqual(testCase, r.accepted_losses_by_name.(matlab.lang.makeValidName(name)
 verifyTrue(testCase, all(contains({acc.decision}, 'removed file locations are an accepted loss')));
 verifyTrue(testCase, all(strcmp({acc.source_id}, 'wb_arc2_arc')));
 verifyTrue(testCase, all(startsWith({acc.path}, {'files.file_info(1).locations', ...
+    'files.file_info(4).locations', 'files.file_info(5).locations', ...
     'files.file_info(6).locations'})), strjoin({acc.path}, ', '));
-for k = [1 6]
+verifyTrue(testCase, all(contains({acc.decision}, ...
+    'removed time segment locations are an accepted loss')));
+for k = [1 4 5 6]
     verifyTrue(testCase, any(strcmp({acc.path}, sprintf('files.file_info(%d).locations.uid', k))), ...
         sprintf('entry %d accepted: %s', k, strjoin({acc.path}, ', ')));
     verifyTrue(testCase, any(strcmp({acc.path}, sprintf('files.file_info(%d).locations.location', k))), ...
         sprintf('entry %d accepted: %s', k, strjoin({acc.path}, ', ')));
 end
 verifyEqual(testCase, r.accepted_losses_total, numel(r.accepted_losses));
-verifyArchiveSegmentsDeferred(testCase, r, 1, 0);
+verifyArchiveSegmentsDeferred(testCase, r, 1, 1);
 end
 
 function testRemovedFileLocationsAreAcceptedOnlyWhenRemoved(testCase)
@@ -667,19 +663,50 @@ verifyTrue(testCase, any(strcmp({acc.path}, 'files.file_info(6).locations.uid'))
     strjoin({acc.path}, ', '));
 end
 
+function testKeptTimeSegmentLocationsAreNotAccepted(testCase)
+% [removed time segment locations are an accepted loss] (Jess Haley,
+% 2026-11-19) covers a time segment the second pass removed, never one still
+% carried: with the time body kept (as for an unevenly spaced time channel
+% the pass does not drop), a v1 location of a segment that the body does not
+% hold is still lost and not accepted, while the removed channel_list.bin
+% and events file are (a check that cannot fail proves nothing)
+[bodies, result] = archiveBatch(testCase, 'wb_arc6', 'bf');
+result2 = secondPassOf(result, false, {'ti_group1_seg.nbf_#'});
+assertNotEmpty(testCase, find(cellfun(@(d) strcmp(slotOf(asStruct(d)), 'ti_group1_seg.nbf_#'), ...
+    result2.migrated), 1), 'the time body is kept');
+k = find(cellfun(@(b) strcmp(b.document_class.class_name, ...
+    'daqreader_mfdaq_epochdata_ingested'), bodies));
+bodies{k}.files.file_info(4).locations.location = 'ndic://ds/elsewhere';
+r = did2.convert.roundtrip.wholeBatch(bodies, result2);
+f = archiveFailure(r, 'wb_arc6_arc');
+assertNotEmpty(testCase, f, describe(r));
+verifyTrue(testCase, any(strcmp(f.lost, 'files.file_info(4).locations.location')), describe(r));
+acc = r.accepted_losses(strcmp({r.accepted_losses.name}, 'removed archive file location'));
+verifyFalse(testCase, any(startsWith({acc.path}, {'files.file_info(4).', 'files.file_info(5).'})), ...
+    strjoin({acc.path}, ', '));
+for e = [1 6]
+    verifyTrue(testCase, any(strcmp({acc.path}, sprintf('files.file_info(%d).locations.uid', e))), ...
+        strjoin({acc.path}, ', '));
+end
+end
+
 function testAnArchiveWhoseGroupHasItsOwnOwnerIsRebuiltTheSame(testCase)
 % [non-specimen channel groups get their own owner]: a group owned by another
 % observation of the same epoch and system reads back the same epoch, clock
-% and reader
+% and reader. Both read back clean (the removed files' locations are accepted
+% losses, [removed file locations are an accepted loss] and [removed time
+% segment locations are an accepted loss]), so the epoch (epochid), the
+% clock and the reader (depends_on) are matched in both
 [bodies, result] = archiveBatch(testCase, 'wb_arc3', 'bc');
 r0 = did2.convert.roundtrip.wholeBatch(bodies, secondPassOf(result, false));
 r1 = did2.convert.roundtrip.wholeBatch(bodies, secondPassOf(result, true));
-f0 = archiveFailure(r0, 'wb_arc3_arc');
-f1 = archiveFailure(r1, 'wb_arc3_arc');
-assertNotEmpty(testCase, f1, describe(r1));
-verifyEqual(testCase, sort(f1.lost), sort(f0.lost), describe(r1));
-verifyFalse(testCase, any(contains(f1.lost, 'depends_on')), describe(r1));
-verifyFalse(testCase, any(strcmp(f1.lost, 'epochid.epochid')), describe(r1));
+cls = 'daqreader_mfdaq_epochdata_ingested';
+for r = {r0, r1}
+    verifyTrue(testCase, isfield(r{1}.compared_after_batch_pass_by_class, cls), describe(r{1}));
+    verifyEmpty(testCase, archiveFailure(r{1}, 'wb_arc3_arc'), describe(r{1}));
+end
+verifyEqual(testCase, sort({r1.accepted_losses.path}), sort({r0.accepted_losses.path}), ...
+    'the same values accepted with either owner');
 end
 
 function testASecondPassBodyWhoseNamesCannotBeRebuiltIsUnplaced(testCase)
