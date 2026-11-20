@@ -14,8 +14,18 @@ function p = treatmentParts(bodies)
 %                 (an immersion) names
 %     chemicals   the chemicals the formulation's `ingredient_id` edges name,
 %                 in edge order (jDoseBodies writes them in mixture-row order)
-%     site        the `observation` about the same entity whose variable is
-%                 NCIT:C13717 "Anatomic Site" (the Path S site, D3)
+%     subject     the subject's id: the manipulation's `entity_id`, or, when
+%                 that names a region part among BODIES, the part's `part_of`
+%                 parent ([region parts]; did2.convert.regionPart)
+%     part        the region part entity the manipulation is about ([] when
+%                 it is about the subject)
+%     site        the term statement that names the site: the part's
+%                 anatomical-structure (kind) assertion (UBERON:0000061), or
+%                 the `observation` about the subject whose variable is
+%                 NCIT:C13717 "Anatomic Site" (a side, which
+%                 did2.convert.resolveRegionParts attaches); either holds the
+%                 site's term at `term.value`
+%     laterality  the part's Laterality assertion (NCIT:C25185), when it has one
 %     relations   every `directed_relation`
 %     unplaced    cellstr: a document no role claims, or a named edge whose
 %                 document is not among BODIES
@@ -23,7 +33,8 @@ function p = treatmentParts(bodies)
 %   Every field is [] / {} when absent.
 
 p = struct('manip', [], 'kind', '', 'anchor', [], 'formulation', [], ...
-    'chemicals', {{}}, 'site', [], 'age', [], 'relations', {{}}, 'unplaced', {{}});
+    'chemicals', {{}}, 'subject', '', 'part', [], 'site', [], 'laterality', [], ...
+    'age', [], 'relations', {{}}, 'unplaced', {{}});
 n = numel(bodies);
 used = false(1, n);
 ids = cell(1, n);
@@ -65,6 +76,45 @@ if ~isempty(p.formulation)
     end
 end
 entity = edgeIds(p.manip, 'entity_id');
+if ~isempty(entity)
+    p.subject = entity{1};
+end
+% a region part: the manipulation is about the part, the part is `part_of` the
+% subject, and its kind assertion names the site ([region parts], [site
+% scaffolding not a loss] (2); did2.convert.regionPart)
+if isscalar(entity)
+    hit = find(strcmp(ids, entity{1}) & ~used, 1);
+    if ~isempty(hit) && strcmp(classNameOf(bodies{hit}), 'entity')
+        p.part = bodies{hit};
+        used(hit) = true;
+        for k = 1:n
+            if used(k); continue; end
+            b = bodies{k};
+            switch classNameOf(b)
+                case 'directed_relation'
+                    if isequal(edgeIds(b, 'child_id'), entity)
+                        parent = edgeIds(b, 'parent_id');
+                        if ~isempty(parent); p.subject = parent{1}; end
+                        used(k) = true;
+                    end
+                case 'assertion'
+                    if ~isequal(edgeIds(b, 'entity_id'), entity); continue; end
+                    [node, ~] = termParts(getIn(b, 'statement', 'variable'));
+                    if isempty(p.site) && sameCurie(node, 'UBERON:0000061')
+                        p.site = b;
+                        used(k) = true;
+                    elseif isempty(p.laterality) && sameCurie(node, 'NCIT:C25185')
+                        p.laterality = b;
+                        used(k) = true;
+                    end
+            end
+        end
+    end
+end
+subject = entity;   % the age and a side are about the subject
+if ~isempty(p.part)
+    subject = {p.subject};
+end
 for k = 1:n
     if used(k); continue; end
     b = bodies{k};
@@ -72,11 +122,11 @@ for k = 1:n
         case 'observation'
             [node, ~] = termParts(getIn(b, 'statement', 'variable'));
             if isempty(p.site) && sameCurie(node, 'NCIT:C13717') ...
-                    && isequal(edgeIds(b, 'entity_id'), entity)
+                    && isequal(edgeIds(b, 'entity_id'), subject)
                 p.site = b;
                 used(k) = true;
             elseif isempty(p.age) && sameCurie(node, 'NCIT:C25150') ...
-                    && isequal(edgeIds(b, 'entity_id'), entity) ...
+                    && isequal(edgeIds(b, 'entity_id'), subject) ...
                     && isequal(edgeIds(b, 'time_reference_id'), tr)
                 % [age at injection is an observation] (Jess Haley,
                 % 2026-10-27): the subject's age, on the manipulation's time
