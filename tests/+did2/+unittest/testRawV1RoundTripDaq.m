@@ -516,6 +516,60 @@ verifyFalse(testCase, r.ok);
 verifyTrue(testCase, any(contains(r.unplaced, 'was not emitted')), strjoin(r.unplaced, ' | '));
 end
 
+function testTheConfigurationRoundTripsUnderEitherClassName(testCase)
+% Decided by Jess Haley, 2026-11-19 [acquisition configuration renamed]
+% (did-schema docs/plans/did_v2_standing_wiring_plan.md): `acquisition_system`
+% is renamed `acquisition_configuration`. DID-matlab reads both names before
+% did-schema renames the class, so the daqsystem round trip, and the sync
+% rule's (which finds its rigs through rigSystem), rebuild v1 exactly from a
+% configuration under either name.
+names = did2.convert.acquisitionConfigurationNames();
+verifyEqual(testCase, names, {'acquisition_configuration', 'acquisition_system'});
+verifyTrue(testCase, all(cellfun(@did2.convert.isAcquisitionConfiguration, names)));
+verifyFalse(testCase, did2.convert.isAcquisitionConfiguration('acquisition_reader'));
+v1 = writerDaqsystem('vhvis_spike2', {'mdr_1'});
+docs = cellfun(@(d) d.toStruct(), runRaw(v1).migrated, 'UniformOutput', false);
+rule = channelRule();
+batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
+out = did2.convert.resolveClockAlignment(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
+ruleDocs = cellfun(@toStructIf, foldDocs(out, rule.base.id), 'UniformOutput', false);
+assertNotEmpty(testCase, ruleDocs);
+for n = names
+    label = ['daqsystem as ' n{1}];
+    relabelled = cellfun(@(d) relabelConfiguration(d, n{1}), docs, 'UniformOutput', false);
+    verifyTrue(testCase, any(cellfun(@(d) strcmp(char(d.document_class.class_name), n{1}), ...
+        relabelled)), [label ': no configuration under that name']);
+    r = did2.convert.roundtrip.check(v1, relabelled);
+    verifyRoundTrip(testCase, r, label, {});
+    label = ['the channel rule, rigs as ' n{1}];
+    relabelled = cellfun(@(d) relabelConfiguration(d, n{1}), ruleDocs, 'UniformOutput', false);
+    r = did2.convert.roundtrip.check(rule, relabelled);
+    verifyRoundTrip(testCase, r, label, {});
+end
+end
+
+function d = toStructIf(d)
+if isa(d, 'did2.document')
+    d = d.toStruct();
+end
+end
+
+function d = relabelConfiguration(d, name)
+% D with its configuration class (either name) and its block under NAME
+if ~isstruct(d) || ~isfield(d, 'document_class')
+    return;
+end
+cls = char(d.document_class.class_name);
+if ~did2.convert.isAcquisitionConfiguration(cls) || strcmp(cls, name)
+    return;
+end
+d.document_class.class_name = name;
+if isfield(d, cls)
+    d.(name) = d.(cls);
+    d = rmfield(d, cls);
+end
+end
+
 function testAMissingOrExtraDocumentIsUnplaced(testCase)
 f = writerFixtures();
 for label = {'daqsystem, one metadata reader', 'syncgraph, two rules', 'probe_location, Dabrowska'}
