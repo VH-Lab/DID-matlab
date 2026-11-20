@@ -328,7 +328,7 @@ for k = 1:numel(types)
         'UniformOutput', false);
     verifyEqual(testCase, any(strcmp(vars, 'element type')), any(strcmp(ty, kept)), ...
         [ty ': element type assertion written or dropped wrongly']);
-    verifyFalse(testCase, any(strcmp(vars, 'ndi element class')), [ty ': ndi element class assertion written']);
+    verifyEmpty(testCase, classAssertionsAbout(out, id), [ty ': element class assertion written']);
     kind = did2.convert.elementDeviceKind(ty);
     expected = '';
     if any(strcmp(ty, dropped)); expected = ty; end
@@ -342,7 +342,7 @@ for label = {'single', 'multi'}
     vars = cellfun(@(b) char(b.statement.variable.name), assertionsAbout(out, id, ''), ...
         'UniformOutput', false);
     verifyFalse(testCase, any(strcmp(vars, 'element type')), ['spikes (' label{1} '): element type assertion written']);
-    verifyFalse(testCase, any(strcmp(vars, 'ndi element class')), ['spikes (' label{1} '): ndi element class assertion written']);
+    verifyEmpty(testCase, classAssertionsAbout(out, id), ['spikes (' label{1} '): element class assertion written']);
 end
 end
 
@@ -364,8 +364,8 @@ testCase.log(sprintf('DENOMINATOR: %d element(s)', size(cases, 1)));
 for k = 1:size(cases, 1)
     [label, v1, want] = cases{k, :};
     out = runRaw([{v1}, units]);
-    verifyEmpty(testCase, assertionsAbout(out, v1.base.id, 'ndi element class'), ...
-        [label ': ndi element class assertion written']);
+    verifyEmpty(testCase, classAssertionsAbout(out, v1.base.id), ...
+        [label ': element class assertion written']);
     docs = elementOutputs(out, v1.base.id);
     rebuilt = did2.convert.roundtrip.element(docs);
     verifyEqual(testCase, rebuilt.element.ndi_element_class, want, label);
@@ -388,8 +388,18 @@ function testAClassThatDoesNotRebuildKeepsItsAssertion(testCase)
 v1 = probeDoc('el_c_odd', 'p', 1, 'n-trode', 'ndi.probe.timeseries');
 out = runRaw(v1);
 verifyEqual(testCase, numel(out.passthrough), 0, 'carried');
-cls = assertionsAbout(out, 'el_c_odd', 'ndi element class');
+cls = classAssertionsAbout(out, 'el_c_odd');
 verifyNumElements(testCase, cls, 1);
+% [variable terms batch 1] (Decided by Jess Haley, 2026-11-19, did-schema
+% did_v2_go_forward_class_audit.md): its variable is EMPTY:0000401 "software
+% class", looked up by node; the old label 'ndi element class' is not written
+if ~isempty(cls)
+    verifyEqual(testCase, char(cls{1}.statement.variable.node), 'EMPTY:0000401');
+    verifyEqual(testCase, char(cls{1}.statement.variable.name), 'software class', ...
+        'the registry label (did2.convert.registeredTerm)');
+end
+verifyEmpty(testCase, assertionsAbout(out, 'el_c_odd', 'ndi element class'), ...
+    'the old label is still written');
 verifyTrue(testCase, isfield(out.summary.migration_notes, 'element_class_not_rebuilt'), 'not noted');
 if isfield(out.summary.migration_notes, 'element_class_not_rebuilt')
     verifyTrue(testCase, any(strcmp(out.summary.migration_notes.element_class_not_rebuilt.ids, 'el_c_odd')));
@@ -397,6 +407,33 @@ end
 r = did2.convert.roundtrip.check(v1, elementOutputs(out, 'el_c_odd'));
 verifyEmpty(testCase, r.lost, describeLost(r));
 verifyEmpty(testCase, r.unplaced, strjoin(r.unplaced, '; '));
+end
+
+function testTheRoundTripReadsBothClassSpellings(testCase)
+% [variable terms batch 1] (Decided by Jess Haley, 2026-11-19, did-schema
+% did_v2_go_forward_class_audit.md): the class variable is EMPTY:0000401
+% "software class", by node. An element migrated before that decision holds
+% the label 'ndi element class' and no node; the round trip reads both, and a
+% variable that carries only the node (no label) too.
+v1 = probeDoc('el_c_sp', 'p', 1, 'n-trode', 'ndi.probe.timeseries');
+out = runRaw(v1);
+docs = elementOutputs(out, 'el_c_sp');
+ix = find(cellfun(@(b) strcmp(char(b.document_class.class_name), 'assertion') ...
+    && isClassVariable(b.statement.variable), docs));
+assertNumElements(testCase, ix, 1, 'the kept class assertion');
+spellings = { ...
+    'node and registry label', struct('node', 'EMPTY:0000401', 'name', 'software class'); ...
+    'node only', struct('node', 'EMPTY:0000401', 'name', ''); ...
+    'old label, no node', struct('node', '', 'name', 'ndi element class')};
+testCase.log(sprintf('DENOMINATOR: %d spelling(s)', size(spellings, 1)));
+for k = 1:size(spellings, 1)
+    [label, variable] = spellings{k, :};
+    d = docs;
+    d{ix}.statement.variable = variable;
+    [rebuilt, spec] = did2.convert.roundtrip.element(d);
+    verifyEqual(testCase, rebuilt.element.ndi_element_class, 'ndi.probe.timeseries', label);
+    verifyEmpty(testCase, spec.unplaced, [label ': ' strjoin(spec.unplaced, '; ')]);
+end
 end
 
 function testAnEnsembleIsCheckedAfterNdisSecondPass(testCase)
@@ -412,7 +449,7 @@ v1 = ndiElement('el_ens', 'ens', 1, 'ensemble', 'ndi.element.ensemble', false, .
     'el_uprobe', 'subj_1', {});
 out = runRaw({v1, unitProbe()});
 verifyEqual(testCase, numel(out.passthrough(strcmp({out.passthrough.id}, 'el_ens'))), 0, 'carried');
-verifyEmpty(testCase, assertionsAbout(out, 'el_ens', 'ndi element class'), 'class assertion written');
+verifyEmpty(testCase, classAssertionsAbout(out, 'el_ens'), 'class assertion written');
 docs = elementOutputs(out, 'el_ens');
 verifyEqual(testCase, did2.unittest.helpers.classKey(docs{1}), 'group');
 [rebuilt, spec] = did2.convert.roundtrip.element(docs);
@@ -815,13 +852,38 @@ for k = 1:numel(out.migrated)
         docs = [{b}, docs]; %#ok<AGROW>
     elseif strcmp(cn, 'assertion') && strcmp(edgeOf(b, 'entity_id'), elementId)
         v = b.statement.variable;
-        if isstruct(v) && any(strcmpi(char(v.name), {'element type', 'ndi element class', ...
-                'modality unresolved', 'Equipment Type'}))
+        if isstruct(v) && (isClassVariable(v) || any(strcmpi(char(v.name), {'element type', ...
+                'modality unresolved', 'Equipment Type'})))
             docs{end+1} = b; %#ok<AGROW>
         end
     elseif strcmp(cn, 'directed_relation') && strcmp(edgeOf(b, 'child_id'), elementId)
         docs{end+1} = b; %#ok<AGROW>
     end
+end
+end
+
+function docs = classAssertionsAbout(out, elementId)
+% the element class assertions about ELEMENTID, in either spelling: the node
+% EMPTY:0000401 ([variable terms batch 1]) or the old label 'ndi element class'
+docs = {};
+for k = 1:numel(out.migrated)
+    b = out.migrated{k}.toStruct();
+    if strcmp(char(b.document_class.class_name), 'assertion') && strcmp(edgeOf(b, 'entity_id'), elementId) ...
+            && isClassVariable(b.statement.variable)
+        docs{end+1} = b; %#ok<AGROW>
+    end
+end
+end
+
+function tf = isClassVariable(v)
+% the element class variable, by node EMPTY:0000401 "software class"
+% ([variable terms batch 1], Jess Haley, 2026-11-19) or by the old label
+tf = false;
+if ~isstruct(v) || isempty(v); return; end
+if isfield(v, 'node') && strcmpi(strtrim(char(v.node)), 'EMPTY:0000401')
+    tf = true;
+elseif isfield(v, 'name')
+    tf = strcmpi(strtrim(char(v.name)), 'ndi element class');
 end
 end
 
