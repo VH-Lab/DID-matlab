@@ -9,7 +9,8 @@ function [v1, spec] = treatment_drug(bodies)
 %   at the locked NDI-matlab `main`, 3cb19a8):
 %
 %     base.id, session_id, datestamp   the manipulation (rebuildBase)
-%     depends_on(1) subject_id         the manipulation's `entity_id`
+%     depends_on(1) subject_id         the manipulation's `entity_id`, or the
+%                                     `part_of` parent of the region part it names
 %     treatment_drug.mixture_table     one row per chemical (treatmentRows),
 %                                      compared row by row (sameMixture)
 %     treatment_drug.location_ontologyNode, location_ontologyName,
@@ -86,9 +87,7 @@ if ~isempty(onset)
 end
 
 v1.document_class = struct('class_name', 'treatment_drug');
-ids = edgeIds(p.manip, 'entity_id');
-if isempty(ids); ids = {''}; end
-v1.depends_on = struct('name', 'subject_id', 'value', ids{1});
+v1.depends_on = struct('name', 'subject_id', 'value', p.subject);
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
 v1.treatment_drug = block;

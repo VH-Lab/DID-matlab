@@ -29,7 +29,8 @@ function v2Body = treatment_drug(preBody)
 %                           generic stage, [dataset audit batch 1 and 2] (2)).
 %
 %   1 -> N: the manipulation, one chemical per mixture row, the formulation
-%   and the anchor, plus the site observation for a dose at a site.
+%   and the anchor, plus the region part of a dose's body site (jRegionSite;
+%   a site observation when the site is a side).
 %
 %   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
 %   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
@@ -131,7 +132,11 @@ if ~isempty(anchorWhy)
     v2Body = {preBody};
     return;
 end
-[bodies, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, anchor.base.id);
+% a body site: the dose is about the site's region part, computed from
+% (subject, region) ([region parts], [region part ids computed]; jRegionSite)
+[partBodies, partId] = jRegionSite(preBody, siteTerm);
+[bodies, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals, siteTerm, ...
+    anchor.base.id, 'EntityId', partId);
 if ~isempty(unplaced)
     % [generic stage is lossless] / [partly placed is carried as v1] (Jess
     % Haley, 2026-10-25): an amount the dose cannot place carries the document
@@ -142,7 +147,11 @@ if ~isempty(unplaced)
     v2Body = {preBody};
     return;
 end
-if strcmp(route, 'dose')
+if strcmp(route, 'dose') && ~isempty(partBodies)
+    bodies = [bodies, partBodies];
+elseif strcmp(route, 'dose')
+    % a side (jRegionSite): the site observation did2.convert.resolveRegionParts
+    % attaches to the subject's part ([part re-keyed when its side arrives])
     obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
         did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), siteTerm, ...
         'TimeReferenceIds', {anchor.base.id}, 'ValueKind', 'term');
