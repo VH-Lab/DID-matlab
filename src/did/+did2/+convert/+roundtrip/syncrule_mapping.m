@@ -179,7 +179,7 @@ if isempty(sys) || i == 0
 end
 used(i) = true;
 if iDev > 0; used(iDev) = true; end
-node.objectname = fieldText(getIn(sys, 'acquisition_system'), 'name');
+node.objectname = fieldText(getIn(sys, classNameOf(sys)), 'name');
 if isempty(node.objectname)
     node.objectname = fieldText(sys.base, 'name');
 end
@@ -256,7 +256,7 @@ for r = 1:numel(refIds)
         % system itself (a batch migrated before the device; rigSystem)
         ref0 = ctxDoc(ctx, sysIds{s});
         sys = rigSystem(sysIds{s}, {}, ctx);
-        if ~isempty(ref0) && ~strcmp(classNameOf(ref0), 'acquisition_system')
+        if ~isempty(ref0) && ~did2.convert.isAcquisitionConfiguration(classNameOf(ref0))
             [docs, seen] = addDoc(docs, seen, ref0);
         end
         [docs, seen] = addDoc(docs, seen, sys);

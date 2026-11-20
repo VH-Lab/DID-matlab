@@ -117,7 +117,7 @@ systems = {};
 wiredTo = {};
 for k = ctxReferrers(ctx, nav)
     b = ctx.docs{k};
-    if strcmp(classNameOf(b), 'acquisition_system') ...
+    if did2.convert.isAcquisitionConfiguration(classNameOf(b)) ...
             && any(strcmp(edgeIds(b, 'epoch_file_pattern_id'), nav))
         systems{end+1} = char(b.base.id); %#ok<AGROW>
         wiredTo = [wiredTo, {char(b.base.id)}, edgeIds(b, 'device_id')]; %#ok<AGROW>
@@ -324,7 +324,11 @@ sys = ctxDoc(ctx, systemIdOf(st, ctx));
 if isempty(sys)
     why{end+1} = sprintf('statement %s: its acquisition system is not in the batch', char(st.base.id));
 else
-    dev = fieldText(getIn(sys, 'acquisition_system'), 'name');
+    % its own name field, under either class name ([acquisition
+    % configuration renamed]); its block is named after its class
+    if did2.convert.isAcquisitionConfiguration(classNameOf(sys))
+        dev = fieldText(getIn(sys, classNameOf(sys)), 'name');
+    end
     if isempty(dev)
         dev = fieldText(sys.base, 'name');
     end

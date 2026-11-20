@@ -65,6 +65,7 @@ function [result, report] = epochMint(result, options)
 %       element_epoch, acquisition_epoch, daqmetadatareader_epochdata_ingested,
 %       stimulus_response_scalar, syncrule_mapping, pyraview, spikewaves,
 %       epochfiles_ingested, method(method_parameters), acquisition_system,
+%       acquisition_configuration,
 %       entity(element), directed_relation(element lineage),
 %       result.deferred_bath_anchors
 %   BATCH-PASS-ADDS: entity(epoch), relative_time_reference(epoch anchor),
@@ -3804,10 +3805,13 @@ for k = 1:n
     id = rows(k).doc_id;
     sid = rows(k).session_id;
     switch cn
-        case 'acquisition_system'
+        case {'acquisition_configuration', 'acquisition_system'}
+            % either class name ([acquisition configuration renamed], Jess
+            % Haley 2026-11-19; did2.convert.acquisitionConfigurationNames);
+            % the block is named after the class
             nm = '';
-            if isfield(b, 'acquisition_system') && isstruct(b.acquisition_system)
-                nm = charField(b.acquisition_system, {'name'});
+            if isfield(b, cn) && isstruct(b.(cn))
+                nm = charField(b.(cn), {'name'});
             end
             if isempty(nm); nm = baseField(b, 'name'); end
             if isempty(nm) || isempty(id); continue; end
