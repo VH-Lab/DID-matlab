@@ -44,7 +44,8 @@ function v2Body = virus_injection(preBody)
 %                                 amount, listed as a gap, [virus-location])
 %     diluent_OntologyName, diluent_name -> the second chemical
 %     virusLocation_OntologyName, virusLocation_name -> the route and the
-%                                 site observation of a dose
+%                                 region part of a dose (jRegionSite;
+%                                 a site observation for a side)
 %     virus_AdministrationDate -> the anchor (jTreatmentAnchor)
 %     virus_AdministrationPND  -> an `observation` of the subject, value kind
 %                                 time (the age, in days), variable NCIT:C25150
@@ -106,7 +107,11 @@ siteTerm = jOntologyTerm( ...
     jGetCharAny(block, {'virus_location_ontology_name', 'virusLocation_OntologyName'}), ...
     jGetCharAny(block, {'virus_location_name', 'virusLocation_name'}));
 anchor = jTreatmentAnchor(preBody, block);  % the recorded onset, else the session
-[bodies, route, unplaced] = jTreatmentBodies(preBody, virusTerm, chemicals, siteTerm, anchor.base.id);
+% a body site: the dose is about the site's region part, computed from
+% (subject, region) ([region parts], [region part ids computed]; jRegionSite)
+[partBodies, partId] = jRegionSite(preBody, siteTerm);
+[bodies, route, unplaced] = jTreatmentBodies(preBody, virusTerm, chemicals, siteTerm, ...
+    anchor.base.id, 'EntityId', partId);
 if ~isempty(unplaced)
     % [generic stage is lossless] / [partly placed is carried as v1] (Jess
     % Haley, 2026-10-25): an amount the dose cannot place carries the document
@@ -117,7 +122,11 @@ if ~isempty(unplaced)
     v2Body = {preBody};
     return;
 end
-if strcmp(route, 'dose')
+if strcmp(route, 'dose') && ~isempty(partBodies)
+    bodies = [bodies, partBodies];
+elseif strcmp(route, 'dose')
+    % a side (jRegionSite): the site observation did2.convert.resolveRegionParts
+    % attaches to the subject's part ([part re-keyed when its side arrives])
     obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
         did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), siteTerm, ...
         'TimeReferenceIds', {anchor.base.id}, 'ValueKind', 'term');

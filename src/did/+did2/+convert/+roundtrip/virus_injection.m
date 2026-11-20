@@ -11,7 +11,8 @@ function [v1, spec] = virus_injection(bodies)
 %   +NDIMaker/treatmentMaker create_virus_injection_doc):
 %
 %     base.id, session_id, datestamp   the manipulation (rebuildBase)
-%     depends_on(1) subject_id         the manipulation's `entity_id`
+%     depends_on(1) subject_id         the manipulation's `entity_id`, or the
+%                                     `part_of` parent of the region part it names
 %     virus_OntologyName, virus_name   the first chemical's substance
 %     dilution                         the first ingredient's concentration
 %                                      source_value; 0 when it states none
@@ -106,9 +107,7 @@ if ~isempty(p.age)
 end
 
 v1.document_class = struct('class_name', 'virus_injection');
-ids = edgeIds(p.manip, 'entity_id');
-if isempty(ids); ids = {''}; end
-v1.depends_on = struct('name', 'subject_id', 'value', ids{1});
+v1.depends_on = struct('name', 'subject_id', 'value', p.subject);
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
 v1.virus_injection = block;

@@ -956,8 +956,8 @@ a = firstOfClassJ(out.migrated, 'absolute_time_reference');
 verifyEqual(testCase, a.get('document_class.class_name'), 'absolute_time_reference');
 verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '10:32:00');
 verifyEqual(testCase, depVal(m, 'time_reference_id'), a.get('base.id'));
-% an ISO-8601 UTC onset on a dose: the instant is normalised; the site
-% observation shares the anchor
+% an ISO-8601 UTC onset on a dose: the instant is normalised; the dose is
+% about its site's region part ([region parts], [region part ids computed])
 v1 = treatmentDrugDoc('td_onset_iso', ...
     sprintf('ontologyName,name,value,ontologyUnit,unitName\nNCIT:C227,alprazolam,0.25,SNOMED:396163008,mg/kg'), ...
     'UBERON:0001179', 'peritoneal cavity');
@@ -970,8 +970,8 @@ verifyNotEmpty(testCase, a);
 verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '2024-06-01T09:15:00Z');
 verifyNotEmpty(testCase, a.get('absolute_time_reference.value.start.utc'));
 verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
-site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, depVal(site, 'time_reference_id'), a.get('base.id'));
+site = regionKindJ(testCase, out.migrated, 'subj_007');
+verifyEqual(testCase, site.get('term.value').node, 'UBERON:0001179');
 end
 
 function testTreatmentDrugWithNoOnsetIsAnchoredDuringTheSession(testCase)
@@ -999,24 +999,28 @@ out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol Target Location');
-site = firstOfClassJ(out.migrated, 'observation+term');
+site = regionKindJ(testCase, out.migrated, 'subj_007');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
-function testTreatmentTargetLocationEmitsSiteObservation(testCase)
-% Dab "Target Location" idiom: the site rides in string_value; strict J has no
-% target_structure, so a located site becomes a term_observation (D3). UPDATED
+function testTreatmentTargetLocationIsAboutItsRegionPart(testCase)
+% Dab "Target Location" idiom: the site rides in string_value. UPDATED
 % 2026-10-25: driven by a label with no " Target Location" suffix (a suffixed
 % label is carried as v1, the test above); the CURIE string_value alone still
-% routes the site.
+% routes the site. UPDATED 2026-11-19 ([site scaffolding not a loss] (2),
+% [region part ids computed], VH-Lab/DID-matlab #488): pass 1 writes the
+% site's region part in its final shape -- the dose is about the part, a
+% tissue entity `part_of` the subject named by its anatomical-structure
+% assertion -- instead of a site observation for NDI's second pass to promote.
 out = runJ(treatmentDoc('CHEBI:7035', 'muscimol', [], 'uberon:0002436'));
-% #88: dose manip + its chemical + formulation + anchor + site obs
-verifyEqual(testCase, numel(out.migrated), 5);
+% #88: dose manip + its chemical + formulation + anchor + the region part
+% (entity + kind assertion + part_of)
+verifyEqual(testCase, numel(out.migrated), 7);
 verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 1);
+verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 0, ...
+    'the site is the part, not an observation');
 verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
-site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
+site = regionKindJ(testCase, out.migrated, 'subj_007');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 % a body site makes it a dose; no amount recorded -> no value, listed as a gap
 % (NaN until [canonical absent only as needs info]); the route is known
@@ -1041,8 +1045,9 @@ v1.base = struct('id', 'td_01', 'session_id', 'sess_09', ...
 v1.treatment_drug = struct('mixture_table', 'CHEBI:5613,haloperidol,5', ...
     'location_ontologyNode', 'uberon:0002436', 'location_name', 'primary visual cortex');
 out = runJ(v1);
-% #88: dose + chemical + formulation + site obs + anchor
-verifyEqual(testCase, numel(out.migrated), 5);
+% #88: dose + chemical + formulation + anchor + the region part (entity, kind
+% assertion, part_of; [region part ids computed])
+verifyEqual(testCase, numel(out.migrated), 7);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 % #88 dose chain: dose -> formulation_id -> formulation (ingredient entry carries
@@ -1065,9 +1070,8 @@ verifyEqual(testCase, d.get('statement.variable').name, 'haloperidol');
 verifyDoseNoAmountJ(testCase, d);
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 % the site node survives the universalRenames snake-casing (location_ontologyNode
-% -> location_ontology_node)
-site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, did2.unittest.helpers.classKey(site), 'observation+term');
+% -> location_ontology_node), on the region part's kind assertion
+site = regionKindJ(testCase, out.migrated, 'subj_007');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
@@ -1159,7 +1163,8 @@ end
 
 function testVirusInjectionAnchoredAtItsAdministrationDate(testCase)
 % Jess Haley, 2026-10-21 ("a") [virus injection onset]: virus_AdministrationDate
-% is the onset, so the dose (and its site observation) is anchored there.
+% is the onset, so the dose is anchored there; it is about its site's region
+% part ([region part ids computed]).
 out = runJ(virusInjectionV1('vi_date', '2024-05-02'));
 verifyEmpty(testCase, out.quarantine);
 d = out.migrated{1};
@@ -1167,8 +1172,12 @@ a = firstOfClassJ(out.migrated, 'absolute_time_reference');
 assertNotEmpty(testCase, a, 'no absolute time reference at the administration date');
 verifyEqual(testCase, a.get('absolute_time_reference.value.start.source_value'), '2024-05-02');
 verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
-site = firstOfClassJ(out.migrated, 'observation+term');
-verifyEqual(testCase, depVal(site, 'time_reference_id'), a.get('base.id'));
+regionKindJ(testCase, out.migrated, 'subj_007');
+% the age at injection stays about the subject, on the injection's anchor
+age = firstOfClassJ(out.migrated, 'observation+time');
+assertNotEmpty(testCase, age);
+verifyEqual(testCase, depVal(age, 'entity_id'), 'subj_007');
+verifyEqual(testCase, depVal(age, 'time_reference_id'), a.get('base.id'));
 end
 
 function testVirusInjectionWithNoAdministrationDateIsDuringTheSession(testCase)
@@ -1204,8 +1213,9 @@ v1.virus_injection = struct('virus_OntologyName', 'addgene:26973', ...
     'virus_name', 'pAAV-hSyn-hChR2(H134R)-EYFP', 'dilution', 1000, ...
     'virusLocation_OntologyName', 'uberon:0002436', 'virusLocation_name', 'V1');
 out = runJ(v1);
-% #88: dose + chemical + formulation + site obs + anchor
-verifyEqual(testCase, numel(out.migrated), 5);
+% #88: dose + chemical + formulation + anchor + the region part (entity, kind
+% assertion, part_of; [region part ids computed])
+verifyEqual(testCase, numel(out.migrated), 7);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 [f, c] = doseChainJ(out.migrated, d);
@@ -1234,8 +1244,9 @@ verifyEqual(testCase, d.get('statement.variable').node, 'addgene:26973');
 % [treatment-location], [virus-location])
 verifyDoseNoAmountJ(testCase, d);
 verifyEqual(testCase, routeUnknownCount(out, 'virus_injection'), 0);
-% site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name)
-site = firstOfClassJ(out.migrated, 'observation+term');
+% site node survives snake-casing (virusLocation_OntologyName -> virus_location_ontology_name),
+% on the region part's kind assertion
+site = regionKindJ(testCase, out.migrated, 'subj_007');
 verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
 end
 
@@ -1417,8 +1428,9 @@ v1 = treatmentDrugDoc('td_ip', ...
     'UBERON:0001179', 'peritoneal cavity');
 out = runJ(v1);
 verifyEmpty(testCase, out.quarantine);
-% dose + chemical + formulation + site obs + anchor
-verifyEqual(testCase, numel(out.migrated), 5);
+% dose + chemical + formulation + anchor + the region part (entity, kind
+% assertion, part_of; [region part ids computed])
+verifyEqual(testCase, numel(out.migrated), 7);
 d = out.migrated{1};
 verifyEqual(testCase, did2.unittest.helpers.classKey(d), 'manipulation+dose');
 dv = d.get('dose.value');
@@ -1436,7 +1448,7 @@ verifyEqual(testCase, depVal(d, 'ingredient_id'), c.get('base.id'), ...
 % the formulation's entry states no amount and is listed as a gap
 % ([formulation amount needs info], Jess Haley, 2026-10-31; NaN until then)
 verifyIngredientNoAmountJ(testCase, f, 1);
-site = firstOfClassJ(out.migrated, 'observation+term');
+site = regionKindJ(testCase, out.migrated, 'subj_007');
 verifyEqual(testCase, site.get('term.value').node, 'UBERON:0001179');
 verifyEqual(testCase, routeUnknownCount(out, 'treatment_drug'), 0);
 end
@@ -2938,6 +2950,50 @@ otr.ontologyTableRow = struct('variableNames', strjoin(keys, ','), ...
     'names', strjoin(keys, ','), 'ontologyNodes', nodes, 'data', data);
 end
 
+function kind = regionKindJ(testCase, migrated, subjectId, m)
+%REGIONKINDJ The region part the first document (a manipulation) is about, in
+%   its final shape ([region parts], [site scaffolding not a loss] (2),
+%   [region part ids computed], VH-Lab/DID-matlab #488): a `tissue` entity
+%   whose id is did2.convert.regionPartIds' for (SUBJECTID, the region), its
+%   anatomical-structure (UBERON:0000061) term assertion -- returned, its
+%   `term.value` the site -- and a `part_of` relation to SUBJECTID, each id the
+%   computed one. No site observation is left.
+kind = [];
+if nargin < 4
+    m = migrated{1};
+end
+partId = depVal(m, 'entity_id');
+part = [];
+rel = [];
+for k = 1:numel(migrated)
+    d = migrated{k};
+    key = did2.unittest.helpers.classKey(d);
+    if strcmp(d.get('base.id'), partId); part = d; end
+    if strcmp(key, 'assertion+term') && strcmp(depVal(d, 'entity_id'), partId) ...
+            && strcmpi(d.get('statement.variable').node, 'UBERON:0000061')
+        kind = d;
+    end
+    if strcmp(d.get('document_class.class_name'), 'directed_relation') ...
+            && strcmp(depVal(d, 'child_id'), partId)
+        rel = d;
+    end
+end
+assertNotEmpty(testCase, part, 'the manipulation is not about a region part in the batch');
+verifyEqual(testCase, part.get('entity.type').name, 'tissue');
+assertNotEmpty(testCase, kind, 'the region part has no anatomical-structure assertion');
+assertNotEmpty(testCase, rel, 'the region part has no part_of relation');
+verifyEqual(testCase, depVal(rel, 'parent_id'), subjectId);
+% the relation term as the schema stores it: BFO:0000050, named "part of"
+verifyEqual(testCase, rel.get('directed_relation.relation').node, 'BFO:0000050');
+ids = did2.convert.regionPartIds(subjectId, kind.get('term.value'), []);
+verifyEqual(testCase, partId, ids.part, 'the part id is not the computed one');
+verifyEqual(testCase, kind.get('base.id'), ids.kind);
+verifyEqual(testCase, rel.get('base.id'), ids.relation);
+verifyEqual(testCase, part.get('entity.local_identifier'), ids.local_identifier);
+verifyEmpty(testCase, firstOfClassJ(migrated, 'observation+term'), ...
+    'a site observation is left beside the region part');
+end
+
 function d = firstOfClassJ(migrated, className)
 d = [];
 for k = 1:numel(migrated)
@@ -3230,7 +3286,9 @@ if isempty(m); return; end
 verifyEqual(testCase, m.get('document_class.class_name'), 'manipulation');
 verifyEqual(testCase, m.get('base.id'), 'aabb1122ccdd3344_5500000000000004', ...
     'the bath keeps the stimulus_bath id');
-verifyEqual(testCase, depVal(m, 'entity_id'), subjId);
+% about the region part of its location (CNS), part_of the subject
+% (regionKindJ below)
+verifyNotEqual(testCase, depVal(m, 'entity_id'), subjId);
 verifyNotEmpty(testCase, depVal(m, 'time_reference_id'));
 verifyEmpty(testCase, depVal(m, 'formulation_id'), ...
     'the formulation is the value (value_id), not a dose''s formulation_id');
@@ -3266,11 +3324,12 @@ anchor = firstOfClassJ(out.migrated, 'relative_time_reference');
 verifyNotEmpty(testCase, anchor);
 rel = anchor.get('relative_time_reference.value').relation;
 verifyEqual(testCase, rel.name, 'intervalDuring');
-% the bath location is carried as a term_observation (not dropped)
-locObs = firstOfClassJ(out.migrated, 'observation+term');
-verifyNotEmpty(testCase, locObs);
-verifyEqual(testCase, locObs.get('term.value').name, 'CNS');
-verifyEqual(testCase, depVal(locObs, 'entity_id'), subjId);
+% INVERTED 2026-11-19 ([site scaffolding not a loss] (2), [region part ids
+% computed], VH-Lab/DID-matlab #488): the bath at an anatomical location is
+% about that location's region part, written in its final shape (not dropped,
+% and no longer a site observation for NDI's second pass to promote)
+kind = regionKindJ(testCase, out.migrated, subjId, m);
+verifyEqual(testCase, kind.get('term.value').name, 'CNS');
 end
 
 function testDeferredGenericBathHasNoLocationObservation(testCase)

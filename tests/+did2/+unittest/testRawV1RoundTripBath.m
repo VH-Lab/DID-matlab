@@ -28,7 +28,9 @@ function tests = testRawV1RoundTripBath
 %   pass did2.convert.resolveDeferredBaths assembles it from the quarantined
 %   source: the manipulation (the v1 id; value kind formulation; entity the
 %   stimulator's subject), its session anchor, the formulation and one chemical
-%   per row, and a site observation for an anatomical location. The round trip
+%   per row, and for an anatomical location that location's region part (a
+%   tissue entity, its anatomical-structure assertion and its part_of
+%   relation, did2.convert.regionPart), which the bath is about. The round trip
 %   is of THAT output. Since [one bath shape] (Jess Haley, 2026-10-27) the
 %   stimulator is the manipulation's instrument_id (depends_on(1).value comes
 %   back), and the epoch is handed on to did2.convert.epochMint, which re-points
@@ -344,7 +346,7 @@ v1 = marderBath();
 r = did2.convert.roundtrip.check(v1, bathOutputs(v1));
 for p = {'stimulus_bath.location.ontologyNode', 'stimulus_bath.location.name'}
     verifyTrue(testCase, any(strcmp(p{1}, [r.matched, r.equivalent])), ...
-        sprintf('%s is not read from the site observation', p{1}));
+        sprintf('%s is not read from the region part''s kind assertion', p{1}));
 end
 end
 
@@ -458,10 +460,15 @@ r = did2.convert.roundtrip.check(v1, docs(keep));
 verifyFalse(testCase, r.ok);
 verifyNotEmpty(testCase, r.unplaced);
 
-% the site observation dropped: the anatomical location is reported lost
+% the region part's kind assertion dropped (the bath at an anatomical location
+% is about that location's region part, [region part ids computed]): the
+% anatomical location is reported lost
 v1 = marderBath();
 docs = structs(bathOutputs(v1));
-keep = ~cellfun(@(d) strcmp(d.document_class.class_name, 'observation'), docs);
+verifyFalse(testCase, any(cellfun(@(d) strcmp(d.document_class.class_name, 'observation'), docs)), ...
+    'a bath at an anatomical location writes its region part, not a site observation');
+keep = ~cellfun(@(d) strcmp(d.document_class.class_name, 'assertion'), docs);
+verifyEqual(testCase, nnz(~keep), 1, 'one kind assertion');
 r = did2.convert.roundtrip.check(v1, docs(keep));
 verifyTrue(testCase, any(strcmp(lostPaths(r), 'stimulus_bath.location.ontologyNode')));
 end
