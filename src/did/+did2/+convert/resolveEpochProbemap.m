@@ -58,7 +58,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       observation(pyraview),
 %       relative_time_reference(session anchor of a recording observation),
 %       relative_time_reference(epoch anchor), result.epoch_mint,
-%       stimulus_presentation
+%       manipulation(stimulus presentation)
 %   BATCH-PASS-ADDS: observation(recording per epoch),
 %       opaque_body(stimulus log), observation(stimulus log owner),
 %       manipulation(stimulator per epoch), opaque_body(epoch file by location),
@@ -71,6 +71,13 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       daqmetadatareader_epochdata_ingested,
 %       observation(session-scoped recording), observation(pyraview),
 %       directed_relation(observes), assertion(element type)
+%
+%   The stimulus-log step ([stimulus log owned by its presentation]) also
+%   reads the v1 stimulus_presentation in DID-matlab's own chain, where pass
+%   1 carries it and no batch pass removes it. It is not in READS: in
+%   NDI-matlab's second pass resolveStimulusPresentations removes it before
+%   this pass runs, and this pass reads the manipulation it became.
+%   READS lists it as manipulation(stimulus presentation).
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)
@@ -1472,7 +1479,7 @@ appended = [appended, fileBodies];
 % (channel_list.bin and an evmktx file): its files become bodies of the
 % epoch's stimulus presentation, or of a fallback observation of the rig's
 % device; the archive then retires below like any other (stimulusLogOwners)
-[logDocs, logQuarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, ...
+[logDocs, logQuarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, kindOf, ...
     sessionIds, docIds, archiveIdxAll, archiveCarried, clockIdsByArchiveIdx, ...
     clockHasSurvivor, producedById, anchorByEpochId, anchorHasSurvivor, epochIdByKey, ...
     subjectIdByKey, readerIdByNavId, deviceOfSystem, options, report);
@@ -2766,7 +2773,7 @@ for i = 1:numel(out)
 end
 end
 
-function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, ...
+function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, kindOf, ...
         sessionIds, docIds, archiveIdxAll, archiveCarried, clockIdsByArchiveIdx, ...
         clockHasSurvivor, producedById, anchorByEpochId, anchorHasSurvivor, epochIdByKey, ...
         subjectIdByKey, readerIdByNavId, deviceOfSystem, options, report)
@@ -2794,7 +2801,14 @@ function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, c
 %   THE PRESENTATION. Pass 1 carries a v1 `stimulus_presentation` whole, id
 %   kept ([stimulus_presentation retired]); NDI-matlab's second pass makes it
 %   the manipulation, same id, so a body owned by that id is the
-%   manipulation's. The archive's presentation is the one of its session and
+%   manipulation's. Both shapes are read, because this pass runs in both
+%   chains: in DID-matlab's own (v1_to_v2, epochMint, this) the presentation
+%   is the v1 document (its `epochid.epochid`, its `stimulus_element_id`); in
+%   NDI-matlab's second pass (ndi.migrate.local) this pass runs AFTER
+%   resolveStimulusPresentations and resolveEpochAnchorFold, so it is the
+%   `manipulation` of value kind `item`, its instrument the stimulator, timed
+%   by a relative_time_reference onto the epoch entity (its epoch is that
+%   entity's local_identifier). The archive's presentation is the one of its session and
 %   epoch (`epochid.epochid`) whose `stimulus_element_id` is a probe of a row
 %   of the probe map of that epoch on the archive's system (the
 %   epochfiles_ingested of a file navigator whose system's reader is the
@@ -2871,6 +2885,40 @@ for k = 1:numel(bodies)
                 end
             end
             probesBy(key) = unique(held);
+    end
+end
+
+% the presentation manipulations of NDI-matlab's second pass (above): each
+% item-valued manipulation, by the epochs its time references are onto
+referentOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
+epochLidOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isempty(b) || isempty(docIds{k}); continue; end
+    if strcmp(classOf{k}, 'relative_time_reference')
+        r = depValueOf(b, 'referent_id');
+        if ~isempty(r); referentOf(docIds{k}) = r; end
+    elseif strcmp(classOf{k}, 'epoch') && isfield(b, 'entity') && isstruct(b.entity)
+        lid = charField(b.entity, {'local_identifier'});
+        if ~isempty(lid); epochLidOf(docIds{k}) = lid; end
+    end
+end
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isempty(b) || isempty(docIds{k}) || ~strcmp(classOf{k}, 'manipulation') ...
+            || ~strcmp(kindOf{k}, 'item')
+        continue;
+    end
+    el = depValueOf(b, 'instrument_id');
+    if isempty(el); continue; end
+    sid = char(sessionIds{k});
+    for t = depValuesOf(b, 'time_reference_id')
+        if ~isKey(referentOf, t{1}) || ~isKey(epochLidOf, referentOf(t{1})); continue; end
+        key = [sid '|' epochLidOf(referentOf(t{1}))];
+        held = {};
+        if isKey(presBy, key); held = presBy(key); end
+        held{end+1} = struct('id', docIds{k}, 'element', el); %#ok<AGROW>
+        presBy(key) = held;
     end
 end
 

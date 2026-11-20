@@ -417,8 +417,8 @@ function [epochId, refs] = stimulusLogClocks(ctx, readerId, epochString)
 % the epoch entity of a stimulus log (the epoch of an ingestion_manifest of
 % the file pattern of an acquisition_system whose reader is READERID, whose
 % local_identifier is EPOCHSTRING) and its clock references: the
-% relative_time_references onto it that state a clock and that no statement
-% naming another acquisition system names
+% relative_time_references onto it that state a clock, a start and a
+% duration, and that no statement naming another acquisition system names
 epochId = '';
 refs = {};
 systems = {};
@@ -449,8 +449,14 @@ end
 if isempty(epochId); return; end
 for i = ctxReferrers(ctx, epochId)
     ref = ctx.docs{i};
+    % a clock reference states a clock, a start and a duration
+    % (did2.convert.epochClockReferences); a reference onto the epoch that
+    % states a clock without them (a spike train's, Soph) is not one, as
+    % NDI-matlab's readers skip it (+vintage/private/anchorClockExtent)
     if ~strcmp(classNameOf(ref), 'relative_time_reference') ...
-            || isempty(clockText(getIn(ref, 'relative_time_reference', 'value', 'clock')))
+            || isempty(clockText(getIn(ref, 'relative_time_reference', 'value', 'clock'))) ...
+            || isempty(numberOf(getIn(ref, 'relative_time_reference', 'value', 'start', 'seconds'))) ...
+            || isempty(numberOf(getIn(ref, 'relative_time_reference', 'value', 'duration', 'seconds')))
         continue;
     end
     other = false;
