@@ -73,9 +73,10 @@ function bodies = spike_interface_sorting_outputs(preBody)
 %   it now". A template-shaped document is therefore not a bare passthrough:
 %   the migrator writes a `carried_as_v1` note for it, so v1_to_v2 carries it
 %   whole (the untouched v1 source, stamped did_v1) and the migration report
-%   lists it. Its carry row is not in the register yet (did-schema #286, "Build
-%   pending: did-schema (its carry row)"), so the note cites the decision and
-%   no row; when the row lands, the note's tag and the marker name it.
+%   lists it. Its carry row is carry-173 (did-schema
+%   schemas/registry/did_v2_carry_register.json, kind awaiting_home, issue
+%   did-schema #286; [awaiting carry rows cite an issue]); the note starts with
+%   its [carry-173] tag and cites the decision.
 
 arguments
     preBody (1,1) struct
@@ -99,9 +100,9 @@ end
 carried = jRawCarry('spike_interface_sorting_outputs', preBody, collision, unplaced, 'carry-100');
 if ~carried
     % [spike interface sorting carried as v1] (Jess Haley, 2026-11-19)
-    % carry-register: none (the class's row is pending in did-schema #286)
+    % carry-register: carry-173
     did2.convert.reportNote('carried_as_v1', 'spike_interface_sorting_outputs', ...
-        jCarryId(preBody), ['awaiting_home: the whole document (no v2 home until ' ...
+        jCarryId(preBody), ['[carry-173] awaiting_home: the whole document (no v2 home until ' ...
         'a dataset holds one; [spike interface sorting carried as v1])']);
 end
 bodies = {preBody};   % the carry of the untouched v1 source
