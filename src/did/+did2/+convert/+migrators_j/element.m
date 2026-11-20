@@ -19,7 +19,9 @@ function v2Body = element(preBody)
 %                         rebuilds it (THE DEVICE KIND, below);
 %                         `ndi_element_class` -> NOTHING where it is rebuilt
 %                         from what the element is (THE NDI ELEMENT CLASS,
-%                         below); else variable "ndi element class".
+%                         below); else variable EMPTY:0000401 "software
+%                         class", looked up by node ([variable terms batch
+%                         1]; "ndi element class", no node, before).
 %     - `assertion`+`term` a device's kind, variable NCIT:C178920 "Equipment
 %                         Type" (the binding registry's subject-defining
 %                         variable for a device's finer kind): every device
@@ -431,9 +433,15 @@ end
 % An element whose v1 class does not rebuild keeps the assertion and is noted
 % `element_class_not_rebuilt`, to be brought to the team (THE NDI ELEMENT
 % CLASS, header).
+% Its variable is EMPTY:0000401 "software class", looked up by node:
+% [variable terms batch 1] (Decided by Jess Haley, 2026-11-19, did-schema
+% did_v2_go_forward_class_audit.md). Written "ndi element class", no node,
+% before that decision; NDI-matlab's readers and the round trip read both.
 rebuiltClass = did2.convert.elementClassOfKind(elementClassKind(entityType, type), type);
 if ~isempty(ndiClass) && ~strcmp(rebuiltClass, strtrim(ndiClass))
-    bodies{end+1} = kindAssertion(preBody, elementId, 'ndi element class', ndiClass);
+    bodies{end+1} = jStatement(preBody, 'assertion', elementId, ...
+        did2.convert.registeredTerm('EMPTY:0000401', 'software class'), ...
+        jLabel(ndiClass), 'ValueKind', 'term');
     did2.convert.reportNote('element_class_not_rebuilt', 'element', elementId, ...
         sprintf(['ndi_element_class "%s" (type "%s", entity type %s) rebuilds as "%s": ' ...
         'the "ndi element class" assertion is kept ([ndi element class not kept]: ' ...
@@ -541,11 +549,6 @@ v2Body = [bodies, recordingBodies];
 end
 
 % ===================== builders ========================================
-
-function a = kindAssertion(preBody, subjectId, variableName, valueName)
-a = jStatement(preBody, 'assertion', subjectId, ...
-    jLabel(variableName), jLabel(valueName), 'ValueKind', 'term');
-end
 
 function rel = lineageRelation(preBody, childId, parentId, relationName)
 %LINEAGERELATION child --relationName--> parent (both entities).
