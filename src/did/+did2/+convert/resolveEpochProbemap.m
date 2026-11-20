@@ -2778,7 +2778,8 @@ function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, c
 %   stimulus-system archive files (the event file `evmktx_group1_seg.nbf_1`
 %   and `channel_list.bin`, read by `vhlabvisspike2`; kept as v1 archives with
 %   no owner ...) become a data body of that epoch's stimulus-presentation
-%   `timed_sequence_manipulation`, the raw timing it was built from; where an
+%   `timed_sequence_manipulation` (pre-#88 name, quoted: the presentation's
+%   `manipulation`), the raw timing it was built from; where an
 %   epoch has no presentation, an observation of the stimulus rig's device
 %   owns them, as [non-specimen channel groups get their own owner] does,
 %   counted; the archive document then goes ([segment length is the time
