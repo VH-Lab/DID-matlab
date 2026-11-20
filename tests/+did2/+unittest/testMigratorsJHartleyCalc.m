@@ -591,7 +591,10 @@ verifyTrue(testCase, any(strcmp(names, 'Horizontal Pixel Spacing')), strjoin(nam
 verifyTrue(testCase, any(strcmp(names, 'Vertical Pixel Spacing')), strjoin(names, ', '));
 verifyFalse(testCase, any(strcmp(names, 'X sample')) || any(strcmp(names, 'Y sample')), ...
     strjoin(names, ', '));
-verifyEqual(testCase, numel(jsondecode(paramText(leaf, 'stimulus sequence.frame times'))), 3360);
+% [hartley frame times are onset times] (Jess Haley, 2026-11-19): the frame
+% times' variable is EMPTY:0000368 "onset time"; INVERTED from the label
+% 'stimulus sequence.frame times' (testTheFrameTimesAreOnsetTimes)
+verifyEqual(testCase, numel(jsondecode(paramText(leaf, 'onset time'))), 3360);
 
 v1 = hartleyCalcV1();
 ft = v1.hartley_reverse_correlation.frame_times;
@@ -599,8 +602,92 @@ v1.hartley_reverse_correlation = rmfield(v1.hartley_reverse_correlation, 'frame_
 v1.hartley_reverse_correlation.frameTimes = ft;
 out2 = did2.convert.migrators_j.hartley_calc(v1);
 leaf2 = staLeaf(out2);
-verifyEqual(testCase, numel(jsondecode(paramText(leaf2, 'stimulus sequence.frame times'))), 3360, ...
+verifyEqual(testCase, numel(jsondecode(paramText(leaf2, 'onset time'))), 3360, ...
     'the camelCase spelling must be read too');
+end
+
+function testTheFrameTimesAreOnsetTimes(testCase)
+% Decided by Jess Haley, 2026-11-19 [hartley frame times are onset times]
+% (did-schema did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486): the
+% frame-times parameter's variable is the registered EMPTY:0000368 "onset
+% time"; its value form and values are unchanged; the round trip puts it back
+% under `stimulus_sequence` (did2.convert.hartleyParameterNames), as it does
+% X_sample and Y_sample. Both statements (the two planes) carry it.
+v1 = hartleyCalcV1();
+out = did2.convert.migrators_j.hartley_calc(v1);
+leaves = allOf(out, 'receptive_field_calculation');
+verifyNumElements(testCase, leaves, 2);
+for k = 1:numel(leaves)
+    e = paramEntry(leaves{k}, 'EMPTY:0000368');
+    verifyNotEmpty(testCase, e, 'the onset-time parameter, by its node');
+    if isempty(e); continue; end
+    verifyEqual(testCase, char(e.variable.name), 'onset time');
+    got = jsondecode(char(e.text));
+    verifyEqual(testCase, double(got(:)), ...
+        double(v1.hartley_reverse_correlation.frame_times(:)), 'the values, unchanged');
+    verifyFalse(testCase, any(strcmp(paramNames(leaves{k}), 'stimulus sequence.frame times')), ...
+        'the old label is not written beside it');
+end
+[rebuilt, spec] = did2.convert.roundtrip.hartley_calc(out);
+verifyEqual(testCase, double(rebuilt.hartley_reverse_correlation.frameTimes(:)), ...
+    double(v1.hartley_reverse_correlation.frame_times(:)), 'rebuilt under the stimulus sequence');
+verifyFalse(testCase, isfield(rebuilt.hartley_calc, 'input_parameters') ...
+    && isfield(rebuilt.hartley_calc.input_parameters, 'onset_time'), ...
+    'not rebuilt as a calculator setting of its own');
+verifyFalse(testCase, any(contains(spec.unplaced, 'onset time')), strjoin(spec.unplaced, '; '));
+end
+
+function testTheRoundTripReadsTheFrameTimesInBothSpellings(testCase)
+% [hartley frame times are onset times]: a calculation migrated before the
+% decision names the parameter by the label 'stimulus sequence.frame times'
+% (no node); the round trip reads it back the same. CONTROL: a parameter with
+% another name is not read as the frame times.
+v1 = hartleyCalcV1();
+out = did2.convert.migrators_j.hartley_calc(v1);
+[rebuilt, spec] = did2.convert.roundtrip.hartley_calc(out);
+old = withFrameTimesVariable(out, struct('node', '', 'name', 'stimulus sequence.frame times'));
+[rebuiltOld, specOld] = did2.convert.roundtrip.hartley_calc(old);
+verifyEqual(testCase, rebuiltOld.hartley_reverse_correlation.frameTimes, ...
+    rebuilt.hartley_reverse_correlation.frameTimes, 'the old label reads back the same');
+verifyEqual(testCase, specOld.unplaced, spec.unplaced);
+other = withFrameTimesVariable(out, struct('node', '', 'name', 'stimulus sequence.offset time'));
+rebuiltOther = did2.convert.roundtrip.hartley_calc(other);
+verifyFalse(testCase, isfield(rebuiltOther, 'hartley_reverse_correlation') ...
+    && isfield(rebuiltOther.hartley_reverse_correlation, 'frameTimes'), ...
+    'another parameter is not read as the frame times');
+end
+
+function out = withFrameTimesVariable(out, variable)
+% OUT with the onset-time parameter's variable replaced by VARIABLE on every
+% receptive_field_calculation
+for k = 1:numel(out)
+    if ~strcmp(did2.unittest.helpers.classKey(out{k}), 'receptive_field_calculation')
+        continue;
+    end
+    p = out{k}.interaction.method.parameters;
+    wasCell = iscell(p);
+    if wasCell; p = [p{:}]; end
+    for j = 1:numel(p)
+        if isstruct(p(j).variable) && strcmp(char(p(j).variable.node), 'EMPTY:0000368')
+            p(j).variable = variable;
+        end
+    end
+    if wasCell; p = num2cell(p); end
+    out{k}.interaction.method.parameters = p;
+end
+end
+
+function e = paramEntry(leaf, node)
+% the method parameter whose variable has NODE, or []
+e = [];
+p = leaf.interaction.method.parameters;
+if iscell(p); p = [p{:}]; end
+for k = 1:numel(p)
+    if isstruct(p(k).variable) && strcmp(char(p(k).variable.node), node)
+        e = p(k);
+        return;
+    end
+end
 end
 
 function testATDifferentFromTheDelayAxisIsKept(testCase)
