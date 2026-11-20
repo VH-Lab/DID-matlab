@@ -165,6 +165,13 @@ NO_REPORT_YET = {}
 # Seven real counters that reached the artifact and stopped there. The debt
 # list shrank; it did not get a longer set of excuses.
 NOT_RENDERED_YET = {
+    "region_part_resolution": {
+        # duplicate_ids_differing (VH-Lab/DID-matlab #488) -- NOT A COUNTER:
+        #     the ids (at most 50) whose copies still differ. Its count is
+        #     rendered as `duplicate_copies_differing`; a cross-corpus rollup
+        #     cannot sum a list of ids, which are read from the artifact.
+        "duplicate_ids_differing",
+    },
     "epoch_probemap_fold": {
         # body_build_first_error (2026-10-21, the recordings-as-bodies build)
         #     NOT A COUNTER: the text of the first error that stopped an epoch's

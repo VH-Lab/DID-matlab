@@ -64,6 +64,9 @@ function [docs, route, unplaced] = jTreatmentBodies(preBody, variable, chemicals
 %     'Notes'       the manipulation's notes.
 %     'Conditions'  the manipulation's `conditions` (did2.build.condition),
 %                   e.g. a generic treatment's unlabelled number (treatment.m).
+%     'EntityId'    the entity the manipulation is about, when it is not the
+%                   subject: the region part of a body site (jRegionSite,
+%                   [region parts], [region part ids computed]).
 %
 %   Decided by Jess Haley, 2026-10-21; the decision is quoted in
 %   jTreatmentRoute.
@@ -77,6 +80,7 @@ arguments
     options.AlwaysDose (1,1) logical = false
     options.Notes = ''
     options.Conditions = []
+    options.EntityId = ''
 end
 
 unplaced = {};
@@ -86,6 +90,13 @@ else
     route = jTreatmentRoute(locationTerm);
 end
 id = char(preBody.base.id);
+% the entity the manipulation is about: the subject, or the region part the
+% caller computed for a body site ([region parts], [region part ids computed];
+% did2.convert.regionPart)
+entityId = jSubjectOf(preBody);
+if ~isempty(options.EntityId)
+    entityId = char(options.EntityId);
+end
 extra = {};
 if ~isempty(options.Notes)
     extra = {'Notes', options.Notes};
@@ -121,7 +132,7 @@ switch route
         [parts, formulationId] = jDoseBodies(preBody, chemicals);
         % Not a joined class name: did2.build reads the statement as the
         % direction `manipulation` with the value kind `formulation`.
-        manip = jStatement(preBody, 'manipulation', jSubjectOf(preBody), ...
+        manip = jStatement(preBody, 'manipulation', entityId, ...
             variable, [], 'TimeReferenceIds', {anchorId}, 'ValueId', formulationId, ...
             'Id', id, extra{:}, 'ValueKind', 'formulation');
     otherwise
@@ -179,7 +190,7 @@ switch route
         if ~isempty(gaps)
             niOpt = {'Gaps', gaps};
         end
-        manip = jStatement(preBody, 'manipulation', jSubjectOf(preBody), ...
+        manip = jStatement(preBody, 'manipulation', entityId, ...
             variable, value, 'TimeReferenceIds', {anchorId}, ...
             'Edges', edges, 'Id', id, extra{:}, niOpt{:}, 'ValueKind', 'dose');
         for k = 1:numel(gaps)
