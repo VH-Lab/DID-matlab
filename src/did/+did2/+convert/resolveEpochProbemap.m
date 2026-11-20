@@ -51,7 +51,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   2026-10-26). Read from this file's code, class by class.
 %   BATCH-PASS-READS: element_epoch, acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested, sampled_body(pyraview level),
-%       entity(epoch), acquisition_system, directed_relation(element lineage),
+%       entity(epoch), acquisition_system, acquisition_configuration,
+%       directed_relation(element lineage),
 %       directed_relation(observes), entity(element),
 %       calculation(spike sorter), calculation(spike times),
 %       calculation(spike waveforms), observation(session-scoped recording),
@@ -457,7 +458,7 @@ rigsWithoutSystem = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 deviceOfSystem = containers.Map('KeyType', 'char', 'ValueType', 'char');
 rigDeviceIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:n
-    if strcmp(classOf{k}, 'acquisition_system') && ~isempty(docIds{k})
+    if did2.convert.isAcquisitionConfiguration(classOf{k}) && ~isempty(docIds{k})
         dv = depValueOf(bodies{k}, 'device_id');
         if ~isempty(dv)
             deviceOfSystem(docIds{k}) = dv;
@@ -562,10 +563,13 @@ for k = 1:n
                 key = epochKey(sessionIds{k}, lid);
                 if ~isKey(epochIdByKey, key); epochIdByKey(key) = docIds{k}; end
             end
-        case 'acquisition_system'
+        case {'acquisition_configuration', 'acquisition_system'}
+            % either class name ([acquisition configuration renamed], Jess
+            % Haley 2026-11-19; did2.convert.acquisitionConfigurationNames);
+            % the block is named after the class
             nm = '';
-            if isfield(b, 'acquisition_system') && isstruct(b.acquisition_system)
-                nm = charField(b.acquisition_system, {'name'});
+            if isfield(b, classOf{k}) && isstruct(b.(classOf{k}))
+                nm = charField(b.(classOf{k}), {'name'});
             end
             if isempty(nm); nm = baseField(b, 'name'); end
             if ~isempty(nm) && ~isempty(docIds{k})

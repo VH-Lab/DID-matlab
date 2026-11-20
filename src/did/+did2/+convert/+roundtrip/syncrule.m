@@ -123,7 +123,7 @@ if ~isempty(cfg)
         if ~isempty(sys)
             if s > 0; claimed(s) = true; end
             if sDev > 0; claimed(sDev) = true; end
-            systemNames{end+1} = fieldText(getIn(sys, 'acquisition_system'), 'name'); %#ok<AGROW>
+            systemNames{end+1} = fieldText(getIn(sys, classNameOf(sys)), 'name'); %#ok<AGROW>
             continue;
         end
         spec.unplaced{end+1} = sprintf('%s names no acquisition_system among the documents', role{1}{1}); %#ok<AGROW>
