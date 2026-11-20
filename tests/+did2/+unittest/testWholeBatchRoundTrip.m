@@ -540,6 +540,175 @@ verifyEqual(testCase, sort(f.deferred), sort({ ...
 verifyArchiveSegmentsDeferred(testCase, r, 1, 0);
 end
 
+% ===================== [stimulus log owned by its presentation] ==========
+% Decided by Jess Haley, 2026-11-19 (did-schema
+% docs/plans/did_v2_standing_wiring_plan.md): a stimulus system's archive
+% (channel_list.bin and the evmktx file, no recording owner) becomes bodies
+% of the epoch's stimulus presentation, or, with no presentation, of an
+% observation of the stimulus rig's device; the archive then goes. The
+% round trip rebuilds the archive from those bodies.
+
+function testAStimulusLogMovesToItsPresentation(testCase)
+[bodies, result, rep] = stimLogBatch(testCase, 'wb_sl', 'c1', 1);
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_to_presentation, 1);
+verifyEqual(testCase, rep.stimulus_log_to_fallback, 0);
+verifyEqual(testCase, rep.stimulus_log_bodies, 2);
+verifyEqual(testCase, rep.stimulus_log_quarantined, 0);
+verifyEqual(testCase, rep.stimulus_log_clock_references_emitted, 1);
+verifyEqual(testCase, rep.archive_docs_retired, 1, 'the archive goes');
+docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
+ids = cellfun(@(d) char(d.base.id), docs, 'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(ids, 'wb_sl_arc')), 'the archive is retired');
+logs = stimLogBodies(docs);
+assertNumElements(testCase, logs, 2);
+for k = 1:numel(logs)
+    verifyEqual(testCase, ownerIdsOf(logs{k}), {'wb_sl_pres1'}, ...
+        'the presentation (its v1 id, kept by NDI''s second pass) owns the log');
+    verifyTrue(testCase, startsWith(char(logs{k}.data_body.notes), ...
+        'The stimulus log of epoch t0001, read by the NDI reader rdr_wb_sl_daq. '), ...
+        'the notes open with the key NDI-matlab finds the log by');
+end
+verifyEqual(testCase, sort(cellfun(@(b) char(b.data_body.filename), logs, ...
+    'UniformOutput', false)), {'channel_list.bin', 'evmktx_group1_seg.nbf_#'});
+verifyEmpty(testCase, result.quarantine);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+cls = 'daqreader_mfdaq_epochdata_ingested';
+verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, cls), describe(r));
+verifyEmpty(testCase, archiveFailure(r, 'wb_sl_arc'), ...
+    ['the archive is rebuilt from its presentation''s bodies: ' describe(r)]);
+verifyFalse(testCase, isfield(r.failures_by_class, 'stimulus_presentation'), describe(r));
+end
+
+function testAStimulusLogWithNoPresentationIsOwnedByAnObservation(testCase)
+[bodies, result, rep] = stimLogBatch(testCase, 'wb_sf', 'c2', 0);
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_to_presentation, 0);
+verifyEqual(testCase, rep.stimulus_log_to_fallback, 1);
+verifyEqual(testCase, rep.stimulus_log_quarantined, 0);
+verifyEqual(testCase, rep.archive_docs_retired, 1, 'the archive goes');
+docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
+logs = stimLogBodies(docs);
+assertNumElements(testCase, logs, 2);
+owner = ownerIdsOf(logs{1});
+assertNumElements(testCase, owner, 1);
+k = find(cellfun(@(d) strcmp(char(d.base.id), owner{1}), docs), 1);
+assertNotEmpty(testCase, k, 'the owner is in the batch');
+obs = docs{k};
+verifyEqual(testCase, char(obs.document_class.class_name), 'observation');
+verifyEqual(testCase, edgeValue(obs, 'acquisition_system_id'), 'wb_sf_daq', ...
+    'the fallback observation names the stimulus system');
+verifyEqual(testCase, edgeValue(obs, 'instrument_id'), 'wb_sf_daq');
+verifyEmpty(testCase, result.quarantine);
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEmpty(testCase, archiveFailure(r, 'wb_sf_arc'), describe(r));
+end
+
+function testAStimulusLogWithSeveralPresentationsIsKept(testCase)
+% the decision does not say which presentation wins: kept, counted
+[~, result, rep] = stimLogBatch(testCase, 'wb_s2', 'c3', 2);
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_kept_several_presentations, 1);
+verifyEqual(testCase, rep.stimulus_log_to_presentation, 0);
+verifyEqual(testCase, rep.archive_docs_retired, 0);
+docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
+ids = cellfun(@(d) char(d.base.id), docs, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(ids, 'wb_s2_arc')), 'the archive is kept');
+verifyEmpty(testCase, stimLogBodies(docs));
+end
+
+function [bodies, result, rep] = stimLogBatch(testCase, stem, tail, nPresentations)
+% a stimulus epoch as B holds it: the vhvis_spike2 system's manifest naming
+% the stimulator once per marker channel, its archive holding only
+% channel_list.bin and the event file, and NPRESENTATIONS presentations of
+% the stimulator in that epoch
+prev = did2.schema.cache.strictMode('TermRegistry', false);
+testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
+sid = ['41268b6f5c6a3d4e_00000000000000' tail];
+arc = archiveV1([stem '_arc'], sid, 't0001', ['rdr_' stem '_daq']);
+keep = ismember({arc.files.file_info.name}, {'channel_list.bin', 'evmktx_group1_seg.nbf_1'});
+arc.files.file_info = arc.files.file_info(keep);
+bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), ...
+    elementV1([stem '_stim'], sid, 'vis', 1, 'stimulator', [stem '_spec']), ...
+    daqsystemV1([stem '_daq'], sid, 'vis', [stem '_nav']), ...
+    manifestV1([stem '_efi'], sid, 't0001', [stem '_nav'], ...
+        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'vis\t1\tstimulator\tvis:mk1\tL\n' 'vis\t1\tstimulator\tvis:e1\tL\n'])), ...
+    arc};
+for p = 1:nPresentations
+    bodies{end+1} = presentationV1(sprintf('%s_pres%d', stem, p), sid, 't0001', ...
+        [stem '_stim']); %#ok<AGROW>
+end
+bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
+result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
+[result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
+    'TargetVersion', 'did_v2');
+end
+
+function v1 = presentationV1(id, sid, epochId, elementId)
+% a v1 stimulus_presentation as ndi.app.stimulus.decoder writes it (NDI-matlab
+% +ndi/+app/+stimulus/decoder.m): the stimulator edge, the epoch, the
+% playlist, and presentation_time.bin attached
+v1 = struct();
+v1.document_class = struct( ...
+    'definition', '$NDIDOCUMENTPATH/stimulus/stimulus_presentation.json', ...
+    'validation', '$NDISCHEMAPATH/stimulus/stimulus_presentation_schema.json', ...
+    'class_name', 'stimulus_presentation', 'property_list_name', 'stimulus_presentation', ...
+    'class_version', 1, 'superclasses', struct('definition', ...
+        {'$NDIDOCUMENTPATH/base.json', '$NDIDOCUMENTPATH/epochid.json'}));
+v1.base = struct('id', id, 'session_id', sid, 'name', '', ...
+    'datestamp', '2024-03-22T23:52:40.897Z');
+v1.depends_on = struct('name', 'stimulus_element_id', 'value', elementId);
+v1.epochid = struct('epochid', epochId);
+v1.stimulus_presentation = struct('presentation_order', [1; 2; 1], ...
+    'stimuli', struct('parameters', {struct('angle', 0), struct('angle', 90)}));
+v1.files = struct('file_list', {{'presentation_time.bin'}}, 'file_info', ...
+    struct('name', 'presentation_time.bin', 'locations', struct('delete_original', 0, ...
+        'uid', [id '_pt'], 'location', ['ndic://ds/' id '_pt'], 'parameters', '', ...
+        'location_type', 'ndicloud', 'ingest', 0)));
+end
+
+function logs = stimLogBodies(docs)
+% the opaque bodies whose notes open with the stimulus-log key
+logs = {};
+for k = 1:numel(docs)
+    d = docs{k};
+    if strcmp(char(d.document_class.class_name), 'opaque_body') && ...
+            isfield(d.data_body, 'notes') && ...
+            startsWith(char(d.data_body.notes), 'The stimulus log of epoch ')
+        logs{end+1} = d; %#ok<AGROW>
+    end
+end
+end
+
+function ids = ownerIdsOf(b)
+ids = {};
+deps = b.depends_on;
+if isstruct(deps); deps = num2cell(deps); end
+for k = 1:numel(deps)
+    if strcmp(char(deps{k}.name), 'owner_id')
+        v = '';
+        if isfield(deps{k}, 'document_id'); v = char(deps{k}.document_id); end
+        if isempty(v) && isfield(deps{k}, 'value'); v = char(deps{k}.value); end
+        ids{end+1} = v; %#ok<AGROW>
+    end
+end
+end
+
+function v = edgeValue(b, name)
+v = '';
+deps = b.depends_on;
+if isstruct(deps); deps = num2cell(deps); end
+for k = 1:numel(deps)
+    if strcmp(char(deps{k}.name), name)
+        if isfield(deps{k}, 'document_id'); v = char(deps{k}.document_id); end
+        if isempty(v) && isfield(deps{k}, 'value'); v = char(deps{k}.value); end
+        return;
+    end
+end
+end
+
 function verifyArchiveSegmentsDeferred(testCase, r, nSources, nOk)
 % the report's DEFERRED TO THE SECOND PASS block: its denominator, the
 % archive's two segment-length fields, each counted on NSOURCES sources, NOK
