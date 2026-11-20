@@ -22,7 +22,9 @@ function [v1, spec] = openmindsInverse(bodies, v1Class, edgeName)
 %     openminds.matlab_type            that type's openMINDS MATLAB class
 %     openminds.openminds_id           '' (the migrator converts a document
 %                                      that states one only when it rebuilds
-%                                      from the term, and none does yet:
+%                                      from the term (through the registry's
+%                                      `equivalent` list, or a decided node,
+%                                      did2.convert.openmindsInstanceNode):
 %                                      did2.convert.openmindsIdRebuilds;
 %                                      did2.convert.roundtrip.openminds_subject
 %                                      compares a v1 id through that same

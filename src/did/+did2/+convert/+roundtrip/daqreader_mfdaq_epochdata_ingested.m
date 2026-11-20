@@ -105,7 +105,12 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %                               the second pass], Jess Haley, 2026-11-12), and
 %                               wholeBatch counts them in
 %                               deferred_to_second_pass. Only these two
-%                               fields: any other parameter is still lost
+%                               fields: any other parameter is still lost.
+%                               An archive with no digital channel gets
+%                               sample_digital_segment = 10000000, the v1
+%                               writer's default ([archive with no digital
+%                               channel], Jess Haley, 2026-11-19), so only
+%                               its analog length is deferred
 %
 %   A body that is not an opaque_body or a sampled_body, or whose v1 names
 %   cannot be rebuilt, is unplaced.
@@ -227,6 +232,7 @@ bodies = bodies(~cellfun(@isempty, bodies));
 % sampled_body's channel type, group and segment, [migrated body members
 % renamed]), and the files NDI's second pass unpacked and removed
 R = did2.convert.roundtrip.ingestedArchiveFiles(bodies, ctx);
+allNamed = true;   % every member's v1 names rebuilt (NO DIGITAL CHANNEL, below)
 for k = 1:numel(R.members)
     mem = R.members(k);
     b = ctxDoc(ctx, mem.body_id);
@@ -235,6 +241,7 @@ for k = 1:numel(R.members)
         if ~isempty(i); b = bodies{i}; end
     end
     if isempty(mem.names)
+        allNamed = false;
         if ~isempty(mem.why)
             spec.unplaced{end+1} = sprintf('%s %s: %s', mem.class_name, mem.body_id, mem.why);
         end
@@ -358,10 +365,33 @@ spec.same(end+1) = struct('path', 'files.file_list', 'fn', @sameFileSet, ...
 % 2026-11-12): NDI-matlab's second pass writes them on a sampled_body's time
 % chunk ([segment length is the time chunk]); this batch is before it
 why = '[archive segment lengths measured after the second pass] (Jess Haley, 2026-11-12)';
-spec.deferred = struct('path', { ...
-    [CLASS '.parameters.sample_analog_segment'], ...
-    [CLASS '.parameters.sample_digital_segment']}, ...
-    'pass', 'second_pass', 'why', why);
+deferredPaths = {[CLASS '.parameters.sample_analog_segment'], ...
+    [CLASS '.parameters.sample_digital_segment']};
+% NO DIGITAL CHANNEL. Decided by Jess Haley, 2026-11-19 [archive with no
+% digital channel] (did-schema docs/plans/did_v2_standing_wiring_plan.md;
+% VH-Lab/NDI-matlab#1269): the `sample_digital_segment` of an archive with no
+% digital channel is notation, rebuilt by the round trip, because the v1
+% writer writes the same default whatever the channels: NDI-matlab
+% +ndi/+daq/+reader/mfdaq.m ingest_epochfiles (origin/main 145f651ad) sets
+% `sample_digital_segment = 1e7; % 10M` and writes it into every archive's
+% parameters. An archive with no digital series (no di_ or do_ member among
+% the rebuilt names, which cover both pass 1's opaque bodies and the second
+% pass's sampled bodies, and no such file) gets that default here; one with a
+% digital series, or with a member whose names could not be rebuilt, still
+% defers it to the second pass. A v1 value other than the default is lost.
+names = {entries.name};
+hasDigital = any(startsWith(names, {'di_', 'do_'}));
+if allNamed && ~hasDigital
+    v1.(CLASS) = struct('parameters', struct('sample_digital_segment', NO_DIGITAL_DEFAULT));
+    deferredPaths = deferredPaths(1);
+end
+spec.deferred = struct('path', deferredPaths, 'pass', 'second_pass', 'why', why);
+end
+
+function v = NO_DIGITAL_DEFAULT()
+% mfdaq.m ingest_epochfiles: sample_digital_segment = 1e7 ([archive with no
+% digital channel], Jess Haley, 2026-11-19)
+v = 10000000;
 end
 
 function tf = sameFileSet(v1List, rebuiltList)
