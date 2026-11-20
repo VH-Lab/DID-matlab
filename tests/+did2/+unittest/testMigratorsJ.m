@@ -434,6 +434,42 @@ verifyFalse(testCase, did2.convert.openmindsIdRebuilds('NCBITaxon:6239', ...
     'an IRI outside the registered uri_base does not rebuild');
 end
 
+function testADecidedOpenmindsInstanceRebuildsFromItsNode(testCase)
+% Decided by Jess Haley, 2026-11-19 [openMINDS ids rebuild the subject terms]
+% and [knockin is NCIT Knock-in] (Waltham-Data-Science/did-schema#212): the
+% GeneticStrainType instances wildtype, transgenic and knockin rebuild from
+% their decided nodes, BAO:0000089, OBI:1000048 and NCIT:C22492, whatever the
+% registry holds: a stub registry with none of the three rows (and an empty
+% one) gives the same answer.
+iri = 'https://openminds.om-i.org/instances/geneticStrainType/';
+reg = struct('terms', {{struct('name', 'Mus musculus', 'node', 'NCBITaxon:10090')}});
+ix = did2.schema.termIndex(reg);
+verifyTrue(testCase, ix.present);
+cases = {'wildtype', 'BAO:0000089'; 'transgenic', 'OBI:1000048'; 'knockin', 'NCIT:C22492'};
+for k = 1:size(cases, 1)
+    [name, node] = cases{k, :};
+    verifyTrue(testCase, did2.convert.openmindsIdRebuilds(node, [iri name], ix), name);
+    verifyTrue(testCase, did2.convert.openmindsIdRebuilds(node, ...
+        ['openminds:geneticStrainType/' name], ix), [name ', the registered CURIE']);
+    [n, label] = did2.convert.openmindsInstanceNode([iri name], ...
+        'https://openminds.om-i.org/types/GeneticStrainType');
+    verifyEqual(testCase, n, node, name);
+    verifyNotEmpty(testCase, label, name);
+end
+verifyTrue(testCase, did2.convert.openmindsIdRebuilds('ncit:C22492', [iri 'knockin'], ix), ...
+    'a CURIE''s prefix case is notation');
+% CONTROLS: another node, an instance the decision does not name, another
+% type, another IRI base
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('OBI:1000048', [iri 'wildtype'], ix));
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('', [iri 'wildtype'], ix), 'no node');
+verifyFalse(testCase, did2.convert.openmindsIdRebuilds('BAO:0000089', [iri 'knockout'], ix));
+verifyEmpty(testCase, did2.convert.openmindsInstanceNode([iri 'knockout']));
+verifyEmpty(testCase, did2.convert.openmindsInstanceNode([iri 'wildtype'], ...
+    'https://openminds.om-i.org/types/Species'), 'another openMINDS type');
+verifyEmpty(testCase, did2.convert.openmindsInstanceNode( ...
+    'https://openminds.ebrains.eu/instances/geneticStrainType/wildtype'));
+end
+
 % ============ element -> subject (+ kind assertions + lineage) =========
 
 function el = elementDoc(name, typ, ndiClass, direct, subjectId, underlyingId)
