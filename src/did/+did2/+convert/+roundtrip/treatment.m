@@ -10,7 +10,8 @@ function [v1, spec] = treatment(bodies)
 %   +haley/doImport, +dabrowska/doImport):
 %
 %     base.id, session_id, datestamp   the manipulation (rebuildBase)
-%     depends_on(1) subject_id   the manipulation's `entity_id`
+%     depends_on(1) subject_id   the manipulation's `entity_id`, or the
+%                               `part_of` parent of the region part it names
 %     treatment.ontologyName     statement.variable's node
 %     treatment.name             statement.variable's name, compared by
 %                                its node ([term names compare by node])
@@ -19,7 +20,8 @@ function [v1, spec] = treatment(bodies)
 %                                a dose / immersion: the `numeric value`
 %                                condition (an unlabelled number)
 %     treatment.string_value     the manipulation's notes; or the site
-%                                observation's term node (the Dab "Target
+%                                observation's or the region part's kind
+%                                assertion's term node (the Dab "Target
 %                                Location" idiom: the site CURIE); for an
 %                                immersion the bath, NCIm:C0179246
 %
@@ -64,7 +66,7 @@ elseif strcmp(p.kind, 'formulation')
 end
 
 v1.document_class = struct('class_name', 'treatment');
-v1.depends_on = struct('name', 'subject_id', 'value', firstId(p.manip, 'entity_id'));
+v1.depends_on = struct('name', 'subject_id', 'value', p.subject);
 v1.base = struct('id', base.id, 'session_id', base.session_id, ...
     'datestamp', base.datestamp);
 v1.treatment = struct('ontologyName', node, 'name', name, ...
@@ -92,13 +94,5 @@ for c = asCell(conds)
         v = numberOf(itemNumbers(c{1}));
         return;
     end
-end
-end
-
-function id = firstId(body, name)
-ids = edgeIds(body, name);
-id = '';
-if ~isempty(ids)
-    id = ids{1};
 end
 end

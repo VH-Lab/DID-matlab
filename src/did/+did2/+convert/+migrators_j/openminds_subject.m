@@ -79,6 +79,26 @@ node = firstNonEmpty( ...
     jGetChar(flds, 'alternateIdentifier'));
 valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 
+% A NODE FROM THE openMINDS IRI. Decided by Jess Haley, 2026-11-19 [openMINDS
+% ids rebuild the subject terms] (did-schema did_v2_go_forward_class_audit.md;
+% Waltham-Data-Science/did-schema#212): "the GeneticStrainType terms with an
+% openMINDS instance IRI but no ontology node ... resolve their node from the
+% openMINDS IRI in the migrator: wildtype to BAO:0000089, transgenic to
+% OBI:1000048"; [knockin is NCIT Knock-in]: knockin to NCIT:C22492. A term
+% that names a node of its own keeps it; the table is
+% did2.convert.openmindsInstanceNode, and the term is written as the registry
+% writes it (its registered label when the registry holds the node). The id
+% then rebuilds from that node (did2.convert.openmindsIdRebuilds), so the
+% document converts instead of being carried (carry-116).
+if isempty(node)
+    [irNode, irName] = did2.convert.openmindsInstanceNode( ...
+        jGetChar(block, 'openminds_id'), jGetChar(block, 'openminds_type'));
+    if ~isempty(irNode)
+        node = irNode;
+        valueTerm = jOntologyTerm(irNode, irName);
+    end
+end
+
 % [openMINDS subject leftovers] (Decided by Jess Haley, 2026-10-27, did-schema
 % V_eta_go_forward_class_audit.md): the term's definition and synonyms are not
 % stored (read back from the term) and `matlab_type` is notation; "a controlled
@@ -92,14 +112,22 @@ valueTerm = jOntologyTerm(node, jGetChar(flds, 'name'));
 % strain's id on its `global_identifier`. So a lab-made strain (a Strain with no
 % ontology node) converts like any other subject document, and its id is NOT
 % checked against the registry here: the decision's build order was "NDI-matlab
-% ... first, then DID-matlab (stop carrying ...)". Until a row of
-% the registry's `equivalent` column is filled no controlled term's id rebuilds
-% (did2.convert.openmindsIdRebuilds), so a controlled term that states an id
+% ... first, then DID-matlab (stop carrying ...)". A controlled term's id
+% rebuilds through the registry's `equivalent` list, or (a GeneticStrainType
+% instance with a decided node, A NODE FROM THE openMINDS IRI above) from that
+% node (did2.convert.openmindsIdRebuilds); a controlled term that states an id
 % that does not rebuild is carried (register row carry-116).
 omId = jGetChar(block, 'openminds_id');
 isLabStrain = strcmp(lower(typeSuffix(jGetChar(block, 'openminds_type'))), 'strain') ...
     && isempty(node);
-if ~isempty(strtrim(omId)) && ~isLabStrain ...
+% [openMINDS minted ids are an accepted loss] (Decided by Jess Haley,
+% 2026-11-19; Waltham-Data-Science/did-schema#212): a per-document minted id
+% (`<Type>/<uuid>`, did2.convert.openmindsMintedId) is an artifact: the
+% document converts to its term assertion, no global_identifier is written
+% for the id, and the whole-batch round trip lists it as an accepted loss. No
+% strain entity is minted per id (NDI's second pass keeps one per strain).
+isMinted = did2.convert.openmindsMintedId(omId, jGetChar(block, 'openminds_type'));
+if ~isempty(strtrim(omId)) && ~isLabStrain && ~isMinted ...
         && ~did2.convert.openmindsIdRebuilds(node, omId)
     % carry-register: carry-116
     did2.convert.reportNote('carried_as_v1', 'openminds_subject', char(preBody.base.id), ...

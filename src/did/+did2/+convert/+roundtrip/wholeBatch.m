@@ -640,6 +640,26 @@ a(end+1) = struct('name', 'openMINDS Copyright instance id', ...
     'decision', '[copyright round-trip losses] (Jess Haley, 2026-11-17)', ...
     'classes', {{'openminds'}}, 'paths', {{'openminds.openminds_id'}}, ...
     'id', false, 'when', @copyrightEmitted);
+% [metadata editor id and datestamp not kept] (Decided by Jess Haley,
+% 2026-11-19; VH-Lab/DID-matlab#505): "a `metadata_editor`'s own id and
+% datestamp are an accepted loss, like the session id ([v1 session document id
+% not kept]); its content is carried by the v2 documents it writes". The id
+% is checked first (acceptedIdCheck: one a document names is lost); the
+% datestamp is the shared dataset entity's creation time
+% (did2.convert.roundtrip.metadata_editor)
+a(end+1) = struct('name', 'metadata editor id and datestamp', ...
+    'decision', '[metadata editor id and datestamp not kept] (Jess Haley, 2026-11-19)', ...
+    'classes', {{'metadata_editor'}}, 'paths', {{'base.id', 'base.datestamp'}}, ...
+    'id', true, 'when', []);
+% [openMINDS minted ids are an accepted loss] (Decided by Jess Haley,
+% 2026-11-19; Waltham-Data-Science/did-schema#212): "If these are just
+% artifacts, accept the loss". A converted openminds_subject's per-document
+% minted `<Type>/<uuid>` id (did2.convert.openmindsMintedId) is not kept.
+% Accepted only when v1's id is such an id (mintedOpenmindsId)
+a(end+1) = struct('name', 'openMINDS minted id', ...
+    'decision', '[openMINDS minted ids are an accepted loss] (Jess Haley, 2026-11-19)', ...
+    'classes', {{'openminds_subject'}}, 'paths', {{'openminds.openminds_id'}}, ...
+    'id', false, 'when', @mintedOpenmindsId);
 [a.listed] = deal(false);
 [a.pathsOf] = deal([]);
 % [removed file locations are an accepted loss] (Decided by Jess Haley,
@@ -718,6 +738,16 @@ for k = 1:numel(fi)
 end
 end
 
+function tf = mintedOpenmindsId(v1, ~, ~)
+% V1's openminds_id is a per-document minted id of its own openMINDS type
+tf = false;
+if ~isstruct(v1) || ~isfield(v1, 'openminds') || ~isstruct(v1.openminds) ...
+        || ~isfield(v1.openminds, 'openminds_id') || ~isfield(v1.openminds, 'openminds_type')
+    return;
+end
+tf = did2.convert.openmindsMintedId(v1.openminds.openminds_id, v1.openminds.openminds_type);
+end
+
 function tf = copyrightEmitted(~, docs, ~)
 % DOCS is the one schema:copyrightYear assertion
 % did2.convert.resolveOpenmindsCitations writes for a Copyright
@@ -761,8 +791,12 @@ for k = 1:numel(docs)
     if isEntityOfType(b, 'device') && strcmp(idOf(b), id)
         isDevice = true;
     elseif strcmp(classNameOf(b), 'assertion')
-        [~, variable] = termParts(getIn(b, 'statement', 'variable'));
-        if strcmpi(variable, 'ndi element class')
+        % the class variable by node, EMPTY:0000401 "software class"
+        % ([variable terms batch 1], Jess Haley, 2026-11-19), or, migrated
+        % before that decision, by the label 'ndi element class'
+        [vnode, variable] = termParts(getIn(b, 'statement', 'variable'));
+        if strcmpi(strtrim(char(vnode)), 'EMPTY:0000401') || ...
+                (isempty(strtrim(char(vnode))) && strcmpi(variable, 'ndi element class'))
             return;
         end
     end

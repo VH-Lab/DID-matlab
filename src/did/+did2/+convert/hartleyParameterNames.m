@@ -11,8 +11,17 @@ function names = hartleyParameterNames()
 %   Spacing, plain numbers in stimulus pixels with no unit." The names resolve
 %   to their nodes through the term registry (jLabel). Every other setting
 %   keeps its v1 name with '_' as ' '.
+%
+%   Decided by Jess Haley, 2026-11-19 [hartley frame times are onset times]
+%   (VH-Lab/DID-matlab#486): the stimulus sequence's frame times
+%   (`hartley_reverse_correlation.frameTimes`, a method parameter under
+%   `stimulus_sequence` until the stimulus model holds the sequence) are
+%   EMPTY:0000368 "onset time". +migrators_j/hartley_calc writes that node
+%   (its onsetTimeVariable); this row is how the round trip puts the entry back
+%   under `stimulus_sequence`, as the two rows above put theirs back.
 
 names = { ...
     'X_sample', 'Horizontal Pixel Spacing'; ...
-    'Y_sample', 'Vertical Pixel Spacing'};
+    'Y_sample', 'Vertical Pixel Spacing'; ...
+    'stimulus_sequence.frame_times', 'onset time'};
 end
