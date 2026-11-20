@@ -160,6 +160,37 @@ POST_PASSES = [
         ("bath_anchors_handed_over", "anchors handed to epochMint for their epoch"),
     ]),
 
+    # VH-Lab/DID-matlab #488 ([duplicate parts merged in DID], [part re-keyed
+    # when its side arrives], [region part ids computed], Jess Haley,
+    # 2026-11-17 / 2026-11-19): the copies of one region part merged to the
+    # earliest source's, a side another document gives attached. READ
+    # `region_part_documents_seen` and `side_observations_seen` BESIDE what
+    # was done: 0 merged of 0 seen is a corpus with no body-site treatment.
+    ("region_part_resolution", "did2.convert.resolveRegionParts", [
+        ("documents_inspected", "documents inspected  <- THE DENOMINATOR"),
+        ("documents_unreadable", "UNREADABLE"),
+        ("region_part_documents_seen", "region-part documents (part, kind, laterality, part_of)"),
+        ("parts_seen", "  region part entities"),
+        ("duplicate_ids", "ids held by more than one copy"),
+        ("duplicate_copies_dropped", "  copies dropped (the earliest source's kept)"),
+        ("duplicate_copies_differing", "  copies that STILL DIFFER (kept the first)"),
+        ("side_observations_seen", "side observations (a side another document gives)"),
+        ("side_observations_not_co_anchored", "  side site observations with no manipulation (a probe's; left)"),
+        ("sides_attached", "  sides ATTACHED"),
+        ("sides_not_attached_no_part", "  not attached: the subject has no no-side part"),
+        ("sides_not_attached_several_parts", "  not attached: several no-side parts"),
+        ("sides_not_attached_several_sides", "  not attached: several sides"),
+        ("parts_rekeyed", "parts RE-KEYED"),
+        ("parts_rekeyed_onto_existing_part", "  onto a sided part already in the batch"),
+        ("rekey_quarantined", "re-key QUARANTINED (not applied)"),
+        ("edges_renamed", "edges renamed onto a re-keyed part's ids"),
+        ("manipulations_retargeted", "side documents' manipulations moved onto the part"),
+        ("documents_removed", "documents removed"),
+        ("documents_added", "documents added"),
+        ("migrated_before", "batch before"),
+        ("migrated_after", "  after"),
+    ]),
+
     # `documents_removed_unattributed` IS A GATE AND MUST READ 0. It is the keep
     # mask's removal count minus the three named reasons, so a non-zero value is
     # a document deleted with no stated cause.

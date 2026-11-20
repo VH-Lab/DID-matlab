@@ -534,10 +534,71 @@ r = did2.convert.roundtrip.wholeBatch(bodies, result);
 f = archiveFailure(r, 'wb_arcp_arc');
 assertNotEmpty(testCase, f, describe(r));
 verifyEqual(testCase, f.lost, {[cls '.parameters.sample_other_segment']}, describe(r));
-verifyEqual(testCase, sort(f.deferred), sort({ ...
+% [archive with no digital channel] (Jess Haley, 2026-11-19): the fixture has
+% no digital channel, so only the analog length is deferred
+verifyEqual(testCase, f.deferred, {[cls '.parameters.sample_analog_segment']}, describe(r));
+verifyArchiveSegmentsDeferred(testCase, r, 1, 0);
+end
+
+function testAnArchiveWithNoDigitalChannelRebuildsTheDigitalDefault(testCase)
+% Decided by Jess Haley, 2026-11-19 [archive with no digital channel]
+% (did-schema docs/plans/did_v2_standing_wiring_plan.md; VH-Lab/NDI-matlab#1269):
+% the v1 writer (NDI-matlab +ndi/+daq/+reader/mfdaq.m ingest_epochfiles,
+% origin/main 145f651ad) writes sample_digital_segment = 1e7 into every
+% archive whatever its channels, so for an archive with no digital series it
+% is notation: the round trip rebuilds 10000000 and it matches; only the
+% analog length is deferred. CONTROL: a v1 value other than the writer's
+% default is lost, not taken as the default.
+cls = 'daqreader_mfdaq_epochdata_ingested';
+[bodies, result, rep] = archiveBatch(testCase, 'wb_arnd', 'bb');
+assertEqual(testCase, rep.archive_docs_retired, 1, 'premise: the archive retired');
+k = archiveIndex(bodies);
+assertEqual(testCase, bodies{k}.(cls).parameters.sample_digital_segment, 1e7, 'premise');
+assertFalse(testCase, any(startsWith({bodies{k}.files.file_info.name}, {'di_', 'do_'})), ...
+    'premise: no digital segment file');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEmpty(testCase, archiveFailure(r, 'wb_arnd_arc'), describe(r));
+d = r.deferred_to_second_pass;
+verifyEqual(testCase, {d.fields.path}, {[cls '.parameters.sample_analog_segment']}, describe(r));
+
+other = bodies;
+other{k}.(cls).parameters.sample_digital_segment = 1e6;
+r2 = did2.convert.roundtrip.wholeBatch(other, result);
+f = archiveFailure(r2, 'wb_arnd_arc');
+assertNotEmpty(testCase, f, describe(r2));
+verifyEqual(testCase, f.lost, {[cls '.parameters.sample_digital_segment']}, describe(r2));
+end
+
+function testAnArchiveWithADigitalChannelStillDefersTheDigitalLength(testCase)
+% CONTROL for [archive with no digital channel]: an archive that holds a
+% digital series (a di_ segment file) is not given the default; its digital
+% length is still deferred to the second pass, beside the analog one
+cls = 'daqreader_mfdaq_epochdata_ingested';
+[bodies, result, rep] = archiveBatch(testCase, 'wb_ardi', 'bc', @withDigitalSegment);
+assertEqual(testCase, rep.archive_docs_retired, 1, 'premise: the archive retired');
+k = archiveIndex(bodies);
+assertTrue(testCase, any(startsWith({bodies{k}.files.file_info.name}, 'di_')), ...
+    'premise: a digital segment file');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+f = archiveFailure(r, 'wb_ardi_arc');
+if ~isempty(f)
+    verifyFalse(testCase, any(strcmp(f.lost, [cls '.parameters.sample_digital_segment'])), ...
+        describe(r));
+end
+d = r.deferred_to_second_pass;
+verifyEqual(testCase, sort({d.fields.path}), sort({ ...
     [cls '.parameters.sample_analog_segment'], ...
     [cls '.parameters.sample_digital_segment']}), describe(r));
-verifyArchiveSegmentsDeferred(testCase, r, 1, 0);
+end
+
+function v1 = withDigitalSegment(v1)
+% a di segment attached in the writer's place (after ax, before ti)
+fi = v1.files.file_info;
+loc = fi(2).locations;
+loc.uid = [v1.base.id '_d1'];
+loc.location = ['ndic://ds/' v1.base.id '_d1'];
+di = struct('name', 'di_group1_seg.nbf_1', 'locations', loc);
+v1.files.file_info = [fi(1:3), di, fi(4:end)];
 end
 
 % ===================== [stimulus log owned by its presentation] ==========
@@ -711,19 +772,20 @@ end
 
 function verifyArchiveSegmentsDeferred(testCase, r, nSources, nOk)
 % the report's DEFERRED TO THE SECOND PASS block: its denominator, the
-% archive's two segment-length fields, each counted on NSOURCES sources, NOK
-% of them clean at the DID stage
+% archive's analog segment-length field, counted on NSOURCES sources, NOK of
+% them clean at the DID stage. The fixture archive has no digital channel, so
+% its digital length is rebuilt as the writer's default, not deferred
+% ([archive with no digital channel], Jess Haley, 2026-11-19; INVERTED from
+% both fields deferred)
 cls = 'daqreader_mfdaq_epochdata_ingested';
 d = r.deferred_to_second_pass;
 verifyEqual(testCase, d.sources_compared, r.sources_compared, 'the denominator');
 verifyEqual(testCase, d.sources, nSources, describe(r));
 verifyEqual(testCase, d.sources_ok, nOk, describe(r));
-verifyEqual(testCase, d.values, 2 * nSources, describe(r));
-verifyEqual(testCase, sort({d.fields.path}), sort({ ...
-    [cls '.parameters.sample_analog_segment'], ...
-    [cls '.parameters.sample_digital_segment']}), describe(r));
+verifyEqual(testCase, d.values, nSources, describe(r));
+verifyEqual(testCase, {d.fields.path}, {[cls '.parameters.sample_analog_segment']}, describe(r));
 verifyEqual(testCase, unique({d.fields.class_name}), {cls});
-verifyEqual(testCase, [d.fields.sources], [nSources nSources]);
+verifyEqual(testCase, [d.fields.sources], nSources);
 verifyTrue(testCase, all(contains({d.fields.decision}, ...
     'archive segment lengths measured after the second pass')));
 end
