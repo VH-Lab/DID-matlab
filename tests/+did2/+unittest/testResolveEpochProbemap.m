@@ -1456,7 +1456,7 @@ verifyEqual(testCase, rep.device_strings_seen, 2, 'denominator');
 verifyEqual(testCase, rep.device_acqsystem_resolved, 0);
 verifyEqual(testCase, rep.device_acqsystem_unresolved, 2);
 verifyEqual(testCase, rep.rigs_without_daqsystem, 1);
-verifyEmpty(testCase, bodiesOfClass(out, 'acquisition_system'), 'no name-only system');
+verifyEmpty(testCase, bodiesOfClass(out, did2.convert.acquisitionConfigurationClass()), 'no name-only system');
 % [probe wiring is a relation]: with no system there is no parent to wire the
 % channels to, so the rows have no v2 home for them and the v1 document is
 % carried whole, its devicestring intact
@@ -1516,7 +1516,9 @@ verifyEqual(testCase, depVal(w, 'parent_id'), rigDeviceOf(out, 'acqsys_d'));
 dev = docById(out, rigDeviceOf(out, 'acqsys_d'));
 verifyEqual(testCase, did2.unittest.helpers.classKey(dev), 'device');
 verifyEqual(testCase, char(dev.entity.name), 'intan1');
-verifyEqual(testCase, char(dev.entity.local_identifier), 'intan1');
+% [local identifier required only where looked up] (Jess Haley, 2026-11-19):
+% the rig's device writes `name` only
+verifyTrue(testCase, ~isfield(dev.entity, 'local_identifier') || isempty(dev.entity.local_identifier));
 verifyEqual(testCase, rep.wiring_parent_device, 1);
 verifyEqual(testCase, rep.wiring_parent_acquisition_system, 0);
 verifyEqual(testCase, rep.rig_devices_indexed, 1, 'denominator: the rigs with a device');

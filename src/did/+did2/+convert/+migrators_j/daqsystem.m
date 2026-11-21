@@ -1,5 +1,7 @@
 function bodies = daqsystem(preBody)
-%DAQSYSTEM Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
+%DAQSYSTEM Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_configuration`
+%   (`acquisition_system` until [acquisition configuration renamed], Jess
+%   Haley 2026-11-19; written as the class the loaded schema holds)
 %   (configuration off `base`) + a `software` entity for its own
 %   implementation class + the rig's `device` entity. 1 -> 3 (1 -> 2 when
 %   there is no class name; no device when the rig has no name).
@@ -14,7 +16,7 @@ function bodies = daqsystem(preBody)
 %                      epoch_file_pattern_id REQUIRED -> epoch_file_pattern
 %                      epoch_parameter_reader_id (multiple) -> epoch_parameter_reader
 %                      device_id                  -> entity, type device (the rig)
-%       entity (type device)  name = local_identifier = the v1 rig name
+%       entity (type device)  name = the v1 rig name (no local_identifier)
 %   (Jess Haley 2026-11-19 [acquisition system is a device entity],
 %   [migration mints the device by name], [one device per session],
 %   did-schema docs/plans/did_v2_standing_wiring_plan.md; see "THE RIG'S
@@ -383,16 +385,18 @@ if ~isempty(srcName); f.name = srcName; end
 % and [one device per session] (one device per rig per session: a rig of one
 % name in two sessions is two devices, T18). One v1 daqsystem document is one
 % rig of one session, so it mints one device. The `device` entity type
-% requires `local_identifier` (did-schema binding_registry_meta.json
-% entity_type_bindings); the v1 rig name is the only identifier v1 records
-% for the rig, and what NDI joins a rig by (+ndi/+daq/system.m getprobes,
-% `strcmpi(devicename, obj.name)`), so it is the local_identifier too. A
-% rig name is unique within a session (ndi.session/daqsystem_add refuses a
-% second system of one name), so the handle is unique among the session's
-% rigs; a probe's handle ('<name> | <reference>', [element local identifier
-% is name and reference]) is told apart by its reference. Two sessions that
-% each have a rig of one name hold two devices with one local_identifier, as
-% two sessions' probes of one name do. Its id is derived from this v1
+% requires `name`, not `local_identifier` ([local identifier required only
+% where looked up], Jess Haley, 2026-11-19, did-schema
+% docs/plans/did_v2_go_forward_class_audit.md: "a rig's device, minted once
+% per session, writes `name` only"), so the device writes the v1 rig name
+% in `name` and leaves `local_identifier` empty. The rig name is the only
+% identifier v1 records for the rig, and what NDI joins a rig by
+% (+ndi/+daq/system.m getprobes, `strcmpi(devicename, obj.name)`); NDI-matlab's
+% V2 readers reach the device by id through the acquisition_system's
+% `device_id` (ndi.vintage.rigSystems) and read the system's name, not the
+% device's local_identifier. Two sessions that each have a rig of one name
+% hold two devices of one name, as two sessions' probes of one name do. Its
+% id is derived from this v1
 % daqsystem (did2.convert.mintId role 'rig device', [migration reliability
 % practices] (b)). A rig with no name mints no device and the configuration
 % keeps no `device_id` edge (a name no NDI writer leaves empty:
@@ -400,12 +404,22 @@ if ~isempty(srcName); f.name = srcName; end
 device = {};
 if ~isempty(srcName)
     device = {jEntity(preBody, 'device', ...
-        struct('name', srcName, 'local_identifier', srcName), ...
+        struct('name', srcName), ...
         'Id', did2.convert.mintId('rig device'))};
     edges.device_id = device{1}.base.id;
 end
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
-out = did2.build.document('acquisition_system', f, o{:});
+% THE CLASS. Decided by Jess Haley, 2026-11-19 [acquisition configuration
+% renamed] (did-schema docs/plans/did_v2_standing_wiring_plan.md):
+% `acquisition_system` is renamed `acquisition_configuration`, how a device's
+% recordings are read. Written as the class the loaded schema holds
+% (did2.convert.acquisitionConfigurationClass), so it is the new name once
+% did-schema renames the class and the old one until then.
+if strcmp(did2.convert.acquisitionConfigurationClass(), 'acquisition_configuration')
+    out = did2.build.document('acquisition_configuration', f, o{:});
+else
+    out = did2.build.document('acquisition_system', f, o{:});
+end
 bodies = [{out}, software, device];
 end
 

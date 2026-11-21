@@ -36,7 +36,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   epochfiles_ingested, whose probe-map rows and files they are built from.
 %
 %   BATCH-PASS-CONSUMES: epochfiles_ingested, element_epoch, acquisition_epoch, pyraview, element
-%   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity, directed_relation
+%   BATCH-PASS-EMITS: epochfiles_ingested -> document: observation+voltage, observation+current, observation+time, observation+acceleration, observation+temperature, manipulation+term, ingestion_manifest, relative_reference, opaque_body, observation+intensity, directed_relation, observation+logical, manipulation+voltage
 %   BATCH-PASS-EMITS: element_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: acquisition_epoch -> document: observation+time, opaque_body, relative_time_reference
 %   BATCH-PASS-EMITS: pyraview -> nothing: its level bodies (minted by
@@ -51,7 +51,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   2026-10-26). Read from this file's code, class by class.
 %   BATCH-PASS-READS: element_epoch, acquisition_epoch, epochfiles_ingested,
 %       daqmetadatareader_epochdata_ingested, sampled_body(pyraview level),
-%       entity(epoch), acquisition_system, directed_relation(element lineage),
+%       entity(epoch), acquisition_system, acquisition_configuration,
+%       directed_relation(element lineage),
 %       directed_relation(observes), entity(element),
 %       calculation(spike sorter), calculation(spike times),
 %       calculation(spike waveforms), observation(session-scoped recording),
@@ -64,7 +65,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       manipulation(stimulator per epoch), opaque_body(epoch file by location),
 %       opaque_body(spike train), opaque_body(ingested archive),
 %       relative_time_reference(epoch anchor), relative_reference(epoch anchor),
-%       ingestion_manifest, directed_relation(wiring)
+%       ingestion_manifest, directed_relation(wiring),
+%       observation(channel group owner), manipulation(channel group owner)
 %   BATCH-PASS-CHANGES: sampled_body(pyraview level), calculation(spike sorter),
 %       calculation(spike times), calculation(spike waveforms)
 %   BATCH-PASS-REMOVES: element_epoch, acquisition_epoch, epochfiles_ingested,
@@ -112,7 +114,14 @@ function [result, report] = resolveEpochProbemap(result, options)
 %                is a property of that test data, counted, not a failure).
 %
 %   Every body names, through a REPEATED `owner_id` (did-schema data_body,
-%   T15), every recording observation of that epoch that survived validation;
+%   T15), every recording observation of that epoch that survived validation,
+%   except an ingested digital, auxiliary or analog output channel group,
+%   which has its own owner ([non-specimen channel groups get their own
+%   owner], Jess Haley, 2026-11-17; groupOwner, below): a `logical`
+%   observation of a digital group, a voltage observation of an auxiliary
+%   group, and, for an analog output group, a manipulation of the subject
+%   by the wired device or an observation of the acquisition system's
+%   output;
 %   each observation's rig is its `acquisition_system_id` and its channels are
 %   its probe's `connected to` wiring relation (below). And the
 %   loose `probe observes specimen` relation that +migrators_j/element.m keeps
@@ -337,6 +346,19 @@ report = struct( ...
     'bodies_by_location',             0, ...
     'bodies_size_and_checksum_omitted',0, ...
     'body_owner_links',               0, ...
+    'archive_series_seen',            0, ...
+    'archive_series_specimen',        0, ...
+    'archive_series_other',           0, ...
+    'channel_groups_non_specimen',    0, ...
+    'group_owners_digital',           0, ...
+    'group_owners_auxiliary',         0, ...
+    'group_owners_analog_output_manipulations', 0, ...
+    'group_owners_analog_output_observations',  0, ...
+    'group_owner_entity_wired_device', 0, ...
+    'group_owner_entity_acquisition_system_unwired', 0, ...
+    'group_owner_entity_acquisition_system_several_devices', 0, ...
+    'group_owner_kept_recording_no_device', 0, ...
+    'group_owners_quarantined',       0, ...
     'bodies_quarantined',             0, ...
     'body_build_refused',             0, ...
     'body_build_first_error',         '', ...
@@ -479,7 +501,7 @@ rigsWithoutSystem = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 deviceOfSystem = containers.Map('KeyType', 'char', 'ValueType', 'char');
 rigDeviceIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:n
-    if strcmp(classOf{k}, 'acquisition_system') && ~isempty(docIds{k})
+    if did2.convert.isAcquisitionConfiguration(classOf{k}) && ~isempty(docIds{k})
         dv = depValueOf(bodies{k}, 'device_id');
         if ~isempty(dv)
             deviceOfSystem(docIds{k}) = dv;
@@ -504,6 +526,10 @@ obs30ByTriple = containers.Map('KeyType', 'char', 'ValueType', 'any');
 %     and each `daqreader_*_epochdata_ingested` archive by (session, reader,
 %     epoch string). (f) the loose `observes` relations, by (child, parent).
 readerIdByNavId = containers.Map('KeyType', 'char', 'ValueType', 'char');
+% the acquisition_system reading each filenavigator's files (the first one), the
+% system a non-specimen channel group's owner names ([non-specimen channel
+% groups get their own owner], mkEpochFileBodies)
+systemIdByNavId = containers.Map('KeyType', 'char', 'ValueType', 'char');
 archiveIdxByKey = containers.Map('KeyType', 'char', 'ValueType', 'double');
 observesIdxByPair = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % element entity id -> its v1 element `type` (the `element type` assertion of
@@ -584,10 +610,13 @@ for k = 1:n
                 key = epochKey(sessionIds{k}, lid);
                 if ~isKey(epochIdByKey, key); epochIdByKey(key) = docIds{k}; end
             end
-        case 'acquisition_system'
+        case {'acquisition_configuration', 'acquisition_system'}
+            % either class name ([acquisition configuration renamed], Jess
+            % Haley 2026-11-19; did2.convert.acquisitionConfigurationNames);
+            % the block is named after the class
             nm = '';
-            if isfield(b, 'acquisition_system') && isstruct(b.acquisition_system)
-                nm = charField(b.acquisition_system, {'name'});
+            if isfield(b, classOf{k}) && isstruct(b.(classOf{k}))
+                nm = charField(b.(classOf{k}), {'name'});
             end
             if isempty(nm); nm = baseField(b, 'name'); end
             if ~isempty(nm) && ~isempty(docIds{k})
@@ -600,6 +629,9 @@ for k = 1:n
             rdrId = depValueOf(b, 'reader_id');
             if ~isempty(navId) && ~isempty(rdrId) && ~isKey(readerIdByNavId, navId)
                 readerIdByNavId(navId) = rdrId;
+            end
+            if ~isempty(navId) && ~isempty(docIds{k}) && ~isKey(systemIdByNavId, navId)
+                systemIdByNavId(navId) = docIds{k};
             end
             prIds = depValuesOf(b, 'epoch_parameter_reader_id');
             if ~isempty(navId) && ~isempty(prIds) && ~isKey(paramReadersByNavId, navId)
@@ -674,6 +706,9 @@ retire30AnchorCand = containers.Map('KeyType', 'char', 'ValueType', 'any');
 renameBodyBySrcId = containers.Map('KeyType', 'char', 'ValueType', 'any');
 acIdByKey   = containers.Map('KeyType', 'char', 'ValueType', 'char');
 acBodyById  = containers.Map('KeyType', 'char', 'ValueType', 'any');
+% wiring relation id -> the subject of the probe-map row that minted it (an
+% analog output group's manipulation names it, mkEpochFileBodies)
+acSubjectById = containers.Map('KeyType', 'char', 'ValueType', 'char');
 newGroupAc = {};     % wiring relation base.id each new body depends on ('' = none)
 % [stimulator manipulation dropped]: a stimulator row whose wiring relation and
 % element hold all it says writes no manipulation; its wiring relation and
@@ -698,7 +733,7 @@ clockBodyById = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % where their files are -- the bodies are built after validation, owned by the
 % observations that survived.
 epochSpecs = struct('src', {}, 'obsIds', {}, 'sid', {}, 'datestamp', {}, ...
-    'epochString', {}, 'navId', {});
+    'epochString', {}, 'navId', {}, 'anchorId', {}, 'clockIds', {});
 % #73 review item 61: per epochfiles_ingested document, the stimulator
 % manipulations it minted -- the owners of that epoch's metadata archive.
 stimSpecs = struct('manipIds', {}, 'sid', {}, 'epochString', {}, 'navId', {});
@@ -967,6 +1002,7 @@ for k = 1:n
                     acId = acBody.base.id;
                     acIdByKey(ak) = acId;
                     acBodyById(acId) = acBody;
+                    acSubjectById(acId) = char(subjectId);
                     report.wiring_relations_minted = ...
                         report.wiring_relations_minted + 1;
                 end
@@ -1076,9 +1112,11 @@ for k = 1:n
     end
 
     if ~isempty(specObsIds)
+        specAnchor = '';
+        if isKey(anchorByEpochId, epochDocId); specAnchor = anchorByEpochId(epochDocId); end
         epochSpecs(end+1) = struct('src', k, 'obsIds', {specObsIds}, ...
             'sid', sid, 'datestamp', datestamp, 'epochString', es, ...
-            'navId', fnId); %#ok<AGROW>
+            'navId', fnId, 'anchorId', specAnchor, 'clockIds', {clockIds}); %#ok<AGROW>
     end
     if ~isempty(specManipIds)
         stimSpecs(end+1) = struct('manipIds', {specManipIds}, 'sid', sid, ...
@@ -1470,8 +1508,21 @@ for a = 1:numel(anchorKeys)
 end
 
 % --- 2026-10-21: the epoch files, as data bodies of the surviving observations
+% [non-specimen channel groups get their own owner]: what the owner of a
+% digital, auxiliary or analog output group is read from -- the wiring
+% relations that survived (with the subject of the row that minted each), the
+% system reading each filenavigator's files, and each system's rig device
+groupOwnerCtx = struct('wirings', {{}}, 'wiringSubject', acSubjectById, ...
+    'systemIdByNavId', systemIdByNavId, 'deviceOfSystem', deviceOfSystem);
+acAlive = acHasSurvivor.keys;
+for a = 1:numel(acAlive)
+    if isKey(acBodyById, acAlive{a})
+        groupOwnerCtx.wirings{end+1} = acBodyById(acAlive{a});
+    end
+end
 [fileBodies, report, newQuarantine, archiveCarried] = mkEpochFileBodies(epochSpecs, ...
-    emittedNewIds, bodies, docIds, readerIdByNavId, archiveIdxByKey, options, report);
+    emittedNewIds, bodies, docIds, readerIdByNavId, archiveIdxByKey, options, report, ...
+    groupOwnerCtx);
 appended = [appended, fileBodies];
 
 % --- [stimulus log owned by its presentation] (Jess Haley, 2026-11-19) ------
@@ -2687,18 +2738,23 @@ end
 % ===================== the epoch files as bodies (2026-10-21) ==========
 
 function [out, report, quarantine, archiveCarried] = mkEpochFileBodies(specs, emittedIds, bodies, ...
-        docIds, readerIdByNavId, archiveIdxByKey, options, report)
+        docIds, readerIdByNavId, archiveIdxByKey, options, report, ownerCtx)
 %MKEPOCHFILEBODIES One opaque_body per epoch file, owned by every surviving
 %   recording observation of that epoch (owner_id repeats). Ingested: the
-%   archive's attached series, carried as attached. Otherwise: the files the
-%   cache names, by location. Validated here; a quarantine is a real defect.
+%   archive's attached series, carried as attached; a digital, auxiliary or
+%   analog output channel group is owned by its own statement instead
+%   (groupOwner, [non-specimen channel groups get their own owner]).
+%   Otherwise: the files the cache names, by location. Validated here; a
+%   quarantine is a real defect.
 out = {};
 quarantine = [];
 pending = {};
 archiveCarried = containers.Map('KeyType', 'double', 'ValueType', 'any');
 carriedById = containers.Map('KeyType', 'char', 'ValueType', 'any');  % body id -> {archive idx, names}
+ownerIdOfBody = containers.Map('KeyType', 'char', 'ValueType', 'logical');  % the channel-group owners minted
 for s = 1:numel(specs)
     sp = specs(s);
+    groupOwners = {};
     owners = {};
     for i = 1:numel(sp.obsIds)
         if isKey(emittedIds, sp.obsIds{i}); owners{end+1} = sp.obsIds{i}; end %#ok<AGROW>
@@ -2718,7 +2774,8 @@ for s = 1:numel(specs)
     end
     try
         if ~isempty(archive)
-            [made, nMembers, memberNames] = archiveBodies(archive, owners, sp);
+            [made, nMembers, memberNames, groupOwners, report] = archiveBodies( ...
+                archive, owners, sp, ownerCtx, report);
             for mi = 1:numel(made)
                 carriedById(char(made{mi}.base.id)) = {archiveIdx, memberNames{mi}};
             end
@@ -2739,6 +2796,7 @@ for s = 1:numel(specs)
         end
     catch err
         made = {};
+        groupOwners = {};
         report.body_build_refused = report.body_build_refused + 1;
         if isempty(report.body_build_first_error)
             report.body_build_first_error = sprintf('%s: %s', err.identifier, err.message);
@@ -2748,17 +2806,54 @@ for s = 1:numel(specs)
         report.epochs_no_file_named = report.epochs_no_file_named + 1;
         continue;
     end
-    report.body_owner_links = report.body_owner_links + numel(made) * numel(owners);
-    pending = [pending, made]; %#ok<AGROW>
+    for mi = 1:numel(made)
+        report.body_owner_links = report.body_owner_links + ...
+            numel(depValuesOf(made{mi}, 'owner_id'));
+    end
+    pending = [pending, groupOwners, made]; %#ok<AGROW>
+    for gi = 1:numel(groupOwners)
+        ownerIdOfBody(char(groupOwners{gi}.base.id)) = true;
+    end
 end
 if isempty(pending); return; end
 res = did2.convert.v1_to_v2(pending, ...
     'Validate',      options.Validate, ...
     'SchemaCache',   options.SchemaCache, ...
     'TargetVersion', options.TargetVersion);
-report.bodies_quarantined = numel(res.quarantine);
 quarantine = res.quarantine;
 out = res.migrated(:)';
+% a channel group's own owner that did not validate takes its body with it,
+% so no body names a missing owner; the group's files then have no new owner
+% and the v1 archive stays ([non-specimen channel groups get their own
+% owner]); its quarantine is a real defect, kept in QUARANTINE
+survived = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for i = 1:numel(out)
+    try
+        survived(char(out{i}.get('base.id'))) = true;
+    catch
+    end
+end
+ownerKeys = ownerIdOfBody.keys;
+nOwnersLost = 0;
+for i = 1:numel(ownerKeys)
+    if ~isKey(survived, ownerKeys{i}); nOwnersLost = nOwnersLost + 1; end
+end
+report.group_owners_quarantined = report.group_owners_quarantined + nOwnersLost;
+report.bodies_quarantined = numel(res.quarantine) - nOwnersLost;
+keepOut = true(1, numel(out));
+for i = 1:numel(out)
+    ow = {};
+    try
+        ow = depValuesOf(out{i}.toStruct(), 'owner_id');
+    catch
+    end
+    for o = 1:numel(ow)
+        if isKey(ownerIdOfBody, ow{o}) && ~isKey(survived, ow{o})
+            keepOut(i) = false;
+        end
+    end
+end
+out = out(keepOut);
 for i = 1:numel(out)
     try
         bid = char(out{i}.get('base.id'));
@@ -2862,7 +2957,9 @@ for k = 1:numel(bodies)
             held{end+1} = struct('id', docIds{k}, ...
                 'element', depValueOf(b, 'stimulus_element_id')); %#ok<AGROW>
             presBy(key) = held;
-        case 'acquisition_system'
+        case {'acquisition_configuration', 'acquisition_system'}
+            % either class name ([acquisition configuration renamed], Jess
+            % Haley 2026-11-19)
             rdr = depValueOf(b, 'reader_id');
             if isempty(rdr); continue; end
             key = [sid '|' rdr];
@@ -3001,7 +3098,10 @@ for i = 1:numel(archiveIdxAll)
             ownerId = char(obs.base.id);
             made{end+1} = obs; %#ok<AGROW>
         end
-        [files, ~, memberNames] = archiveBodies(b, {ownerId}, sp);
+        % a log holds no digital, auxiliary or analog-output group, so
+        % archiveBodies mints no group owner; its series counters are the
+        % recording archives' and are left as they were (a copy is passed)
+        [files, ~, memberNames] = archiveBodies(b, {ownerId}, sp, [], report);
         key = stimulusLogKey(es, rdr);
         for m = 1:numel(files)
             files{m}.data_body.notes = [key ' ' char(files{m}.data_body.notes) ...
@@ -3102,16 +3202,21 @@ isEv = ~cellfun(@isempty, regexp(names, '^evmktx_group\d+_seg\.nbf_\d+$', 'once'
 tf = ~isempty(names) && any(isEv) && all(isEv | strcmp(names, 'channel_list.bin'));
 end
 
-function [made, nMembers, memberNames] = archiveBodies(archive, owners, sp)
+function [made, nMembers, memberNames, groupOwners, report] = archiveBodies(archive, owners, sp, ownerCtx, report)
 %ARCHIVEBODIES The ingested recording, one opaque_body per attached file series
 %   of a daqreader_*_epochdata_ingested document. A series slot `foo_#` holds
 %   the members `foo_1`, `foo_2`, ... (mfdaq.m attaches its segments that way);
 %   they become body_data_0, body_data_1, ... in order, locations VERBATIM, so
 %   the bytes are the very ones v1 attached. A declared slot with no attached
 %   member is skipped (mfdaq declares 62 slots and fills those it used).
+%   OWNERS: the epoch's recording observations, except a digital, auxiliary
+%   or analog output channel group (`di_`, `do_`, `ax_`, `ao_group<g>_...`),
+%   which is owned by the statement groupOwner mints for it, returned in
+%   GROUPOWNERS ([non-specimen channel groups get their own owner]).
 made = {};
 nMembers = 0;
 memberNames = {};   % per made body: the v1 file_info names it carries
+groupOwners = {};   % the statements minted to own a non-specimen group
 if ~isfield(archive, 'files') || ~isstruct(archive.files); return; end
 list = {};
 if isfield(archive.files, 'file_list'); list = cellstrOf(archive.files.file_list); end
@@ -3148,7 +3253,22 @@ for L = 1:numel(list)
     flds = struct('filename', slot);
     comp = compressionOf(names{idx(1)});
     if isempty(comp); comp = compressionOf(slot); end
-    body = did2.build.opaqueBody(owners, binaryFormat(), ...
+    report.archive_series_seen = report.archive_series_seen + 1;
+    bodyOwners = owners;
+    [prefix, group] = channelGroupOfSlot(slot);
+    if any(strcmp(prefix, {'di', 'do', 'ax', 'ao'}))
+        report.channel_groups_non_specimen = report.channel_groups_non_specimen + 1;
+        [ownerStmt, report] = groupOwner(prefix, group, slot, archive, sp, ownerCtx, report);
+        if ~isempty(ownerStmt)
+            groupOwners{end+1} = ownerStmt; %#ok<AGROW>
+            bodyOwners = {char(ownerStmt.base.id)};
+        end
+    elseif strcmp(prefix, 'ai')
+        report.archive_series_specimen = report.archive_series_specimen + 1;
+    else
+        report.archive_series_other = report.archive_series_other + 1;
+    end
+    body = did2.build.opaqueBody(bodyOwners, binaryFormat(), ...
         'Chunks', numel(idx), ...
         'Fields', flds, 'Compression', comp, ...
         'Notes', sprintf(['The ingested recording of epoch %s: v1 attached ' ...
@@ -3166,6 +3286,221 @@ for L = 1:numel(list)
     made{end+1} = body; %#ok<AGROW>
     memberNames{end+1} = names(idx); %#ok<AGROW>
     nMembers = nMembers + numel(idx);
+end
+end
+
+function [prefix, group] = channelGroupOfSlot(slot)
+% the channel prefix and group number of an mfdaq series slot
+% (`di_group1_seg.nbf_#` -> 'di', 1); '' and NaN for any other slot
+% (`channel_list.bin`)
+prefix = '';
+group = NaN;
+tok = regexp(char(slot), '^([a-z]+)_group(\d+)_', 'tokens', 'once');
+if isempty(tok); return; end
+prefix = tok{1};
+group = str2double(tok{2});
+end
+
+function [stmt, report] = groupOwner(prefix, group, slot, archive, sp, ctx, report)
+%GROUPOWNER The statement that owns a channel group that is not the specimen's
+%   signal. did-schema docs/plans/did_v2_go_forward_class_audit.md
+%   [non-specimen channel groups get their own owner] (Jess Haley, 2026-11-17):
+%   "a digital group (`di`, `do`) is owned by an `observation` of value kind
+%   `logical`, an auxiliary group (`ax`) by an `observation` of value kind
+%   voltage; each with entity the device wired to those channels ([event
+%   channel observes its wired device]), the acquisition system where none is
+%   wired (counted), and instrument the acquisition system; an analog output
+%   group (`ao`) is a manipulation of the subject with the wired stimulating
+%   device as instrument where the probe map ties the output to a device and a
+%   subject, otherwise an observation of the acquisition system's output;
+%   analog input groups (`ai`) stay owned by the recording observation."
+%
+%   THE DETAILS the decision is silent on are [channel group owners details]
+%   (Jess Haley, 2026-11-19): (a) no `instrument_id` on the observations,
+%   (b) the variable is the group's channel-type term, (c) several wired
+%   devices fall back to the rig's device, counted.
+%
+%   THE ACQUISITION SYSTEM AS AN ENTITY is the rig's device ([acquisition
+%   system is a device entity], Jess Haley, 2026-11-19, did-schema
+%   docs/plans/did_v2_standing_wiring_plan.md): the `device_id` of the
+%   acquisition_system that reads the epoch's files (the system whose
+%   epoch_file_pattern_id is the epochfiles_ingested's filenavigator_id). It
+%   is the entity where no device is wired.
+%
+%   THE INSTRUMENT, the acquisition system, is named by
+%   `acquisition_system_id`, as NDI-matlab's unpacked event channel
+%   observations name it (ndi.migrate.internal.ingestedArchiveBodies,
+%   [event channel observes its wired device]); no `instrument_id` is
+%   written. An `instrument_id` naming the rig's device would make the rig a
+%   probe: NDI-matlab's ndi.vintage.linkedElements (probeLinks) and
+%   +roundtrip/private/deviceLinks read a device an observation names as its
+%   instrument as a recording probe ([element recognised by its links]), and
+%   ndi.vintage.ingestedEpochs reads a statement with an instrument and a rig
+%   as a probe-map row; a statement with no instrument is "not a probe-map
+%   row". The analog output manipulation's instrument is the wired
+%   stimulating device, which is a probe already (it is wired).
+%   `acquisition_system_id` is also how NDI-matlab's readers find the body
+%   (ndi.vintage.ingestedArchive, THE OWNERS). The statement is timed by the
+%   epoch's 'during' anchor and clock references, as the recording
+%   observations are, so the round trip reads the same epoch, clocks and
+%   reader from every owner.
+%
+%   THE WIRED DEVICE is the child of the surviving `connected to` wiring
+%   relations of this epoch (timed by its anchor, parent the system or its
+%   device) with a condition of the group's channel type listing a channel
+%   of this group. A channel's group is NDI's rule, 1 + floor(number /
+%   channels per group), 400 per group for analog and auxiliary channels and
+%   512 for digital ones (ndi.file.type.mfdaq_epoch_channel/create_properties,
+%   the defaults ndi.daq.reader.mfdaq ingests with). A `di` group may hold
+%   digital output channels (v1 mfdaq writes digital_out as `di`;
+%   ndi.migrate.internal.ingestedArchiveBodies reads it the same way), so its
+%   wiring is read for both digital channel types. One device: it is the
+%   entity. None: the acquisition system (counted, unwired). Several: the
+%   group is not one device's signal; the acquisition system, counted apart
+%   (several_devices).
+%
+%   THE VARIABLE is the group's channel-type term ([channel types]: "digital
+%   input channel", "digital output channel", "auxiliary input channel",
+%   "analog output channel"), so the statement says which channels it holds,
+%   and the round trip tells it from a probe-map row's statement
+%   (+roundtrip/private/manifestProbemap); [channel group owners details]
+%   (b).
+%
+%   An acquisition system with no device (a rig with no name, a batch
+%   migrated before the rig's device) gives no entity to fall back to: no
+%   statement is minted and the recording observations keep the body
+%   (counted, kept_recording_no_device). STMT is [] then.
+stmt = [];
+sysId = '';
+if ~isempty(sp.navId) && isKey(ctx.systemIdByNavId, sp.navId)
+    sysId = ctx.systemIdByNavId(sp.navId);
+end
+rigDevice = '';
+if ~isempty(sysId) && isKey(ctx.deviceOfSystem, sysId)
+    rigDevice = ctx.deviceOfSystem(sysId);
+end
+if isempty(rigDevice) || isempty(sp.anchorId)
+    report.group_owner_kept_recording_no_device = ...
+        report.group_owner_kept_recording_no_device + 1;
+    return;
+end
+switch prefix
+    case 'di', types = {'di', 'do'}; perGroup = 512;
+    case 'do', types = {'do'};       perGroup = 512;
+    case 'ax', types = {'ax'};       perGroup = 400;
+    case 'ao', types = {'ao'};       perGroup = 400;
+end
+[devices, wirings] = wiredDevices(ctx.wirings, {sysId, rigDevice}, sp.anchorId, ...
+    types, group, perGroup);
+entity = rigDevice;
+switch numel(devices)
+    case 1
+        entity = devices{1};
+        report.group_owner_entity_wired_device = report.group_owner_entity_wired_device + 1;
+    case 0
+        report.group_owner_entity_acquisition_system_unwired = ...
+            report.group_owner_entity_acquisition_system_unwired + 1;
+    otherwise
+        report.group_owner_entity_acquisition_system_several_devices = ...
+            report.group_owner_entity_acquisition_system_several_devices + 1;
+end
+variable = did2.convert.channelType(prefix);
+className = 'observation';
+valueKind = 'voltage';
+instrument = '';   % THE INSTRUMENT: the system, by acquisition_system_id
+switch prefix
+    case {'di', 'do'}
+        valueKind = 'logical';
+        report.group_owners_digital = report.group_owners_digital + 1;
+        what = 'digital';
+    case 'ax'
+        report.group_owners_auxiliary = report.group_owners_auxiliary + 1;
+        what = 'auxiliary';
+    case 'ao'
+        % a manipulation of the subject, by the wired stimulating device,
+        % where the probe map ties the output to one device and a subject: the
+        % subject of the probe-map row whose wiring holds these channels
+        subject = '';
+        if isscalar(devices)
+            subs = {};
+            for w = 1:numel(wirings)
+                wid = char(wirings{w}.base.id);
+                if isKey(ctx.wiringSubject, wid) && ~isempty(ctx.wiringSubject(wid))
+                    subs{end+1} = ctx.wiringSubject(wid); %#ok<AGROW>
+                end
+            end
+            subs = unique(subs);
+            if isscalar(subs); subject = subs{1}; end
+        end
+        if ~isempty(subject)
+            className = 'manipulation';
+            instrument = entity;
+            entity = subject;
+            report.group_owners_analog_output_manipulations = ...
+                report.group_owners_analog_output_manipulations + 1;
+            what = 'analog output, a manipulation of the subject by the wired device';
+        else
+            report.group_owners_analog_output_observations = ...
+                report.group_owners_analog_output_observations + 1;
+            what = 'analog output, the acquisition system''s output';
+        end
+end
+stmt = did2.build.statement(className, char(entity), variable, [], ...
+    'ValueKind', valueKind, 'DataBody', true, ...
+    'TimeReferenceIds', [{char(sp.anchorId)}, sp.clockIds], ...
+    'InstrumentId', char(instrument), 'AcquisitionSystemId', char(sysId), ...
+    'Notes', sprintf(['The owner of the ingested channel group %s of epoch %s ' ...
+        '(%s): [non-specimen channel groups get their own owner].'], ...
+        slot, sp.epochString, what), ...
+    'Id', did2.convert.mintId(['channel group owner ' slot], baseField(archive, 'id')), ...
+    'SessionId', char(sp.sid), 'CreationTimestamp', char(sp.datestamp), ...
+    'Validate', false);
+end
+
+function [devices, hits] = wiredDevices(wirings, parents, anchorId, types, group, perGroup)
+% the children of WIRINGS (`connected to` relations) timed by ANCHORID whose
+% parent is one of PARENTS and that hold a condition of one of the channel
+% TYPES (v1 prefixes) listing a channel of GROUP (NDI's 1 + floor(n /
+% PERGROUP)); HITS the relations themselves
+nodes = cell(1, numel(types));
+for t = 1:numel(types)
+    tt = did2.convert.channelType(types{t});
+    nodes{t} = char(tt.node);
+end
+devices = {};
+hits = {};
+for w = 1:numel(wirings)
+    b = wirings{w};
+    if ~any(strcmp(depValuesOf(b, 'time_reference_id'), anchorId)) ...
+            || ~any(ismember(depValuesOf(b, 'parent_id'), parents))
+        continue;
+    end
+    conds = {};
+    if isfield(b, 'directed_relation') && isfield(b.directed_relation, 'conditions')
+        conds = b.directed_relation.conditions;
+    elseif isfield(b, 'conditions')
+        conds = b.conditions;
+    end
+    if isstruct(conds); conds = num2cell(conds); end
+    held = false;
+    for c = 1:numel(conds)
+        cc = conds{c};
+        if ~isstruct(cc) || ~isfield(cc, 'variable') || ~isstruct(cc.variable) ...
+                || ~isfield(cc.variable, 'node') || ~any(strcmp(char(cc.variable.node), nodes))
+            continue;
+        end
+        nums = [];
+        if isfield(cc, 'numeric') && isnumeric(cc.numeric); nums = double(cc.numeric(:)); end
+        if isempty(nums) && isfield(cc, 'matrix') && isnumeric(cc.matrix); nums = double(cc.matrix(:)); end
+        if any(1 + floor(nums / perGroup) == group)
+            held = true;
+        end
+    end
+    if held
+        hits{end+1} = b; %#ok<AGROW>
+        ch = depValueOf(b, 'child_id');
+        if ~isempty(ch) && ~any(strcmp(devices, ch)); devices{end+1} = ch; end %#ok<AGROW>
+    end
 end
 end
 

@@ -27,7 +27,9 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %   2026-10-26). Read from this file's code, class by class.
 %   (dataset citation: the subject-side types -- Subject, Species, Strain,
 %   ... -- are left out of the walk, routeIsSubjectSide below.)
-%   BATCH-PASS-READS: openminds(dataset citation)
+%   BATCH-PASS-READS: openminds(dataset citation), result.source_outputs,
+%       entity(metadata_editor output), assertion(metadata_editor output),
+%       directed_relation(metadata_editor output)
 %   BATCH-PASS-ADDS: entity(dataset), entity(person), entity(organization),
 %       funding, publication, web_resource, directed_relation(openMINDS role),
 %       assertion(dataset copyright year)
@@ -40,8 +42,63 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %   did2.convert.entities (entityDoc :586/:610/:664/:703/:731, orgFor
 %   :633/:673, relationDoc :614/:640/:668/:681/:706/:735). It is ADDITIVE to
 %   migrators_j.metadata_editor, which emits the same seven from the other
-%   store; neither replaces the other.
+%   store; neither replaces the other. Where a dataset holds both, the graph
+%   is compared with the form's documents (THE FORM IS THE SOURCE, below),
+%   which pass 1 wrote: it reads them through result.source_outputs (what each
+%   source became) and decides nothing about them; it drops or carries only
+%   its own openminds documents.
 %   ---------------------------------------------------------------------
+%
+%   ---------------------------------------------------------------------
+%   THE FORM IS THE SOURCE -- a graph beside its form
+%   ---------------------------------------------------------------------
+%   Decided by Jess Haley, 2026-11-19 [metadata editor form is the source],
+%   amended 2026-11-20 [metadata editor graph compared with its form]
+%   (did-schema did_v2_go_forward_class_audit.md; Waltham-Data-Science/
+%   did-schema#100). NDI's metadata-editor app writes `metadata_editor` on
+%   every window close and the bare openMINDS graph only on Save, both from
+%   the same form data (convertFormDataToDocuments), so the form is always at
+%   least as new as the graph. The amended decision: "(1) both present and
+%   matching: the graph's documents are dropped as derived; (2) both present
+%   and differing: the graph is carried as v1 and counted (carry-174,
+%   needs_mapping); (3) a graph with no form converts as today ...; (4) a form
+%   with no graph converts as today. This changes migration only; NDI's
+%   metadata-editor app is unchanged."
+%
+%   Before 2026-11-20 a dataset with both got every person, funding,
+%   publication and web resource twice (one from each store; only the
+%   `dataset` entity is deduplicated, by did2.convert.resolveDatasetEntities).
+%
+%   HOW. The forms are the `metadata_editor` sources of result.source_outputs
+%   (did2.convert.v1_to_v2), each keyed on its dataset id (the session id of
+%   the documents it became; for a form carried as v1, its own). A component
+%   whose DatasetVersion names a dataset with a form is built as usual, then:
+%     - one form, converted: the graph's documents are compared with the
+%       form's, field by field (did2.convert.citationGraphDifferences, whose
+%       header lists what is compared and what the graph cannot state). An
+%       author's second affiliation or a Copyright the build cannot place is a
+%       difference too: the build did not write them, so a match would drop
+%       them.
+%     - MATCH: nothing is emitted and every planned openminds document is
+%       removed, listed in result.not_migrated ({id, class_name, reason,
+%       decision, twin_id = the form's id}) and in the run's migration report
+%       ('notMigrated'). did2.convert.roundtrip.wholeBatch counts their ids
+%       as the accepted loss "openMINDS graph derived from its form": the
+%       form path mints its own ids, so nothing rebuilds the graph's.
+%       Counted in components_dropped_as_derived and
+%       graph_documents_dropped_as_derived.
+%     - DIFFER (and a form carried as v1, which produces no v2 documents to
+%       match, and several forms for one dataset): the component is withheld,
+%       all or none, so its openminds documents are carried as v1, each with a
+%       carry note citing carry-174 and the first differences. Counted in
+%       components_withheld and components_withheld_differing_from_form; the
+%       differences, a sample, in graph_differences.
+%   A component with no form converts as before (components_without_form).
+%   The orphan guard and the subject-side guard run first, as before: a
+%   component they withhold is not compared.
+%   Measured 2026-11-20 on the six corpora's zips (221,827 documents): no
+%   openMINDS dataset graph in any, one form (Soph), so no corpus exercises
+%   the comparison; the tests do.
 %
 %   STATUS 2026-08-11: WRITTEN WITHOUT MATLAB. There is neither MATLAB nor
 %   Octave in the container this was authored in, so NOTHING IN THIS FILE HAS
@@ -260,6 +317,7 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %
 %   See also: did2.convert.migrators_j.openminds,
 %   did2.convert.migrators_j.metadata_editor, did2.convert.entities.entityDoc,
+%   did2.convert.citationGraphDifferences, did2.convert.roundtrip.wholeBatch,
 %   did2.convert.resolveDatasetEntities, ndi.migrate.internal.strainAssembly.
 
 arguments
@@ -307,6 +365,22 @@ report = struct( ...
     'components_withheld',                  0, ...
     'components_reverted_on_validation',    0, ...
     'components_withheld_unplaced',         0, ...
+    ... % --- [metadata editor graph compared with its form] (header)
+    'source_outputs_read',                  0, ...
+    'forms_seen',                           0, ...
+    'forms_converted',                      0, ...
+    'forms_carried_as_v1',                  0, ...
+    'forms_without_dataset_id',             0, ...
+    'components_compared_with_form',        0, ...
+    'components_without_form',              0, ...
+    'form_graph_facts_compared',            0, ...
+    'components_dropped_as_derived',        0, ...
+    'graph_documents_dropped_as_derived',   0, ...
+    'components_withheld_differing_from_form', 0, ...
+    'differing_form_carried_as_v1',         0, ...
+    'differing_several_forms',              0, ...
+    'graph_documents_carried_differing',    0, ...
+    'graph_differences',                    {{}}, ...
     'withheld_reasons',                     {{}}, ...
     'documents_consumed',                   0, ...
     ... % --- what was emitted
@@ -345,6 +419,14 @@ if ~isfield(result, 'migrated') || isempty(result.migrated)
 end
 report.ran = true;
 
+% the forms, before anything else is read ([metadata editor graph compared
+% with its form]): counted whether or not the batch holds a graph
+formRowsRead = formRows(result);
+report.source_outputs_read = numelSourceOutputs(result);
+report.forms_seen = numel(formRowsRead);
+report.forms_carried_as_v1 = sum([formRowsRead.carried]);
+report.forms_converted = report.forms_seen - report.forms_carried_as_v1;
+
 % ==========================================================================
 % STAGE A -- read every document once. One this cannot read is COUNTED,
 % never dropped.
@@ -380,6 +462,11 @@ byId = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
     if ~isempty(idOf{k}); byId(idOf{k}) = k; end
 end
+
+% the forms by dataset id (THE FORM IS THE SOURCE, header)
+[forms, report.forms_without_dataset_id] = formIndex(formRowsRead, bodies, idOf);
+notMigrated = struct('id', {}, 'class_name', {}, 'reason', {}, 'decision', {}, ...
+    'twin_id', {});
 
 % ==========================================================================
 % STAGE B -- the reference graph, both routes.
@@ -504,6 +591,80 @@ for c = 1:nComp
     % --- EMIT --------------------------------------------------------------
     [newBodies, tally] = buildComponent(root, bodies, byId, orgIds);
 
+    % --- THE FORM IS THE SOURCE (header) -----------------------------------
+    % [metadata editor graph compared with its form] (Decided by Jess Haley,
+    % 2026-11-20): a graph beside its dataset's form is dropped when it matches
+    % what the form produced and carried as v1 when it differs (carry-174); a
+    % graph with no form converts as before.
+    dsKey = datasetIdOf(bodies{root});
+    if ~isempty(dsKey) && isKey(forms, dsKey)
+        entries = forms(dsKey);
+        report.components_compared_with_form = report.components_compared_with_form + 1;
+        diffs = {};
+        if numel(entries) > 1
+            report.differing_several_forms = report.differing_several_forms + 1;
+            diffs{end+1} = sprintf(['%d metadata_editor forms state this dataset ' ...
+                '(%s), so no one form is the source'], numel(entries), ...
+                strjoin({entries.id}, ', '));
+        elseif entries.carried
+            report.differing_form_carried_as_v1 = report.differing_form_carried_as_v1 + 1;
+            diffs{end+1} = sprintf(['the form %s is carried as v1, so it produced ' ...
+                'no v2 documents to match'], entries.id);
+        else
+            if tally.affiliations_beyond_first_dropped > 0
+                diffs{end+1} = sprintf(['graph only: %d author affiliation(s) beyond ' ...
+                    'the first, which the graph build does not write'], ...
+                    tally.affiliations_beyond_first_dropped);
+            end
+            if tally.copyright_unplaced > 0
+                diffs{end+1} = sprintf(['graph only: %d Copyright document(s) the ' ...
+                    'graph build cannot place'], tally.copyright_unplaced);
+            end
+            [d, facts] = did2.convert.citationGraphDifferences( ...
+                bodies(entries.indices), newBodies, dsKey);
+            report.form_graph_facts_compared = report.form_graph_facts_compared + facts.compared;
+            diffs = [diffs, d]; %#ok<AGROW>
+        end
+        formId = strjoin({entries.id}, ', ');
+        if isempty(diffs)
+            % (1) MATCH: the graph is derived from the form; nothing is emitted
+            removeMask(planned) = true;
+            report.components_dropped_as_derived = report.components_dropped_as_derived + 1;
+            report.graph_documents_dropped_as_derived = ...
+                report.graph_documents_dropped_as_derived + numel(planned);
+            for a = reshape(planned, 1, [])
+                notMigrated(end+1) = struct('id', idOf{a}, 'class_name', 'openminds', ...
+                    'reason', sprintf(['openMINDS dataset graph derived from its ' ...
+                    'metadata_editor form %s (it matches what the form produced)'], formId), ...
+                    'decision', ['[metadata editor graph compared with its form] ' ...
+                    '(Jess Haley, 2026-11-20)'], 'twin_id', entries(1).id); %#ok<AGROW>
+            end
+            continue;
+        end
+        % (2) DIFFER: withheld, all or none, so its documents are carried as v1
+        report.components_withheld = report.components_withheld + 1;
+        report.components_withheld_differing_from_form = ...
+            report.components_withheld_differing_from_form + 1;
+        report.graph_documents_carried_differing = ...
+            report.graph_documents_carried_differing + numel(planned);
+        report.withheld_reasons{end+1} = sprintf(['component %d: the openMINDS ' ...
+            'dataset graph differs from its metadata_editor form %s (%d ' ...
+            'difference(s)) -- carried as v1'], c, formId, numel(diffs));
+        keep = min(numel(diffs), 20);
+        report.graph_differences = [report.graph_differences, ...
+            cellfun(@(x) sprintf('component %d: %s', c, x), diffs(1:keep), ...
+            'UniformOutput', false)];
+        detail = sprintf(['[carry-174] the openMINDS dataset graph differs from ' ...
+            'its metadata_editor form %s ([metadata editor graph compared with ' ...
+            'its form]): %s'], formId, strjoin(diffs(1:min(numel(diffs), 3)), '; '));
+        for a = reshape(planned, 1, [])
+            % carry-register: carry-174
+            did2.convert.reportNote('carried_as_v1', 'openminds', idOf{a}, detail);
+        end
+        continue;
+    end
+    report.components_without_form = report.components_without_form + 1;
+
     % --- (4b) LOSSLESS: nothing consumed that cannot be placed --------------
     % [generic stage is lossless] and [partly placed is carried as v1] (Jess
     % Haley, 2026-10-25, did-schema V_eta_go_forward_class_audit.md): an author's
@@ -561,10 +722,84 @@ if isempty(appended) && ~any(removeMask)
     result.openminds_citations = report;
     return;
 end
+% the graphs dropped as derived from their forms: listed, as
+% did2.convert.resolveResponseParameters lists what it does not migrate
+for k = 1:numel(notMigrated)
+    did2.convert.migrationReport('notMigrated', notMigrated(k).id, ...
+        notMigrated(k).class_name, notMigrated(k).reason);
+end
+if ~isempty(notMigrated)
+    if isfield(result, 'not_migrated') && ~isempty(result.not_migrated)
+        result.not_migrated = [reshape(result.not_migrated, 1, []), notMigrated];
+    else
+        result.not_migrated = notMigrated;
+    end
+end
 result.migrated = [docs(~removeMask), appended];
 report.documents_appended = numel(appended);
 result.summary = recountSummary(result);
 result.openminds_citations = report;
+end
+
+% ===================== the forms =======================================
+
+function rows = formRows(result)
+%FORMROWS The `metadata_editor` sources pass 1 migrated, from
+%   result.source_outputs (did2.convert.v1_to_v2): {id, carried, output_ids}.
+rows = struct('id', {}, 'carried', {}, 'output_ids', {});
+if ~isfield(result, 'source_outputs') || ~isstruct(result.source_outputs) ...
+        || ~isfield(result.source_outputs, 'class_name')
+    return;
+end
+so = result.source_outputs;
+for k = 1:numel(so)
+    if ~strcmp(char(so(k).class_name), 'metadata_editor') || ~so(k).done
+        continue;
+    end
+    outs = so(k).output_ids;
+    if ischar(outs); outs = {outs}; end
+    if ~iscell(outs); outs = {}; end
+    rows(end+1) = struct('id', char(so(k).id), 'carried', logical(so(k).carried), ...
+        'output_ids', {reshape(outs, 1, [])}); %#ok<AGROW>
+end
+end
+
+function n = numelSourceOutputs(result)
+n = 0;
+if isfield(result, 'source_outputs') && isstruct(result.source_outputs)
+    n = numel(result.source_outputs);
+end
+end
+
+function [forms, unkeyed] = formIndex(rows, bodies, idOf)
+%FORMINDEX dataset id -> the forms that state it: {id, carried, indices}, where
+%   INDICES are the batch documents holding an id the form became (with every
+%   `dataset` entity of the dataset id, which the bare dataset entities share:
+%   did2.convert.citationGraphDifferences reads the one that is named). The
+%   dataset id is the session id of those documents (a form's documents carry
+%   the dataset's id as their session; a carried form is its own v1 document).
+%   UNKEYED counts the forms none of whose documents is in the batch.
+forms = containers.Map('KeyType', 'char', 'ValueType', 'any');
+unkeyed = 0;
+for r = 1:numel(rows)
+    idx = find(ismember(idOf, rows(r).output_ids));
+    idx = idx(~cellfun(@isempty, bodies(idx)));
+    dsId = '';
+    for i = idx
+        dsId = datasetIdOf(bodies{i});
+        if ~isempty(dsId); break; end
+    end
+    if isempty(dsId)
+        unkeyed = unkeyed + 1;
+        continue;
+    end
+    entry = struct('id', rows(r).id, 'carried', rows(r).carried, 'indices', idx);
+    if isKey(forms, dsId)
+        forms(dsId) = [forms(dsId), entry];
+    else
+        forms(dsId) = entry;
+    end
+end
 end
 
 % ===================== the plan ========================================

@@ -445,7 +445,8 @@ end
 
 function [epochId, refs] = stimulusLogClocks(ctx, readerId, epochString)
 % the epoch entity of a stimulus log (the epoch of an ingestion_manifest of
-% the file pattern of an acquisition_system whose reader is READERID, whose
+% the file pattern of an acquisition configuration (or acquisition_system)
+% whose reader is READERID, whose
 % local_identifier is EPOCHSTRING) and its clock references: the
 % relative_time_references onto it that state a clock, a start and a
 % duration, and that no statement naming another acquisition system names
@@ -454,7 +455,8 @@ refs = {};
 systems = {};
 for i = ctxReferrers(ctx, readerId)
     d = ctx.docs{i};
-    if strcmp(classNameOf(d), 'acquisition_system') && any(strcmp(edgeIds(d, 'reader_id'), readerId))
+    if any(strcmp(classNameOf(d), did2.convert.acquisitionConfigurationNames())) ...
+            && any(strcmp(edgeIds(d, 'reader_id'), readerId))
         systems{end+1} = char(getIn(d, 'base', 'id')); %#ok<AGROW>
     end
 end

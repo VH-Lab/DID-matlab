@@ -818,6 +818,187 @@ for k = 1:numel(docs)
 end
 end
 
+% ===================== THE FORM IS THE SOURCE ===============================
+%
+% Decided by Jess Haley, 2026-11-20 [metadata editor graph compared with its
+% form] (did-schema did_v2_go_forward_class_audit.md, amending [metadata
+% editor form is the source]): "(1) both present and matching: the graph's
+% documents are dropped as derived; (2) both present and differing: the graph
+% is carried as v1 and counted (carry-174, needs_mapping); (3) a graph with no
+% form converts as today ...; (4) a form with no graph converts as today."
+% The failure each test catches: a dataset with both getting every person
+% twice (the state before the build), a graph dropped although it says
+% something the form does not, and either half touched when the other is
+% absent.
+
+function testAGraphThatMatchesItsFormIsDroppedAsDerived(testCase)
+bodies = [citationGraph(), {editorForm(graphForm(), 'me_01')}];
+[out, rep] = runPass(testCase, bodies);
+verifyEqual(testCase, rep.forms_seen, 1, 'DENOMINATOR: the form');
+verifyEqual(testCase, rep.forms_converted, 1, 'premise: the form converts');
+verifyEqual(testCase, rep.components_planned, 1, 'DENOMINATOR: the graph');
+verifyEqual(testCase, rep.components_compared_with_form, 1);
+verifyGreaterThan(testCase, rep.form_graph_facts_compared, 0, 'compared nothing');
+verifyEqual(testCase, rep.components_dropped_as_derived, 1, ...
+    sprintf('not dropped; differences: %s', strjoin(rep.graph_differences, ' / ')));
+verifyEqual(testCase, rep.graph_documents_dropped_as_derived, 12);
+verifyEqual(testCase, rep.components_consumed, 0, 'the graph was converted too');
+verifyEqual(testCase, rep.components_withheld, 0);
+verifyEqual(testCase, rep.persons_emitted, 0);
+graphIds = cellfun(@(b) char(b.base.id), citationGraph(), 'UniformOutput', false);
+verifyEmpty(testCase, intersect(allIds(out), graphIds), ...
+    'a graph document survived the drop');
+verifyEqual(testCase, numel(classesOf(out, 'person')), 1, ...
+    'one author, one person: the form''s');
+verifyEqual(testCase, numel(classesOf(out, 'funding')), 1);
+verifyEqual(testCase, numel(classesOf(out, 'publication')), 1);
+b = bodyOfClass(out, 'dataset');
+verifyEqual(testCase, b.entity.name, 'A Real Dataset', 'the form''s dataset entity');
+% listed as not migrated, each naming the form
+verifyEqual(testCase, numel(out.not_migrated), 12);
+verifyEqual(testCase, sort({out.not_migrated.id}), sort(graphIds));
+verifyTrue(testCase, all(strcmp({out.not_migrated.class_name}, 'openminds')));
+verifyTrue(testCase, all(strcmp({out.not_migrated.twin_id}, 'me_01')));
+% the round trip lists every dropped id as the accepted loss, none as lost
+wb = did2.convert.roundtrip.wholeBatch(bodies, out);
+hits = wb.accepted_losses(strcmp({wb.accepted_losses.name}, ...
+    'openMINDS graph derived from its form'));
+verifyEqual(testCase, sort({hits.source_id}), sort(graphIds), ...
+    'the dropped ids are not each listed as the accepted loss');
+verifyTrue(testCase, all(strcmp({hits.class_name}, 'openminds')));
+verifyEmpty(testCase, intersect(wb.ids_lost_ids, graphIds), ...
+    'a dropped graph id is counted lost');
+if ~isempty(wb.accepted_id_check.referenced)
+    verifyEmpty(testCase, intersect({wb.accepted_id_check.referenced.id}, graphIds), ...
+        'the graph documents naming each other count against the drop');
+end
+end
+
+function testAGraphThatDiffersFromItsFormIsCarriedAsV1(testCase)
+form = graphForm();
+form.VersionIdentifier = '1.0.2';   % edited after the last Save
+bodies = [citationGraph(), {editorForm(form, 'me_01')}];
+[out, rep] = runPass(testCase, bodies);
+verifyEqual(testCase, rep.forms_converted, 1, 'premise: the form converts');
+verifyEqual(testCase, rep.components_compared_with_form, 1, 'DENOMINATOR');
+verifyEqual(testCase, rep.components_dropped_as_derived, 0);
+verifyEqual(testCase, rep.components_withheld_differing_from_form, 1);
+verifyEqual(testCase, rep.components_withheld, 1);
+verifyEqual(testCase, rep.components_consumed, 0);
+verifyEqual(testCase, rep.graph_documents_carried_differing, 12);
+d = strjoin(rep.graph_differences, ' / ');
+verifyTrue(testCase, contains(d, '1.0.2') && contains(d, '1.0.1'), d);
+verifyEqual(testCase, numel(rep.graph_differences), 2, ...
+    ['only the version differs: ' d]);
+graphIds = cellfun(@(b) char(b.base.id), citationGraph(), 'UniformOutput', false);
+verifyEqual(testCase, sort(intersect(allIds(out), graphIds)), sort(graphIds), ...
+    'a differing graph is carried whole, all or none');
+verifyEqual(testCase, numel(classesOf(out, 'person')), 1, 'the form''s person only');
+verifyFalse(testCase, isfield(out, 'not_migrated') && ~isempty(out.not_migrated));
+notes = did2.convert.reportNote('collect');
+verifyTrue(testCase, isfield(notes, 'carried_as_v1') ...
+    && any(strcmp(notes.carried_as_v1.register_rows, 'carry-174')), ...
+    'the carry does not cite carry-174');
+end
+
+function testAGraphBesideAFormCarriedAsV1IsCarried(testCase)
+form = graphForm();
+form.Comments = 'a field the migrator does not read';   % carries the form (carry-100)
+bodies = [citationGraph(), {editorForm(form, 'me_01')}];
+[out, rep] = runPass(testCase, bodies);
+verifyEqual(testCase, rep.forms_seen, 1, 'DENOMINATOR');
+verifyEqual(testCase, rep.forms_carried_as_v1, 1, 'premise: the form is carried');
+verifyEqual(testCase, rep.components_compared_with_form, 1);
+verifyEqual(testCase, rep.differing_form_carried_as_v1, 1);
+verifyEqual(testCase, rep.components_withheld_differing_from_form, 1);
+verifyEqual(testCase, rep.components_dropped_as_derived, 0);
+verifyEqual(testCase, numel(classesOf(out, 'person')), 0, ...
+    'neither store converted, so no person');
+verifyNotEmpty(testCase, docWithIdIn(out, 'om_dsv'), 'the graph was not carried');
+end
+
+function testAFormWithNoGraphConvertsAsBefore(testCase)
+[out, rep] = runPass(testCase, {editorForm(graphForm(), 'me_01')});
+verifyEqual(testCase, rep.forms_seen, 1, 'DENOMINATOR: the form is seen');
+verifyEqual(testCase, rep.source_outputs_read, 1);
+verifyEqual(testCase, rep.openminds_documents_seen, 0);
+verifyEqual(testCase, rep.components_compared_with_form, 0);
+verifyEqual(testCase, rep.components_dropped_as_derived, 0);
+verifyEqual(testCase, numel(classesOf(out, 'person')), 1, 'the form''s person');
+b = bodyOfClass(out, 'dataset');
+verifyEqual(testCase, b.entity.name, 'A Real Dataset');
+end
+
+function testAGraphWithNoFormConvertsAsBefore(testCase)
+[out, rep] = runPass(testCase, citationGraph());
+verifyEqual(testCase, rep.forms_seen, 0);
+verifyGreaterThan(testCase, rep.source_outputs_read, 0, 'DENOMINATOR: no row read');
+verifyEqual(testCase, rep.components_without_form, 1);
+verifyEqual(testCase, rep.components_compared_with_form, 0);
+verifyEqual(testCase, rep.components_consumed, 1);
+verifyEqual(testCase, rep.components_dropped_as_derived, 0);
+verifyEqual(testCase, idsOfClass(out, 'person'), {'om_person'});
+end
+
+function testTheComparisonReadsTheDocumentsNotTheSpelling(testCase)
+% SPELLING IS NOTATION (did2.convert.citationGraphDifferences): a DOI written
+% as a URL on one side and a CURIE on the other is the same DOI; a differing
+% DOI is a difference
+form = graphForm();
+form.RelatedPublication.DOI = 'https://doi.org/10.1234/EXAMPLE.2024';
+[~, rep] = runPass(testCase, [citationGraph(), {editorForm(form, 'me_01')}]);
+verifyEqual(testCase, rep.components_dropped_as_derived, 1, ...
+    strjoin(rep.graph_differences, ' / '));
+form.RelatedPublication.DOI = '10.1234/another.2024';
+[~, rep] = runPass(testCase, [citationGraph(), {editorForm(form, 'me_01')}]);
+verifyEqual(testCase, rep.components_withheld_differing_from_form, 1);
+verifyTrue(testCase, any(contains(rep.graph_differences, 'doi:10.1234/another.2024')), ...
+    strjoin(rep.graph_differences, ' / '));
+end
+
+function v1 = editorForm(form, formId)
+% a v1 metadata_editor as +metadata_ds_core/saveEditor2Doc.m writes it, for
+% the dataset of citationGraph() ('ds_01')
+tpl = loadTemplate('metadata_editor');
+base = loadTemplate('base');
+v1 = struct();
+v1.base = base.base;
+v1.base.id = formId;
+v1.base.session_id = 'ds_01';
+v1.base.datestamp = '2024-06-02T12:00:00.000Z';
+v1.document_class = tpl.document_class;
+v1.metadata_editor = struct('metadata_structure', form);
+v1 = jsondecode(jsonencode(v1));
+end
+
+function f = graphForm()
+% the form convertFormDataToDocuments writes citationGraph() from: the same
+% values, and a publication title the graph does not hold
+f = struct();
+f.DatasetFullName = 'A Real Dataset';
+f.DatasetShortName = 'ARD';
+f.Description = 'A dataset with real citation metadata.';
+f.VersionIdentifier = '1.0.1';
+f.VersionInnovation = 'first public release';
+f.ReleaseDate = '2024-05-05';
+f.License = 'CC-BY-4.0';
+f.FullDocumentation = 'https://example.org/docs';
+f.Author = struct('givenName', 'Ada', 'familyName', 'Lovelace', ...
+    'contactInformation', struct('email', 'ada@example.org'), ...
+    'digitalIdentifier', struct('identifier', 'https://orcid.org/0000-0002-1825-0097'), ...
+    'affiliation', struct('memberOf', struct('fullName', 'Brandeis University')));
+f.Funding = struct('funder', 'National Institutes of Health', ...
+    'awardTitle', 'A grant with a name', 'awardNumber', 'R01-NS-000000');
+f.RelatedPublication = struct('Publication', 'A paper the graph does not name', ...
+    'DOI', '10.1234/example.2024', 'PMID', '', 'PMCID', '');
+end
+
+function tpl = loadTemplate(name)
+thisDir = fileparts(mfilename('fullpath'));
+tpl = jsondecode(fileread(fullfile(fileparts(thisDir), 'fixtures', ...
+    'ndi_templates', [name '.json'])));
+end
+
 % ===================== helpers ============================================
 
 function [out, rep] = runPass(testCase, v1Bodies)
