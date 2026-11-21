@@ -58,8 +58,10 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       calculation(spike waveforms), observation(session-scoped recording),
 %       observation(pyraview),
 %       relative_time_reference(session anchor of a recording observation),
-%       relative_time_reference(epoch anchor), result.epoch_mint
+%       relative_time_reference(epoch anchor), result.epoch_mint,
+%       manipulation(stimulus presentation)
 %   BATCH-PASS-ADDS: observation(recording per epoch),
+%       opaque_body(stimulus log), observation(stimulus log owner),
 %       manipulation(stimulator per epoch), opaque_body(epoch file by location),
 %       opaque_body(spike train), opaque_body(ingested archive),
 %       relative_time_reference(epoch anchor), relative_reference(epoch anchor),
@@ -71,6 +73,13 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       daqmetadatareader_epochdata_ingested,
 %       observation(session-scoped recording), observation(pyraview),
 %       directed_relation(observes), assertion(element type)
+%
+%   The stimulus-log step ([stimulus log owned by its presentation]) also
+%   reads the v1 stimulus_presentation in DID-matlab's own chain, where pass
+%   1 carries it and no batch pass removes it. It is not in READS: in
+%   NDI-matlab's second pass resolveStimulusPresentations removes it before
+%   this pass runs, and this pass reads the manipulation it became.
+%   READS lists it as manipulation(stimulus presentation).
 %
 %   ---------------------------------------------------------------------
 %   THE EPOCH'S FILES ARE THE OBSERVATIONS' DATA BODIES (2026-10-21)
@@ -386,6 +395,19 @@ report = struct( ...
     'archive_files_unowned',          0, ...
     'archive_kept_referenced',        0, ...
     'archive_dangling_references',    0, ...
+    'stimulus_log_archives_seen',     0, ...
+    'stimulus_log_to_presentation',   0, ...
+    'stimulus_log_to_fallback',       0, ...
+    'stimulus_log_fallback_entity_system', 0, ...
+    'stimulus_log_kept_no_epoch',     0, ...
+    'stimulus_log_kept_no_system',    0, ...
+    'stimulus_log_kept_clock',        0, ...
+    'stimulus_log_kept_several_presentations', 0, ...
+    'stimulus_log_kept_no_anchor',    0, ...
+    'stimulus_log_kept_not_built',    0, ...
+    'stimulus_log_quarantined',       0, ...
+    'stimulus_log_bodies',            0, ...
+    'stimulus_log_clock_references_emitted', 0, ...
     'metadata_archives_inspected',    0, ...
     'metadata_archives_carried_for_ndi', 0, ...
     'pyraview_observations_seen',     0, ...
@@ -1502,6 +1524,18 @@ end
     emittedNewIds, bodies, docIds, readerIdByNavId, archiveIdxByKey, options, report, ...
     groupOwnerCtx);
 appended = [appended, fileBodies];
+
+% --- [stimulus log owned by its presentation] (Jess Haley, 2026-11-19) ------
+% an archive no recording owns that holds only a stimulus system's log
+% (channel_list.bin and an evmktx file): its files become bodies of the
+% epoch's stimulus presentation, or of a fallback observation of the rig's
+% device; the archive then retires below like any other (stimulusLogOwners)
+[logDocs, logQuarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, kindOf, ...
+    sessionIds, docIds, archiveIdxAll, archiveCarried, clockIdsByArchiveIdx, ...
+    clockHasSurvivor, producedById, anchorByEpochId, anchorHasSurvivor, epochIdByKey, ...
+    subjectIdByKey, readerIdByNavId, deviceOfSystem, options, report);
+appended = [appended, logDocs];
+newQuarantine = [newQuarantine, logQuarantine];
 
 % the spike-train bodies: one per surviving spike observation
 [spikeBodies, spikeQ] = mkSpikeBodies(seriesGroups, emittedNewIds, bodies, ...
@@ -2832,6 +2866,340 @@ for i = 1:numel(out)
     if isKey(archiveCarried, c{1}); prev = archiveCarried(c{1}); end
     archiveCarried(c{1}) = [prev, c{2}];
 end
+end
+
+function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, kindOf, ...
+        sessionIds, docIds, archiveIdxAll, archiveCarried, clockIdsByArchiveIdx, ...
+        clockHasSurvivor, producedById, anchorByEpochId, anchorHasSurvivor, epochIdByKey, ...
+        subjectIdByKey, readerIdByNavId, deviceOfSystem, options, report)
+%STIMULUSLOGOWNERS A stimulus system's ingested archive files, owned by the
+%   epoch's stimulus presentation or by a fallback observation.
+%
+%   Decided by Jess Haley, 2026-11-19 [stimulus log owned by its presentation]
+%   (did-schema docs/plans/did_v2_standing_wiring_plan.md): "an epoch's
+%   stimulus-system archive files (the event file `evmktx_group1_seg.nbf_1`
+%   and `channel_list.bin`, read by `vhlabvisspike2`; kept as v1 archives with
+%   no owner ...) become a data body of that epoch's stimulus-presentation
+%   `timed_sequence_manipulation` (pre-#88 name, quoted: the presentation's
+%   `manipulation`), the raw timing it was built from; where an
+%   epoch has no presentation, an observation of the stimulus rig's device
+%   owns them, as [non-specimen channel groups get their own owner] does,
+%   counted; the archive document then goes ([segment length is the time
+%   chunk])." NDI-matlab reads the log from both homes first (NDI-matlab
+%   #1293, ndi.vintage.ingestedStimulusLogBodies).
+%
+%   WHICH ARCHIVES. A v1 `daqreader_*_epochdata_ingested` that no recording
+%   observation's bodies carried (mkEpochFileBodies) and whose every attached
+%   file is `channel_list.bin` or an `evmktx_group<g>_seg.nbf_<s>`, with at
+%   least one event file: denominator `stimulus_log_archives_seen`.
+%
+%   THE PRESENTATION. Pass 1 carries a v1 `stimulus_presentation` whole, id
+%   kept ([stimulus_presentation retired]); NDI-matlab's second pass makes it
+%   the manipulation, same id, so a body owned by that id is the
+%   manipulation's. Both shapes are read, because this pass runs in both
+%   chains: in DID-matlab's own (v1_to_v2, epochMint, this) the presentation
+%   is the v1 document (its `epochid.epochid`, its `stimulus_element_id`); in
+%   NDI-matlab's second pass (ndi.migrate.local) this pass runs AFTER
+%   resolveStimulusPresentations and resolveEpochAnchorFold, so it is the
+%   `manipulation` of value kind `item`, its instrument the stimulator, timed
+%   by a relative_time_reference onto the epoch entity (its epoch is that
+%   entity's local_identifier). The archive's presentation is the one of its session and
+%   epoch (`epochid.epochid`) whose `stimulus_element_id` is a probe of a row
+%   of the probe map of that epoch on the archive's system (the
+%   epochfiles_ingested of a file navigator whose system's reader is the
+%   archive's `daqreader_id`): the join measured on 2026-11-19
+%   (DID-matlab#487: B 1,242, Dab 1,242, Soph 175 archives, each matched to
+%   exactly one, 0 to none, 0 to several). Several: the decision does not say
+%   which wins, so the archive is kept, counted.
+%
+%   THE FALLBACK (no presentation). An `observation` of value kind `time`
+%   (data_body, variable NCIT:C25499 "Event", the term NDI-matlab's second
+%   pass gives an unpacked event channel), entity the rig's device
+%   ([acquisition system is a device entity]; the acquisition system itself,
+%   counted, where the system names no device), instrument and
+%   acquisition_system_id the archive's system, timed by the epoch's anchor
+%   and the archive's clock references, as [non-specimen channel groups get
+%   their own owner] gives an auxiliary group's owner. Its variable is this
+%   function's choice, not stated by the decision.
+%
+%   THE BODIES. One opaque_body per attached series (archiveBodies, the bytes
+%   as attached), notes opening with the key NDI's readers find them by,
+%   "The stimulus log of epoch <e>, read by the NDI reader <r>." (NDI-matlab
+%   ndi.vintage.ingestedStimulusLogKey: the same text, written here because
+%   DID-matlab does not depend on NDI-matlab).
+%
+%   THE CLOCKS. The archive's clock references (minted from its epochtable
+%   with the others, [clock only on the time reference]) are emitted: no
+%   recording names them, and NDI-matlab reads, for an epoch with a log and
+%   no recording on the reader's systems, the references onto the epoch that
+%   no other system's statement names. An archive with a clock not built
+%   (`epoch_clocks_refused`, or a reference that did not validate) is kept,
+%   counted `stimulus_log_kept_clock`.
+%
+%   The archive retires below, by the rule every archive retires by.
+%   Counters: see the report fields `stimulus_log_*`.
+out = {};
+quarantine = [];
+presBy = containers.Map('KeyType', 'char', 'ValueType', 'any');    % sid|epoch -> {id, element}
+sysBy = containers.Map('KeyType', 'char', 'ValueType', 'any');     % sid|reader -> {system ids}
+probesBy = containers.Map('KeyType', 'char', 'ValueType', 'any');  % sid|reader|epoch -> {probe ids}
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isempty(b) || isempty(docIds{k}); continue; end
+    sid = char(sessionIds{k});
+    switch classOf{k}
+        case 'stimulus_presentation'
+            es = archiveEpochOf(b);
+            if isempty(es); continue; end
+            key = [sid '|' es];
+            held = {};
+            if isKey(presBy, key); held = presBy(key); end
+            held{end+1} = struct('id', docIds{k}, ...
+                'element', depValueOf(b, 'stimulus_element_id')); %#ok<AGROW>
+            presBy(key) = held;
+        case {'acquisition_configuration', 'acquisition_system'}
+            % either class name ([acquisition configuration renamed], Jess
+            % Haley 2026-11-19)
+            rdr = depValueOf(b, 'reader_id');
+            if isempty(rdr); continue; end
+            key = [sid '|' rdr];
+            held = {};
+            if isKey(sysBy, key); held = sysBy(key); end
+            held{end+1} = docIds{k}; %#ok<AGROW>
+            sysBy(key) = unique(held);
+        case 'epochfiles_ingested'
+            navId = depValueOf(b, 'filenavigator_id');
+            es = epochStringOf(b);
+            if isempty(navId) || isempty(es) || ~isKey(readerIdByNavId, navId); continue; end
+            key = [sid '|' readerIdByNavId(navId) '|' es];
+            rows = parseProbemapRows(probemapCharOf(b));
+            held = {};
+            if isKey(probesBy, key); held = probesBy(key); end
+            for r = 1:numel(rows)
+                pk = epochKey(sid, probeLocalIdentifier(rows(r).name, rows(r).reference));
+                if isKey(subjectIdByKey, pk)
+                    held{end+1} = subjectIdByKey(pk); %#ok<AGROW>
+                end
+            end
+            probesBy(key) = unique(held);
+    end
+end
+
+% the presentation manipulations of NDI-matlab's second pass (above): each
+% item-valued manipulation, by the epochs its time references are onto
+referentOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
+epochLidOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isempty(b) || isempty(docIds{k}); continue; end
+    if strcmp(classOf{k}, 'relative_time_reference')
+        r = depValueOf(b, 'referent_id');
+        if ~isempty(r); referentOf(docIds{k}) = r; end
+    elseif strcmp(classOf{k}, 'epoch') && isfield(b, 'entity') && isstruct(b.entity)
+        lid = charField(b.entity, {'local_identifier'});
+        if ~isempty(lid); epochLidOf(docIds{k}) = lid; end
+    end
+end
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isempty(b) || isempty(docIds{k}) || ~strcmp(classOf{k}, 'manipulation') ...
+            || ~strcmp(kindOf{k}, 'item')
+        continue;
+    end
+    el = depValueOf(b, 'instrument_id');
+    if isempty(el); continue; end
+    sid = char(sessionIds{k});
+    for t = depValuesOf(b, 'time_reference_id')
+        if ~isKey(referentOf, t{1}) || ~isKey(epochLidOf, referentOf(t{1})); continue; end
+        key = [sid '|' epochLidOf(referentOf(t{1}))];
+        held = {};
+        if isKey(presBy, key); held = presBy(key); end
+        held{end+1} = struct('id', docIds{k}, 'element', el); %#ok<AGROW>
+        presBy(key) = held;
+    end
+end
+
+plans = struct('k', {}, 'ids', {}, 'names', {}, 'clocks', {}, 'anchor', {}, 'kind', {});
+pending = {};
+for i = 1:numel(archiveIdxAll)
+    k = archiveIdxAll(i);
+    if isKey(archiveCarried, k); continue; end
+    b = bodies{k};
+    if ~isStimulusLogArchive(b); continue; end
+    report.stimulus_log_archives_seen = report.stimulus_log_archives_seen + 1;
+    sid = char(sessionIds{k});
+    rdr = depValueOf(b, 'daqreader_id');
+    es = archiveEpochOf(b);
+    if isempty(es) || ~isKey(epochIdByKey, epochKey(sid, es))
+        report.stimulus_log_kept_no_epoch = report.stimulus_log_kept_no_epoch + 1;
+        continue;
+    end
+    epochDocId = epochIdByKey(epochKey(sid, es));
+    sysIds = {};
+    if ~isempty(rdr) && isKey(sysBy, [sid '|' rdr]); sysIds = sysBy([sid '|' rdr]); end
+    if numel(sysIds) ~= 1
+        report.stimulus_log_kept_no_system = report.stimulus_log_kept_no_system + 1;
+        continue;
+    end
+    sysId = sysIds{1};
+    cids = {};
+    if isKey(clockIdsByArchiveIdx, k); cids = clockIdsByArchiveIdx(k); end
+    if isempty(cids) || ~all(cellfun(@(c) isKey(producedById, c), cids))
+        report.stimulus_log_kept_clock = report.stimulus_log_kept_clock + 1;
+        continue;
+    end
+    probes = {};
+    if isKey(probesBy, [sid '|' rdr '|' es]); probes = probesBy([sid '|' rdr '|' es]); end
+    cands = {};
+    if isKey(presBy, [sid '|' es]); cands = presBy([sid '|' es]); end
+    match = {};
+    for c = 1:numel(cands)
+        if ~isempty(cands{c}.element) && any(strcmp(probes, cands{c}.element))
+            match{end+1} = cands{c}.id; %#ok<AGROW>
+        end
+    end
+    match = unique(match);
+    if numel(match) > 1
+        report.stimulus_log_kept_several_presentations = ...
+            report.stimulus_log_kept_several_presentations + 1;
+        continue;
+    end
+    ds = baseField(b, 'creation_timestamp');
+    if isempty(ds); ds = baseField(b, 'datestamp'); end
+    if isempty(ds); ds = did2.convert.migrationTime(); end
+    sp = struct('sid', sid, 'epochString', es, 'datestamp', ds);
+    made = {};
+    anchorId = '';
+    try
+        if isscalar(match)
+            ownerId = match{1};
+            kind = 'presentation';
+        else
+            if ~isKey(anchorByEpochId, epochDocId) ...
+                    || ~isKey(producedById, anchorByEpochId(epochDocId))
+                report.stimulus_log_kept_no_anchor = report.stimulus_log_kept_no_anchor + 1;
+                continue;
+            end
+            anchorId = anchorByEpochId(epochDocId);
+            entity = sysId;
+            if isKey(deviceOfSystem, sysId)
+                entity = deviceOfSystem(sysId);
+                kind = 'fallback';
+            else
+                kind = 'fallback_system';
+            end
+            obs = did2.build.statement('observation', char(entity), ...
+                did2.convert.registeredTerm('NCIT:C25499', 'Event'), [], ...
+                'ValueKind', 'time', 'DataBody', true, ...
+                'TimeReferenceIds', [{anchorId}, reshape(cids, 1, [])], ...
+                'InstrumentId', char(sysId), 'AcquisitionSystemId', char(sysId), ...
+                'Id', did2.convert.mintId('stimulus log owner', baseField(b, 'id')), ...
+                'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
+            ownerId = char(obs.base.id);
+            made{end+1} = obs; %#ok<AGROW>
+        end
+        % a log holds no digital, auxiliary or analog-output group, so
+        % archiveBodies mints no group owner; its series counters are the
+        % recording archives' and are left as they were (a copy is passed)
+        [files, ~, memberNames] = archiveBodies(b, {ownerId}, sp, [], report);
+        key = stimulusLogKey(es, rdr);
+        for m = 1:numel(files)
+            files{m}.data_body.notes = [key ' ' char(files{m}.data_body.notes) ...
+                ' Owned by the epoch''s ' kindText(kind) ...
+                ' ([stimulus log owned by its presentation], Jess Haley, 2026-11-19).'];
+        end
+        made = [made, files]; %#ok<AGROW>
+    catch err
+        report.stimulus_log_kept_not_built = report.stimulus_log_kept_not_built + 1;
+        if isempty(report.body_build_first_error)
+            report.body_build_first_error = sprintf('%s: %s', err.identifier, err.message);
+        end
+        continue;
+    end
+    if isempty(files)
+        report.stimulus_log_kept_not_built = report.stimulus_log_kept_not_built + 1;
+        continue;
+    end
+    ids = cellfun(@(d) char(d.base.id), made, 'UniformOutput', false);
+    plans(end+1) = struct('k', k, 'ids', {ids}, 'names', {[memberNames{:}]}, ...
+        'clocks', {cids}, 'anchor', anchorId, 'kind', kind); %#ok<AGROW>
+    pending = [pending, made]; %#ok<AGROW>
+end
+if isempty(pending); return; end
+res = did2.convert.v1_to_v2(pending, ...
+    'Validate',      options.Validate, ...
+    'SchemaCache',   options.SchemaCache, ...
+    'TargetVersion', options.TargetVersion);
+quarantine = res.quarantine;
+report.stimulus_log_quarantined = numel(res.quarantine);
+survived = containers.Map('KeyType', 'char', 'ValueType', 'any');
+for j = 1:numel(res.migrated)
+    try
+        survived(char(res.migrated{j}.get('base.id'))) = res.migrated{j};
+    catch
+    end
+end
+for p = 1:numel(plans)
+    pl = plans(p);
+    if ~all(cellfun(@(i) isKey(survived, i), pl.ids))
+        % a document of this log did not validate: none of it is emitted, and
+        % the archive keeps its files (kept, counted unowned below)
+        continue;
+    end
+    for j = 1:numel(pl.ids)
+        out{end+1} = survived(pl.ids{j}); %#ok<AGROW>
+    end
+    nBodies = numel(pl.ids);
+    switch pl.kind
+        case 'presentation'
+            report.stimulus_log_to_presentation = report.stimulus_log_to_presentation + 1;
+        otherwise
+            nBodies = nBodies - 1;   % the first is the observation
+            report.stimulus_log_to_fallback = report.stimulus_log_to_fallback + 1;
+            if strcmp(pl.kind, 'fallback_system')
+                report.stimulus_log_fallback_entity_system = ...
+                    report.stimulus_log_fallback_entity_system + 1;
+            end
+            if ~(isKey(anchorHasSurvivor, pl.anchor) && anchorHasSurvivor(pl.anchor))
+                anchorHasSurvivor(pl.anchor) = true;
+                out{end+1} = producedById(pl.anchor); %#ok<AGROW>
+            end
+    end
+    report.stimulus_log_bodies = report.stimulus_log_bodies + nBodies;
+    for c = 1:numel(pl.clocks)
+        if ~isKey(clockHasSurvivor, pl.clocks{c})
+            clockHasSurvivor(pl.clocks{c}) = true;
+            out{end+1} = producedById(pl.clocks{c}); %#ok<AGROW>
+            report.stimulus_log_clock_references_emitted = ...
+                report.stimulus_log_clock_references_emitted + 1;
+            report.epoch_clock_references_emitted = report.epoch_clock_references_emitted + 1;
+        end
+    end
+    archiveCarried(pl.k) = pl.names;
+end
+end
+
+function t = kindText(kind)
+if strcmp(kind, 'presentation')
+    t = 'stimulus presentation';
+else
+    t = 'observation of the stimulus rig (no presentation for the epoch)';
+end
+end
+
+function key = stimulusLogKey(epochId, readerId)
+% NDI-matlab ndi.vintage.ingestedStimulusLogKey, the same text: the epoch id
+% ends at ", read by" and the reader id at the final "."
+key = sprintf('The stimulus log of epoch %s, read by the NDI reader %s.', ...
+    char(epochId), char(readerId));
+end
+
+function tf = isStimulusLogArchive(b)
+% every attached file a stimulus system's log: channel_list.bin or an evmktx
+% segment, with at least one evmktx
+names = archiveFileNames(b);
+isEv = ~cellfun(@isempty, regexp(names, '^evmktx_group\d+_seg\.nbf_\d+$', 'once'));
+tf = ~isempty(names) && any(isEv) && all(isEv | strcmp(names, 'channel_list.bin'));
 end
 
 function [made, nMembers, memberNames, groupOwners, report] = archiveBodies(archive, owners, sp, ownerCtx, report)
