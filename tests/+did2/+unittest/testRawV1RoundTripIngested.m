@@ -435,13 +435,13 @@ sysIds = unique(sysIds, 'stable');
 for k = 1:numel(sysIds)
     sys = docWithId(out, sysIds{k});
     if isempty(sys); continue; end
-    if ~strcmp(char(did2.unittest.helpers.classKey(sys)), 'acquisition_system')
+    if ~did2.convert.isAcquisitionConfiguration(char(did2.unittest.helpers.classKey(sys)))
         % the referent is the rig's device entity ([a rig's clock belongs to
         % its device], Jess Haley 2026-11-19): the system is the
         % acquisition_system naming it by `device_id`
         docs{end+1} = sys; %#ok<AGROW>
         sys = [];
-        for c = ofClass(out, 'acquisition_system')
+        for c = ofClass(out, did2.convert.acquisitionConfigurationClass())
             if any(strcmp(edgesOf(c{1}, 'device_id'), sysIds{k})); sys = c{1}; break; end
         end
         if isempty(sys); continue; end

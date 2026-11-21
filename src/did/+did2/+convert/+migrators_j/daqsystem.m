@@ -1,5 +1,7 @@
 function bodies = daqsystem(preBody)
-%DAQSYSTEM Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_system`
+%DAQSYSTEM Brainstorm-J migrator: did_v1 daqsystem -> `acquisition_configuration`
+%   (`acquisition_system` until [acquisition configuration renamed], Jess
+%   Haley 2026-11-19; written as the class the loaded schema holds)
 %   (configuration off `base`) + a `software` entity for its own
 %   implementation class + the rig's `device` entity. 1 -> 3 (1 -> 2 when
 %   there is no class name; no device when the rig has no name).
@@ -407,7 +409,17 @@ if ~isempty(srcName)
     edges.device_id = device{1}.base.id;
 end
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
-out = did2.build.document('acquisition_system', f, o{:});
+% THE CLASS. Decided by Jess Haley, 2026-11-19 [acquisition configuration
+% renamed] (did-schema docs/plans/did_v2_standing_wiring_plan.md):
+% `acquisition_system` is renamed `acquisition_configuration`, how a device's
+% recordings are read. Written as the class the loaded schema holds
+% (did2.convert.acquisitionConfigurationClass), so it is the new name once
+% did-schema renames the class and the old one until then.
+if strcmp(did2.convert.acquisitionConfigurationClass(), 'acquisition_configuration')
+    out = did2.build.document('acquisition_configuration', f, o{:});
+else
+    out = did2.build.document('acquisition_system', f, o{:});
+end
 bodies = [{out}, software, device];
 end
 

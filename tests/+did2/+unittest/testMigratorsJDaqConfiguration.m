@@ -127,7 +127,7 @@ did2.unittest.helpers.installSchemaPath(testCase, ...
     'skipping the V_eta daq-configuration validation tests');
 try
     cache = did2.schema.cache.shared();
-    cache.getClass('acquisition_system');
+    cache.getClass(did2.convert.acquisitionConfigurationClass());
     % did-schema #88: `acquisition_metadata_reader` became
     % `epoch_parameter_reader` (#73 item 65), and `software` is an `entity`
     % of type software (one entity class).
@@ -486,10 +486,10 @@ function testDaqsystemClassNameNowFoldsToASoftwareEntity(testCase)
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
 % + the rig's device entity, Jess Haley 2026-11-19 [acquisition system is a
 % device entity] (testDaqsystemMintsTheRigsDevice)
-verifyEqual(testCase, classNames(out), {'acquisition_system', 'software', 'device'});
+verifyEqual(testCase, classNames(out), {did2.convert.acquisitionConfigurationClass(), 'software', 'device'});
 verifyEqual(testCase, out.summary.unconverted_count, 0);
 
-sys = firstOfClass(out, 'acquisition_system');
+sys = firstOfClass(out, did2.convert.acquisitionConfigurationClass());
 sw  = firstOfClass(out, 'software');
 
 % The class name is carried as the software entity's identity, and the edge
@@ -517,7 +517,7 @@ function testDaqsystemMintsTheRigsDevice(testCase)
 % device type requires `name`, and the rig's device writes `name` only, so
 % its local_identifier is empty.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
-sys = firstOfClass(out, 'acquisition_system');
+sys = firstOfClass(out, did2.convert.acquisitionConfigurationClass());
 dev = firstOfClass(out, 'device');
 verifyNotEmpty(testCase, dev, 'the daqsystem mints no device entity');
 verifyEqual(testCase, dev.get('entity.name'), 'intan1');
@@ -563,7 +563,7 @@ function testDaqsystemSoftwareIdIsDistinctFromReaderId(testCase)
 % entirely. A fold that collapsed them would silently claim the rig and its
 % reader are the same software.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {}));
-sys = firstOfClass(out, 'acquisition_system');
+sys = firstOfClass(out, did2.convert.acquisitionConfigurationClass());
 verifyEqual(testCase, depValue(sys, 'reader_id'), 'reader_id_1');
 verifyNotEqual(testCase, depValue(sys, 'software_id'), 'reader_id_1');
 verifyNotEqual(testCase, depValue(sys, 'software_id'), '');
@@ -577,7 +577,7 @@ function testDaqsystemSoftwareTakesAFreshIdNotTheSystemsOwn(testCase)
 % -- so the software entity gets a fresh id, as in filenavigator.m and
 % daqmetadatareader.m. Overwriting it here would give two documents one id.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {}));
-sys = firstOfClass(out, 'acquisition_system');
+sys = firstOfClass(out, did2.convert.acquisitionConfigurationClass());
 sw  = firstOfClass(out, 'software');
 verifyEqual(testCase, sys.get('base.id'), 'system_id_1');
 verifyNotEqual(testCase, sw.get('base.id'), 'system_id_1');
@@ -593,7 +593,7 @@ function testDaqsystemWithAClassNameAndNoEdgesIsRefused(testCase)
 v1 = daqsystemV1('ndi.daq.system.image', {});
 v1.depends_on = struct('name', {}, 'id', {});
 out = runJ(v1);
-verifyFalse(testCase, any(strcmp(classNames(out), 'acquisition_system')));
+verifyFalse(testCase, any(cellfun(@did2.convert.isAcquisitionConfiguration, classNames(out))));
 verifyEqual(testCase, numel(out.quarantine), 1);
 verifySubstring(testCase, out.quarantine(1).reason, '_id');
 end
@@ -606,7 +606,7 @@ function testDaqsystemFoldsTheThreeEdges(testCase)
 % software beside it, which is what makes software_id's optionality real rather
 % than theoretical.
 out = runJ(daqsystemV1('', {'md_id_1', 'md_id_2'}));
-verifyEqual(testCase, classNames(out), {'acquisition_system', 'device'});
+verifyEqual(testCase, classNames(out), {did2.convert.acquisitionConfigurationClass(), 'device'});
 sys = out.migrated{1};
 verifyFalse(testCase, hasDependency(sys, 'software_id'));
 verifyEqual(testCase, depValue(sys, 'reader_id'), 'reader_id_1');
@@ -624,7 +624,7 @@ out = runJ(daqsystemV1('', {}));
 sys = out.migrated{1};
 verifyEqual(testCase, sys.get('base.id'), 'system_id_1');
 % #88: V_eta writes no base.name; the system's name is acquisition_system.name
-verifyEqual(testCase, sys.get('acquisition_system.name'), 'intan1');
+verifyEqual(testCase, sys.get([did2.convert.acquisitionConfigurationClass() '.name']), 'intan1');
 end
 
 function testDaqsystemSkipsTheEmptyBareFamilyEntry(testCase)
@@ -656,7 +656,7 @@ v1 = daqsystemV1('', {});
 v1.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
                        'id',   {'nav_id_1',         ''});
 out = runJ(v1);
-verifyFalse(testCase, any(strcmp(classNames(out), 'acquisition_system')));
+verifyFalse(testCase, any(cellfun(@did2.convert.isAcquisitionConfiguration, classNames(out))));
 verifyEqual(testCase, numel(out.quarantine), 1);
 verifySubstring(testCase, out.quarantine(1).reason, 'reader_id');
 end
@@ -693,7 +693,7 @@ function testDaqsystemFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqsystemV1('', {'md_id_1', 'md_id_2'}));
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
-verifyEqual(testCase, classNames(out), {'acquisition_system', 'device'});
+verifyEqual(testCase, classNames(out), {did2.convert.acquisitionConfigurationClass(), 'device'});
 end
 
 function testDaqsystemClassNameFoldValidatesUnderVEta(testCase)
@@ -711,7 +711,7 @@ function testDaqsystemClassNameFoldValidatesUnderVEta(testCase)
 assumeVEtaSchemas(testCase);
 out = runJValidated(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
 verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
-verifyEqual(testCase, classNames(out), {'acquisition_system', 'software', 'device'});
+verifyEqual(testCase, classNames(out), {did2.convert.acquisitionConfigurationClass(), 'software', 'device'});
 end
 
 function testTheResidualDaqsystemIsCarriedWholeAsV1(testCase)
