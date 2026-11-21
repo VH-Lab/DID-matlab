@@ -187,24 +187,27 @@ function testRehydrateSurvivesAClassWhoseBlockDeclaresNoFields(testCase)
 %   pattern and the third did not copy it -- which is why this asserts the
 %   BEHAVIOUR rather than trusting the reading.
 cache = localCache(testCase);
-if ~cache.hasClass('acquisition_system')
+% the rig's configuration under the name this schema holds ([acquisition
+% configuration renamed], Jess Haley 2026-11-19)
+cls = did2.convert.acquisitionConfigurationClass(cache);
+if ~cache.hasClass(cls)
     assumeFail(testCase, ...
-        'acquisition_system is not in this schema set; nothing to check.');
+        [cls ' is not in this schema set; nothing to check.']);
 end
-info = cache.resolvePlacement('acquisition_system');
+info = cache.resolvePlacement(cls);
 testCase.log(sprintf( ...
-    'DENOMINATOR: acquisition_system contributes %d block(s); %d carry a fieldsByBlock entry', ...
+    'DENOMINATOR: %s contributes %d block(s); %d carry a fieldsByBlock entry', cls, ...
     numel(info.blocksContributed), ...
     sum(cellfun(@(b) double(isKey(info.fieldsByBlock, b)), info.blocksContributed))));
 
-doc = did2.document.blank('acquisition_system', 'SchemaCache', cache);
+doc = did2.document.blank(cls, 'SchemaCache', cache);
 s = doc.toStruct();
 
 % Must not throw. The assertion IS that the call returns.
 out = cache.rehydrate(s);
 verifyTrue(testCase, isstruct(out), ...
     'rehydrate did not return a struct for a class with a fieldless block.');
-verifyTrue(testCase, isfield(out, 'acquisition_system'), ...
+verifyTrue(testCase, isfield(out, cls), ...
     'rehydrate dropped the fieldless block it was iterating over.');
 end
 
