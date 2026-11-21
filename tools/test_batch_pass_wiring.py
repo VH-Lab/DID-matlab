@@ -212,6 +212,11 @@ NOT_RENDERED_YET = {
     },
     "openminds_citations": {
         "withheld_reasons",
+        # graph_differences (added 2026-11-20, [metadata editor graph compared
+        #     with its form]) -- NOT A COUNTER: a CELL ARRAY of difference
+        #     lines, a sample per component whose graph differs from its form.
+        #     `components_withheld_differing_from_form` is the number.
+        "graph_differences",
     },
     # deferred_bath_resolution.unexpected_error_reasons
     #     NOT A COUNTER, same shape and same reason as withheld_reasons above:
