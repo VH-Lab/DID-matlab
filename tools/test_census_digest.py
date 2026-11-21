@@ -2088,6 +2088,16 @@ class TestOpenmindsCitationsRendering(ThreePassCase):
         text, _ = self.run_digest()
         self.assertIn("planned (2) != consumed (1) + withheld (0)", text)
 
+    def test_a_graph_dropped_as_derived_is_a_fourth_exit(self):
+        # [metadata editor graph compared with its form] (Jess Haley,
+        # 2026-11-20): a component whose graph matches its dataset's form is
+        # dropped, so the sum holds with it and breaks without it
+        self._corpus("A", openminds_citations=self._om(
+            components_withheld=0, components_dropped_as_derived=1))
+        text, _ = self.run_digest()
+        self.assertNotIn("planned (2) != consumed (1)", text)
+        self.assertIn("DROPPED: graph matches its form (derived)", text)
+
     def test_a_broken_seen_sum_is_named(self):
         self._corpus("A", openminds_citations=self._om(
             openminds_components_seen=9))

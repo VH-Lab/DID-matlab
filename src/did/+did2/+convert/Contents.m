@@ -97,6 +97,11 @@
 %     resolveDeferredBaths, resolveEpochProbemap, resolveOpenmindsCitations,
 %     resolveRegionParts, resolveResponseParameters, resolveValidIntervals
 %     (census only)
+%     citationGraphDifferences - where an openMINDS dataset graph's v2
+%                        documents differ from its metadata_editor form's
+%                        (resolveOpenmindsCitations drops a graph that
+%                        matches, [metadata editor graph compared with its
+%                        form])
 %
 %   Subpackages
 %     +migrators_j     - the did_v1 -> V_eta per-document migrators, one file
