@@ -463,7 +463,7 @@ v1 = writerDaqsystem('vhvis_spike2', {'mdr_1', 'mdr_2'});
 out = runRaw(v1);
 docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
 for k = 1:numel(docs)
-    if strcmp(docs{k}.document_class.class_name, 'acquisition_system')
+    if did2.convert.isAcquisitionConfiguration(docs{k}.document_class.class_name)
         keep = ~strcmp({docs{k}.depends_on.document_id}, 'mdr_2');
         docs{k}.depends_on = docs{k}.depends_on(keep);
     end
@@ -483,7 +483,7 @@ function testTheRigsDeviceRoundTripsAndIsChecked(testCase)
 v1 = writerDaqsystem('vhvis_spike2', {'mdr_1'});
 docs = cellfun(@(d) d.toStruct(), runRaw(v1).migrated, 'UniformOutput', false);
 classes = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), docs, 'UniformOutput', false);
-verifyEqual(testCase, classes, {'acquisition_system', 'software', 'device'});
+verifyEqual(testCase, classes, {did2.convert.acquisitionConfigurationClass(), 'software', 'device'});
 dev = docs{strcmp(classes, 'device')};
 verifyEqual(testCase, char(dev.entity.name), 'vhvis_spike2');
 verifyEqual(testCase, char(dev.entity.local_identifier), 'vhvis_spike2');
@@ -535,6 +535,37 @@ for n = names
     r = did2.convert.roundtrip.check(rule, relabelled);
     verifyRoundTrip(testCase, r, label, {});
 end
+end
+
+function testARenamedSchemaWritesAcquisitionConfiguration(testCase)
+% [acquisition configuration renamed] (Jess Haley, 2026-11-19): the migrator
+% writes the class the loaded schema holds. On a copy of the loaded schema
+% that renames the class (did2.unittest.helpers.acquisitionConfigurationSchema)
+% a daqsystem becomes an `acquisition_configuration` that validates, its
+% round trip rebuilds v1 exactly, and the clock fold finds the two rigs a
+% channel rule names under the new name.
+did2.unittest.helpers.acquisitionConfigurationSchema(testCase);
+v1 = writerDaqsystem('vhvis_spike2', {'mdr_1'});
+docs = cellfun(@(d) d.toStruct(), runRaw(v1).migrated, 'UniformOutput', false);
+classes = cellfun(@(d) char(did2.unittest.helpers.classKey(d)), docs, 'UniformOutput', false);
+verifyEqual(testCase, classes, {'acquisition_configuration', 'software', 'device'});
+cfg = docs{1};
+verifyEqual(testCase, char(cfg.acquisition_configuration.name), 'vhvis_spike2');
+verifyFalse(testCase, isfield(cfg, 'acquisition_system'));
+validated = did2.convert.v1_to_v2(v1, 'Validate', true, 'TargetVersion', 'did_v2');
+verifyEqual(testCase, validated.summary.quarantine_count, 0, 'quarantined under the renamed schema');
+r = did2.convert.roundtrip.check(v1, docs);
+verifyRoundTrip(testCase, r, 'daqsystem as acquisition_configuration', {});
+rule = channelRule();
+batch = {writerDaqsystem('vhtaste_sync', {}), writerDaqsystem('vhtaste_bpod', {'mdr_1'}), rule};
+out = did2.convert.resolveClockAlignment(runRaw(batch), 'Validate', false, 'TargetVersion', 'did_v2');
+[inEdge, outEdge] = did2.unittest.helpers.syncEdgeNames();
+c = docWithId(out, rule.base.id);
+assertNotEmpty(testCase, c, 'the rule did not fold');
+verifyNumElements(testCase, edgesOf(c, inEdge), 1, inEdge);
+verifyNumElements(testCase, edgesOf(c, outEdge), 1, outEdge);
+r = did2.convert.roundtrip.check(rule, foldDocs(out, rule.base.id));
+verifyRoundTrip(testCase, r, 'the channel rule, rigs as acquisition_configuration', {});
 end
 
 function d = toStructIf(d)
@@ -780,7 +811,7 @@ for role = {'input_id', 'output_id', 'from_acquisition_system_id', 'to_acquisiti
     for s = edgesOf(cfg, role{1})
         d = docWithId(out, s{1});
         docs{end+1} = d; %#ok<AGROW>
-        if isempty(d) || strcmp(char(did2.unittest.helpers.classKey(d)), 'acquisition_system')
+        if isempty(d) || did2.convert.isAcquisitionConfiguration(char(did2.unittest.helpers.classKey(d)))
             continue;
         end
         % the end names the rig's device entity ([a rig's clock belongs to its
@@ -788,7 +819,7 @@ for role = {'input_id', 'output_id', 'from_acquisition_system_id', 'to_acquisiti
         % naming it by `device_id`
         for k = 1:numel(out.migrated)
             c = out.migrated{k};
-            if strcmp(char(did2.unittest.helpers.classKey(c)), 'acquisition_system') ...
+            if did2.convert.isAcquisitionConfiguration(char(did2.unittest.helpers.classKey(c))) ...
                     && any(strcmp(edgesOf(c, 'device_id'), s{1}))
                 docs{end+1} = c; %#ok<AGROW>
             end
