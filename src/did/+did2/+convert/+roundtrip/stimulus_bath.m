@@ -145,7 +145,7 @@ end
 function rows = propertyRow(rows, q, name)
 % A whole-mixture property the pass put on the formulation (`ph`,
 % `osmolarity`) as the row it was read from, with no node (v2 keeps none)
-[sv, hasSource] = cellSource(q);   % source_value, or the new shape's source_numeric
+[sv, hasSource] = cellSource(q);   % source_numeric (an old source_value is refused)
 if ~isstruct(q) || ~isscalar(q) || ~hasSource
     return;
 end

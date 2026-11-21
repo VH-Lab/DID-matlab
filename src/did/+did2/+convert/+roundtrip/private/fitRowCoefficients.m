@@ -13,7 +13,7 @@ for k = 1:numel(c)
         p = [];
         return;
     end
-    v = coefValue(c{k});   % `value`, or the new shape's `numeric`
+    v = coefValue(c{k});   % `numeric` (an old `value` is refused)
     if isempty(v)
         v = NaN;   % a NaN coefficient read back from JSON null
     end

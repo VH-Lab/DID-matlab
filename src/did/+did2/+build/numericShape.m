@@ -25,8 +25,10 @@ function shape = numericShape(newShape)
 %   writers write the new one -- this change, which switched the default
 %   from 'old'; (3) did-schema's class files change; (4) readers drop the old
 %   shape. Whatever the setting, every builder and the validator accept both
-%   shapes. 'old' is kept for tests that compare the two, and for a caller
-%   that still has to write the old shape until its own readers follow.
+%   shapes. Since step 4 ([no migrated database is kept], Jess Haley,
+%   2026-11-19) the readers (did2.read) refuse a number in the old shape,
+%   'did2:read:oldNumericShapeReMigrate'; 'old' is kept for the tests that
+%   build it to check that refusal and the validator.
 %
 %   The migrators (+did2/+convert/+migrators_j) and batch passes
 %   (+did2/+convert/*.m) that build a numeric item or value cell by hand

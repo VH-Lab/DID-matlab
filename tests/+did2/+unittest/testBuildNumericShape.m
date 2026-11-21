@@ -1,13 +1,15 @@
 function tests = testBuildNumericShape
-%TESTBUILDNUMERICSHAPE Step 1 of [one shape for measured numbers]: both shapes read.
+%TESTBUILDNUMERICSHAPE [one shape for measured numbers]: both shapes build, the new one reads.
 %
 %   Decided by Jess Haley, 2026-11-17, did-schema
 %   docs/plans/did_v2_numeric_shape_plan.md [one shape for measured numbers].
 %   Its section 9, step 1: DID-matlab's validator and did2.build read BOTH the
 %   old numeric shape and the new one, with no change for today's documents;
 %   the builders can write the new shape (did2.build.numericShape; the default
-%   since step 2, which switched it); and one reader (did2.read.numeric for a list
-%   item, did2.read.canonical for a value) returns the same answer for both.
+%   since step 2, which switched it). Since step 4 ([no migrated database is
+%   kept], Jess Haley, 2026-11-19) the readers (did2.read.numeric for a list
+%   item, did2.read.canonical for a value) read the new shape only: a number
+%   in the old shape is the error 'did2:read:oldNumericShapeReMigrate'.
 %
 %   For each kind -- covariates (a number, a matrix, origin + spacing),
 %   conditions, method parameters, compression parameters, value cells (one
@@ -15,7 +17,8 @@ function tests = testBuildNumericShape
 %   document is built in the OLD shape and in the NEW one; both pass the
 %   builder's rules and the validator (did2.build.statement validates, and
 %   did2.schema.cache.validateDocument is called again on each); and the
-%   reader returns the same thing for both. The schema JSON (did-schema) still
+%   reader reads the new one and refuses the old one (an item whose form is
+%   the same in both shapes, a term or a count, reads the same). The schema JSON (did-schema) still
 %   describes only the old shape: the new fields are declared by
 %   did2.schema.numericShapeFields, and it is those code paths that validate
 %   the new-shape documents here.
@@ -167,6 +170,12 @@ for shape = {'old', 'new'}
         'Shape', shape{1});
     m = did2.build.parameter('colour palette', 'Matrix', [1 2; 3 4], 'Unit', 'arbitrary unit', ...
         'Shape', shape{1});
+    if strcmp(shape{1}, 'old')
+        for x = {c, p, m}
+            verifyError(testCase, @() did2.read.numeric(x{1}), OLD, 'old shape');
+        end
+        continue;
+    end
     rc = did2.read.numeric(c);
     rp = did2.read.numeric(p);
     rm = did2.read.numeric(m);
@@ -198,7 +207,8 @@ end
 verifySameReading(testCase, docs.old.statement.conditions, docs.new.statement.conditions);
 verifySameReading(testCase, docs.old.interaction.method.parameters, ...
     docs.new.interaction.method.parameters);
-verifyEqual(testCase, did2.read.canonical(docs.new), did2.read.canonical(docs.old));
+verifyError(testCase, @() did2.read.canonical(docs.old), OLD, 'the old series is refused');
+verifyEqual(testCase, did2.read.canonical(docs.new).numbers, zeros(1, 6));
 verifyTrue(testCase, isfield(newCovs, 'numeric') && ~isfield(newCovs, 'quantity'));
 end
 
@@ -224,9 +234,11 @@ new = did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, 'SourceUnit', mV
 verifyEqual(testCase, new.volts, 0.012);
 verifyEqual(testCase, new.source_numeric, 12);
 verifyFalse(testCase, isfield(new, 'source_value'));
-verifyEqual(testCase, did2.read.canonical(new), did2.read.canonical(old));
+verifyError(testCase, @() did2.read.canonical(old), OLD, 'the old source_value is refused');
+verifyEqual(testCase, did2.read.canonical(new).numbers, 0.012);
 r = did2.read.canonical(new, 'Class', 'voltage');
 verifyEqual(testCase, {r.field, r.numbers, r.source_numbers}, {'volts', 0.012, 12});
+verifyEqual(testCase, r.source_unit, mV);
 end
 
 function testASeriesInBothShapes(testCase)
@@ -240,12 +252,14 @@ verifyEqual(testCase, size(old), [1 3]);
 verifyEqual(testCase, size(new), [1 1]);
 verifyEqual(testCase, new.volts, [0.012 0.013 0.014]);
 verifyEqual(testCase, new.source_numeric, [12 13 14]);
-ro = did2.read.canonical(old);
+verifyError(testCase, @() did2.read.canonical(old), OLD, 'one cell per reading is refused');
 rn = did2.read.canonical(new);
-verifyEqual(testCase, rn, ro);
+verifyEqual(testCase, rn.numbers, [0.012 0.013 0.014]);
+verifyEqual(testCase, rn.source_numbers, [12 13 14]);
 verifyEqual(testCase, rn.n, 3);
 verifyEqual(testCase, rn.source_unit, mV);
-% both as statements
+verifyEqual(testCase, rn.approximate, false);
+% both as statements: both validate; the new one reads, the old one is refused
 for v = {old, new}
     doc = did2.build.statement('observation', did.ido.unique_id(), 'voltage', v{1}, ...
         'Dimensions', did2.build.dimension('time', 3), ...
@@ -253,7 +267,11 @@ for v = {old, new}
         'TimeReferenceIds', {did.ido.unique_id()}, 'SessionId', testCase.TestData.sid, ...
         'ValueKind', 'voltage');
     did2.schema.cache.shared().validateDocument(doc);
-    verifyEqual(testCase, did2.read.canonical(doc).numbers, [0.012 0.013 0.014]);
+    if numel(v{1}) > 1
+        verifyError(testCase, @() did2.read.canonical(doc), OLD, 'the old statement is refused');
+    else
+        verifyEqual(testCase, did2.read.canonical(doc).numbers, [0.012 0.013 0.014]);
+    end
 end
 % one series has one source unit
 verifyError(testCase, @() did2.build.valueCell('voltage', [1 2], 'SourceUnit', {mV, ...
@@ -266,7 +284,8 @@ new = did2.build.valueCell('concentration', [0.1 0.2], 'Canonical', 'molar', 'Sh
 verifyEqual(testCase, new.molar, [0.1 0.2]);
 r = did2.read.canonical(new, 'Class', 'concentration');
 verifyEqual(testCase, {r.field, r.numbers}, {'molar', [0.1 0.2]});
-verifyEqual(testCase, did2.read.canonical(old, 'Class', 'concentration'), r);
+verifyError(testCase, @() did2.read.canonical(old, 'Class', 'concentration'), OLD, ...
+    'one cell per reading is refused');
 end
 
 function testAMixOfTheTwoShapesIsRefused(testCase)
@@ -333,8 +352,9 @@ for k = 1:2
     cache.validateDocument(docs{k});
 end
 verifyEqual(testCase, docs{2}.logical.value, struct('logical', true));
-verifyEqual(testCase, did2.read.canonical(docs{2}), did2.read.canonical(docs{1}));
+verifyError(testCase, @() did2.read.canonical(docs{1}), OLD, 'the bare logical is refused');
 verifyEqual(testCase, did2.read.canonical(docs{2}).numbers, true);
+verifyEqual(testCase, did2.read.canonical(docs{2}).field, 'logical');
 bad = docs{2};
 bad.logical.value = struct('logical', true, 'extra', 1);
 verifyError(testCase, @() cache.validateDocument(bad), 'did2:validation:typeMismatch');
@@ -417,19 +437,36 @@ doc = did2.build.statement('observation', did.ido.unique_id(), 'voltage', ...
 end
 
 function verifySameReading(testCase, old, new)
-% the reader returns the same thing for both shapes
-ro = did2.read.numeric(old);
-rn = did2.read.numeric(new);
-verifyEqual(testCase, numel(rn), numel(ro));
-for k = 1:numel(ro)
-    a = ro(k);
-    b = rn(k);
-    verifyEqual(testCase, b.form, a.form);
-    verifyEqual(testCase, b.numbers, a.numbers);
-    verifyEqual(testCase, b.source_numbers, a.source_numbers);
-    verifyEqual(testCase, b.unit, a.unit);
-    verifyEqual(testCase, b.source_unit, a.source_unit);
-    verifyEqual(testCase, [b.origin b.spacing], [a.origin a.spacing]);
-    verifyEqual(testCase, [b.source_origin b.source_spacing], [a.source_origin a.source_spacing]);
+% item by item: an old item holding an old-shape form is refused
+% ([no migrated database is kept], Jess Haley, 2026-11-19), and the new
+% item states a number of its own; an item whose form is the same in both
+% shapes (a term, a count) reads the same
+old = asItems(old);
+new = asItems(new);
+verifyEqual(testCase, numel(new), numel(old));
+for k = 1:min(numel(old), numel(new))
+    rn = did2.read.numeric(new{k});
+    if ~isempty(did2.read.oldNumericForm(old{k}))
+        verifyError(testCase, @() did2.read.numeric(old{k}), OLD, ...
+            sprintf('old item %d is refused', k));
+        verifyNotEmpty(testCase, rn.form, sprintf('new item %d states a number', k));
+        verifyTrue(testCase, isempty(did2.read.oldNumericForm(new{k})), ...
+            sprintf('new item %d holds no old form', k));
+    else
+        verifyEqual(testCase, rn, did2.read.numeric(old{k}), sprintf('item %d', k));
+    end
+end
+end
+
+function c = asItems(x)
+if iscell(x)
+    c = reshape(x, 1, []);
+else
+    c = num2cell(reshape(x, 1, []));
+end
+end
+
+function id = OLD
+id = 'did2:read:oldNumericShapeReMigrate';
 end
 end

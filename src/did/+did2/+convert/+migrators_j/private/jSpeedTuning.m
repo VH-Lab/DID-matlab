@@ -102,8 +102,8 @@ cn = char(did2.convert.v1read.readStamp(b).class_name);
 end
 
 function x = numberOfItem(c)
-% a coefficient or constraint's number: old {variable, value}, new
-% {variable, numeric} ([one shape for measured numbers], did2.read.numeric)
+% a coefficient or constraint's number: {variable, numeric} ([one shape for
+% measured numbers], did2.read.numeric)
 r = did2.read.numeric(c);
 x = r.numbers;
 end

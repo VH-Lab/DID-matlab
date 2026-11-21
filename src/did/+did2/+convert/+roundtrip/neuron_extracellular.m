@@ -199,7 +199,7 @@ if numel(dims) ~= 2
 end
 nT = numberOf(getIn(dims{1}, 'n'));
 nC = numberOf(getIn(dims{2}, 'n'));
-% one reading per cell (old numeric shape) or one cell of readings (new)
+% one cell of readings (cellReadings refuses one cell per reading)
 x = cellReadings(getIn(b, 'voltage', 'value'));
 if numel(x) ~= nT * nC
     bad{end+1} = sprintf('%d waveform values for %d x %d', numel(x), nT, nC);

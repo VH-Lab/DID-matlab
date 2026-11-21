@@ -21,7 +21,7 @@ function tests = testIngestedArchiveFiles
 %   (ndi.migrate.internal.ingestedArchiveBodies at e040dfe4: a converted
 %   channel group is a sampled_body, dimensions time x channel, covariates
 %   time (origin 0, spacing 1/rate), channel number, offset, scale (volts,
-%   the v1 scale as source_value), its condition Channel = the channel type,
+%   the v1 scale as source_numeric), its condition Channel = the channel type,
 %   its `filename` kept). What the decisions add and NDI-matlab does not
 %   write yet: the "time channel" covariate (EMPTY:0000374), the name
 %   covariate (a text covariate along the channel dimension, variable
@@ -91,8 +91,8 @@ function testTheRowsFollowNdisRuleAfterAJsonRoundTrip(testCase)
 % 1e-9 of a whole number is that number
 [docs, bodies, ex] = secondPassEpoch(testCase);
 ai = bodies{1};
-ai.data.covariates{5}.quantity.value = [1 NaN];
-ai.data.covariates{1}.spacing.value = 1 / 30000 * (1 + 1e-12);
+ai.data.covariates{5}.numeric = [1 NaN];
+ai.data.covariates{1}.spacing = 1 / 30000 * (1 + 1e-12);
 j = jsondecode(jsonencode(ai));
 docs{5} = j;
 R = did2.convert.roundtrip.ingestedArchiveFiles({j, bodies{2}}, docs);
@@ -282,7 +282,7 @@ function testADanglingTimeChannelIsRebuiltToo(testCase)
 % gives none of them a rate
 [docs, bodies, ex] = secondPassEpoch(testCase);
 ai = bodies{1};
-ai.data.covariates{5}.quantity.value = [1 2];
+ai.data.covariates{5}.numeric = [1 2];
 docs{5} = ai;
 R = did2.convert.roundtrip.ingestedArchiveFiles({ai, bodies{2}}, docs);
 names = {R.channel_list.name};
@@ -540,7 +540,7 @@ ai.depends_on(end+1) = struct('name', 'key_id', 'value', 'tv1');
 ax = groupBody('b_ax', 'obs_rec', T('EMPTY:0000375', 'auxiliary input channel'), [1 2], {}, ...
     'Filename', 'ax_group1_seg.nbf_#', 'N', 1500, 'Chunk', 1000);
 ax.data.covariates{1} = keyedTime;
-ax.data.covariates{5}.quantity.value = [2 2];
+ax.data.covariates{5}.numeric = [2 2];
 ax.depends_on(end+1) = struct('name', 'key_id', 'value', 'tv2');
 t = (0:1499)' / 30000;
 cols = [t + 1e-6 * sin(1:1500)', t + 2e-6 * cos(1:1500)'];
@@ -582,14 +582,16 @@ p.parse(varargin{:});
 o = p.Results;
 T = @(node, name) struct('node', node, 'name', name);
 cov = @(v, f, x) setfield(struct('variable', v, 'along', 1), f, x); %#ok<SFLD>
-scale = struct('value', o.Scale);
-if ~isempty(o.SourceScale); scale.source_value = o.SourceScale; end
-covs = {struct('variable', T('om:Time', 'time'), 'along', 0, 'origin', struct('value', 0), ...
-        'spacing', struct('value', 1/30000)), ...
+% the numeric shape ([one shape for measured numbers]): flat origin and
+% spacing, `numeric` beside `source_numeric`
+scale = cov(T('NCIT:C70774', 'Unit Conversion Factor'), 'numeric', o.Scale);
+if ~isempty(o.SourceScale); scale.source_numeric = o.SourceScale; end
+covs = {struct('variable', T('om:Time', 'time'), 'along', 0, 'origin', 0, ...
+        'spacing', 1/30000), ...
     cov(typeTerm, 'count', nums), ...
-    cov(T('AFO:AFQ_0000202', 'signal offset configuration'), 'quantity', struct('value', o.Offset)), ...
-    cov(T('NCIT:C70774', 'Unit Conversion Factor'), 'quantity', scale), ...
-    cov(T('EMPTY:0000374', 'time channel'), 'quantity', struct('value', ones(size(nums))))};
+    cov(T('AFO:AFQ_0000202', 'signal offset configuration'), 'numeric', o.Offset), ...
+    scale, ...
+    cov(T('EMPTY:0000374', 'time channel'), 'numeric', ones(size(nums)))};
 if ~isempty(names)
     covs{end+1} = cov(T('NCIT:C25364', 'Identifier'), 'text', names);
 end

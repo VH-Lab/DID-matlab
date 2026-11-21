@@ -6,14 +6,14 @@ function [s, bad] = methodParameters(params, useTable, names)
 %   struct array, a cell, or empty). jParameterList wrote one entry per
 %   non-empty v1 field, named by its path with '_' as ' ' and nested fields
 %   joined by '.', valued by:
-%     quantity.value   a numeric or logical scalar (read back as the number)
+%     numeric          a numeric or logical scalar (read back as the number)
 %     text             a text value, or any other value as its JSON text
 %                      (a struct array such as tuningcurve_calc's `selection`,
 %                      a numeric vector): text that is a JSON array or object
 %                      is read back with jsondecode
 %   The name is read back with ' ' as '_', the spelling every NDI calculator
 %   parameter has (a field name with a space cannot be a MATLAB field). An
-%   entry in another form (term, count, matrix, logical) is not one
+%   entry in another form (term, count, logical) is not one
 %   jParameterList writes: it is listed in BAD.
 %
 %   [S, BAD] = methodParameters(PARAMS, true) maps each name back through
@@ -46,7 +46,7 @@ for k = 1:numel(params)
         bad{end+1} = sprintf('method parameter %d has no name', k); %#ok<AGROW>
         continue;
     end
-    [q, hasQ] = itemNumbers(e);   % quantity.value, or the new shape's numeric
+    [q, hasQ] = itemNumbers(e);   % numeric (an old quantity is refused)
     if hasQ
         v = q;
     elseif isfield(e, 'text')

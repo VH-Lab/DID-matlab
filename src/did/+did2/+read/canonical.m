@@ -1,36 +1,32 @@
 function r = canonical(x, options)
-%CANONICAL A statement's number(s), read from either numeric shape.
+%CANONICAL A statement's number(s), read from the numeric shape.
 %
 %   R = did2.read.canonical(X) reads a numeric value -- a value class's
 %   `value` (voltage.value, mass.value, concentration.value, ...), logical's
 %   `value`, or a whole document (did2.document or struct), whose value it
-%   finds -- in the old shape or the new one ([one shape for measured
-%   numbers], Jess Haley, 2026-11-17, did-schema
-%   did_v2_numeric_shape_plan.md), and returns the same struct for both:
+%   finds -- in the numeric shape of did-schema did_v2_numeric_shape_plan.md
+%   ([one shape for measured numbers], Jess Haley, 2026-11-17), and returns:
 %
 %     field           the canonical field read ('volts', 'grams', 'molar',
-%                     'logical', ...); a cellstr, one per reading, when the
-%                     readings of an old-shape series fill different ones
-%                     (a concentration). '' when none was found.
-%     numbers         the reading(s), a row: old -- one per cell of the value
-%                     array; new -- the canonical field of the one cell.
-%                     [] when no cell states one; in an old-shape series, NaN
-%                     for a cell that states none while others do.
-%     source_numbers  what the source wrote, a row: old source_value per
-%                     cell (NaN for a cell that states none while others do);
-%                     new source_numeric. [] when none.
-%     source_unit     the source's unit: one term, or (old shape, when the
-%                     cells differ) a struct array with one per reading
-%     approximate     true/false: one, or one per reading when the cells differ
-%     tolerance       {minus, plus}: the first one given, [] when none
+%                     'logical', ...). '' when none was found.
+%     numbers         the reading(s), a row: the canonical field of the one
+%                     cell. [] when the cell states none.
+%     source_numbers  what the source wrote, a row: `source_numeric`. [] when
+%                     none.
+%     source_unit     the source's unit: one term for the series
+%     approximate     true/false, one for the series
+%     tolerance       {minus, plus}, [] when none
 %     n               how many readings
 %
-%   Old shape: a series is an array of cells of one number each, the source's
-%   number is `source_value`, logical's value is bare true/false. New shape:
-%   ONE cell whose canonical field and `source_numeric` are arrays, and
-%   logical's value is the block {logical}. The old shape is read until step 4
-%   of the plan's section 9 removes it, so a reader that calls this is not
-%   touched when step 2 switches the writers.
+%   A series is ONE cell whose canonical field and `source_numeric` are
+%   arrays, and logical's value is the block {logical}. A value in the OLD
+%   numeric shape -- logical's bare true/false, a cell's numeric
+%   `source_value`, or (for a numeric value class: one whose value declares
+%   `source_numeric`, or whose cells carry a source record) a series stored
+%   as one cell per reading -- is not read: it is the error
+%   'did2:read:oldNumericShapeReMigrate' (did2.read.refuseOldNumericShape),
+%   and the database is migrated again from v1 (section 9 step 4, [no
+%   migrated database is kept], Jess Haley, 2026-11-19).
 %
 %   Options:
 %     'Field'        the canonical field to read, when it is known.
@@ -48,7 +44,8 @@ function r = canonical(x, options)
 %     r = did2.read.canonical(doc);          % a voltage statement
 %     r.numbers, r.source_numbers, r.source_unit
 %
-%   See also did2.read.numeric, did2.build.valueCell, did2.build.numericShape.
+%   See also did2.read.numeric, did2.read.refuseOldNumericShape,
+%   did2.build.valueCell, did2.build.numericShape.
 
 arguments
     x
@@ -72,12 +69,13 @@ r = struct('field', '', 'numbers', [], 'source_numbers', [], 'source_unit', [], 
 if isempty(value)
     return;
 end
+what = 'A value';
+if ~isempty(className)
+    what = sprintf('A %s value', className);
+end
 if islogical(value) || (isnumeric(value) && ~isstruct(value))
     % logical's old shape: the bare value
-    r.field = 'logical';
-    r.numbers = reshape(value, 1, []);
-    r.n = numel(r.numbers);
-    return;
+    did2.read.refuseOldNumericShape(what, 'a bare logical');
 end
 if iscell(value)
     value = [value{:}];
@@ -93,60 +91,46 @@ elseif ~isempty(className)
     canonNames = classCanonical(className, options.SchemaCache);
 end
 
-nCells = numel(value);
-fields = cell(1, nCells);
-nums = cell(1, nCells);
-srcs = cell(1, nCells);
-units = cell(1, nCells);
-approx = cell(1, nCells);
-for k = 1:nCells
-    e = value(k);
-    f = pickField(e, canonNames);
-    fields{k} = f;
-    if ~isempty(f)
-        nums{k} = reshape(e.(f), 1, []);
-    end
-    if isfield(e, 'source_numeric') && ~isempty(e.source_numeric)
-        srcs{k} = reshape(e.source_numeric, 1, []);
-    elseif isfield(e, 'source_value') && ~isempty(e.source_value)
-        srcs{k} = reshape(e.source_value, 1, []);
-    end
-    if isfield(e, 'source_unit'); units{k} = e.source_unit; end
-    if isfield(e, 'approximate'); approx{k} = e.approximate; end
-    if isempty(r.tolerance) && isfield(e, 'tolerance') && isstruct(e.tolerance) ...
-            && ~isempty(e.tolerance) && ~isempty(fieldnames(e.tolerance))
-        r.tolerance = e.tolerance;
-    end
+if isfield(value, 'source_value') && any(arrayfun(@(e) isnumeric(e.source_value) ...
+        && ~isempty(e.source_value), value))
+    did2.read.refuseOldNumericShape(what, 'source_value');
 end
-anyNum = any(~cellfun(@isempty, nums));
-numericSrc = all(cellfun(@(s) isnumeric(s) || islogical(s), srcs));
-anySrc = any(~cellfun(@isempty, srcs));
-if numericSrc && nCells > 1
-    % the old shape: one reading per cell, so a cell that states no canonical
-    % (a gap) or no source number reads NaN there, keeping the two aligned
-    for k = 1:nCells
-        m = max([numel(nums{k}), numel(srcs{k}), 1]);
-        if anyNum && isempty(nums{k}); nums{k} = NaN(1, m); end
-        if anySrc && isempty(srcs{k}); srcs{k} = NaN(1, m); end
+if numel(value) > 1 && isNumericClass(className, value, options.SchemaCache)
+    did2.read.refuseOldNumericShape(what, 'a series stored one cell per reading');
+end
+
+% the one cell of a numeric value (a class that is not one, such as count,
+% keeps a cell per reading: its readings are each cell's, in order)
+e = value(1);
+f = pickField(e, canonNames);
+r.field = f;
+if ~isempty(f)
+    parts = cell(1, numel(value));
+    for k = 1:numel(value)
+        if isfield(value(k), f)
+            parts{k} = reshape(value(k).(f), 1, []);
+        end
     end
+    r.numbers = [parts{:}];
 end
-r.numbers = [nums{:}];
-r.n = max(numel(r.numbers), numel([srcs{:}]) * numericSrc);
-if numericSrc
-    r.source_numbers = [srcs{:}];
-else
-    r.source_numbers = srcs;   % text a source wrote (not a numeric class)
+if isfield(e, 'source_numeric') && ~isempty(e.source_numeric)
+    r.source_numbers = reshape(e.source_numeric, 1, []);
 end
-named = fields(~cellfun(@isempty, fields));
-if isempty(named)
-    r.field = '';
-elseif all(strcmp(named, named{1}))
-    r.field = named{1};
-else
-    r.field = fields;
+if isfield(e, 'source_unit') && ~isempty(e.source_unit)
+    r.source_unit = e.source_unit;
 end
-r.source_unit = oneOrEach(units);
-r.approximate = oneOrEach(approx);
+if isfield(e, 'approximate') && ~isempty(e.approximate)
+    r.approximate = e.approximate;
+end
+if isfield(e, 'tolerance') && isstruct(e.tolerance) && ~isempty(e.tolerance) ...
+        && ~isempty(fieldnames(e.tolerance))
+    r.tolerance = e.tolerance;
+end
+nSource = 0;
+if isnumeric(r.source_numbers) || islogical(r.source_numbers)
+    nSource = numel(r.source_numbers);
+end
+r.n = max(numel(r.numbers), nSource);
 end
 
 % -------------------------------------------------------------------------
@@ -255,30 +239,28 @@ for k = 1:numel(fn)
 end
 end
 
-function v = oneOrEach(c)
-given = c(~cellfun(@isempty, c));
-if isempty(given)
-    v = [];
-    return;
-end
-same = true;
-for k = 2:numel(c)
-    if ~isequal(c{k}, c{1})
-        same = false;
-        break;
-    end
-end
-if same
-    v = c{1};
-elseif all(cellfun(@isstruct, c))
+function tf = isNumericClass(className, value, cacheArg)
+% a numeric value class: its value declares `source_numeric` (when the class
+% is known and its schema read), else its cells carry a source record
+tf = false;
+if ~isempty(className)
     try
-        v = [c{:}];
+        cache = cacheOf(cacheArg);
+        own = cache.getClass(className).fields;
+        if isstruct(own); own = num2cell(reshape(own, 1, [])); end
+        for k = 1:numel(own)
+            if strcmp(char(own{k}.name), 'value') && isfield(own{k}, 'fields') ...
+                    && ~isempty(own{k}.fields)
+                sub = own{k}.fields;
+                if isstruct(sub); sub = num2cell(reshape(sub, 1, [])); end
+                tf = any(cellfun(@(d) strcmp(char(d.name), 'source_numeric'), sub));
+                return;
+            end
+        end
     catch
-        v = c;
     end
-else
-    v = c;
 end
+tf = any(isfield(value, {'source_value', 'source_numeric', 'source_unit'}));
 end
 
 function cache = cacheOf(cacheArg)

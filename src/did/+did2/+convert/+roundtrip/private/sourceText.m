@@ -1,10 +1,9 @@
 function s = sourceText(e)
-%SOURCETEXT The text a source wrote for a list item's number, from either shape.
+%SOURCETEXT The text a source wrote for a list item's number.
 %
-%   S = sourceText(E) is what fieldText(getIn(E, 'quantity'), 'source_value')
-%   read before the new numeric shape ([one shape for measured numbers], Jess
-%   Haley, 2026-11-17): the old quantity.source_value, or the new flat
-%   source_numeric (itemSource), as text; '' when E states none. A number
+%   S = sourceText(E) is the flat source_numeric (itemSource; [one shape for
+%   measured numbers], Jess Haley, 2026-11-17) as text; '' when E states
+%   none. An old quantity.source_value is refused (itemSource). A number
 %   written there is given in the shortest text that reads back to it.
 s = '';
 [v, found] = itemSource(e);
