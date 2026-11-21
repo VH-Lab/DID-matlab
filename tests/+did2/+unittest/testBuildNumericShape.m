@@ -73,37 +73,59 @@ verifyEqual(testCase, did2.build.numericShape(), 'new');
 c = did2.build.covariate('depth', 0, 'Value', [1 2 3], 'Unit', 'meter');
 verifyTrue(testCase, isfield(c, 'numeric'), 'the setting reaches a builder given no ''Shape''');
 did2.build.numericShape('old');
-c = did2.build.covariate('depth', 0, 'Value', [1 2 3], 'Unit', 'meter');
-verifyTrue(testCase, isfield(c, 'quantity'));
+c = oldBuilt(testCase, @() did2.build.covariate('depth', 0, 'Value', [1 2 3], 'Unit', 'meter'), []);
+if did2.unittest.helpers.oldListShapeDeclared()
+    verifyTrue(testCase, isfield(c, 'quantity'));
+end
 verifyError(testCase, @() did2.build.numericShape('newest'), 'did2:build:badOption');
 end
 
 function testTheOldShapeIsWrittenAsBefore(testCase)
 % no behaviour change for today's documents: the old shape carries none of
-% the new fields
-c = did2.build.covariate('depth', 0, 'Value', [1 2 3], 'SourceValue', [1000 2000 3000], ...
-    'Unit', 'meter', 'Shape', 'old');
-verifyEqual(testCase, sort(fieldnames(c))', sort({'variable', 'along', 'unit', 'quantity'}));
-verifyEqual(testCase, c.quantity, struct('value', [1 2 3], 'source_value', [1000 2000 3000]));
-t = did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 0.001, 'Unit', 'second', 'Shape', 'old');
-verifyEqual(testCase, t.origin, struct('value', 0));
-verifyEqual(testCase, t.spacing, struct('value', 0.001));
-q = did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', '0.40', 'Shape', 'old');
-verifyEqual(testCase, q.quantity, struct('value', 0.4, 'source_value', '0.40'));
+% the new fields. A list item's old shape is written only while the schema
+% declares it; once did-schema removes it (numeric shape plan section 9 step
+% 4, Waltham-Data-Science/did-schema #373) the builder refuses it.
+covariateOld = @() did2.build.covariate('depth', 0, 'Value', [1 2 3], ...
+    'SourceValue', [1000 2000 3000], 'Unit', 'meter', 'Shape', 'old');
+regularOld = @() did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 0.001, ...
+    'Unit', 'second', 'Shape', 'old');
+conditionOld = @() did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', '0.40', ...
+    'Shape', 'old');
+fitOld = @() did2.build.fitEntry('von Mises', 'Coefficients', {'amplitude', 12.1}, ...
+    'Shape', 'old');
+if did2.unittest.helpers.oldListShapeDeclared()
+    c = covariateOld();
+    verifyEqual(testCase, sort(fieldnames(c))', sort({'variable', 'along', 'unit', 'quantity'}));
+    verifyEqual(testCase, c.quantity, struct('value', [1 2 3], 'source_value', [1000 2000 3000]));
+    t = regularOld();
+    verifyEqual(testCase, t.origin, struct('value', 0));
+    verifyEqual(testCase, t.spacing, struct('value', 0.001));
+    q = conditionOld();
+    verifyEqual(testCase, q.quantity, struct('value', 0.4, 'source_value', '0.40'));
+    f = fitOld();
+    verifyEqual(testCase, f.coefficients.value, 12.1);
+    verifyFalse(testCase, isfield(f.coefficients, 'numeric'));
+else
+    verifyError(testCase, covariateOld, 'did2:build:unknownField');
+    verifyError(testCase, regularOld, 'did2:build:typeMismatch', ...
+        'origin is a flat number once the old block is not declared');
+    verifyError(testCase, conditionOld, 'did2:build:unknownField');
+    verifyError(testCase, fitOld, 'did2:build:unknownField');
+end
 v = did2.build.valueCell('voltage', [0.012 0.013], 'SourceValue', [12 13], 'Shape', 'old');
 verifyEqual(testCase, size(v), [1 2]);
 verifyFalse(testCase, isfield(v, 'source_numeric'));
-f = did2.build.fitEntry('von Mises', 'Coefficients', {'amplitude', 12.1}, 'Shape', 'old');
-verifyEqual(testCase, f.coefficients.value, 12.1);
-verifyFalse(testCase, isfield(f.coefficients, 'numeric'));
 end
 
 % ===================== covariates ===========================================
 
 function testCovariateNumberInBothShapes(testCase)
 uV = did2.build.term('om:microvolt', 'microvolt');
-old = did2.build.covariate('Unit Conversion Factor', 0, 'Value', [1.95e-7 1.95e-7], ...
-    'SourceValue', [0.195 0.195], 'Unit', 'volt', 'SourceUnit', uV, 'Shape', 'old');
+old = oldBuilt(testCase, @() did2.build.covariate('Unit Conversion Factor', 0, ...
+    'Value', [1.95e-7 1.95e-7], 'SourceValue', [0.195 0.195], 'Unit', 'volt', ...
+    'SourceUnit', uV, 'Shape', 'old'), ...
+    struct('variable', label('Unit Conversion Factor'), 'along', 0, 'unit', label('volt'), ...
+    'source_unit', uV, 'quantity', struct('value', [1.95e-7 1.95e-7], 'source_value', [0.195 0.195])));
 new = did2.build.covariate('Unit Conversion Factor', 0, 'Value', [1.95e-7 1.95e-7], ...
     'SourceValue', [0.195 0.195], 'Unit', 'volt', 'SourceUnit', uV, 'Shape', 'new');
 % the plan's section 5 example
@@ -121,8 +143,12 @@ end
 
 function testCovariateOriginSpacingInBothShapes(testCase)
 s = did2.build.term('om:second', 'second');
-old = did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 3.33e-5, ...
-    'SourceOrigin', 0, 'SourceSpacing', 3.33e-5, 'Unit', 'second', 'SourceUnit', s, 'Shape', 'old');
+old = oldBuilt(testCase, @() did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 3.33e-5, ...
+    'SourceOrigin', 0, 'SourceSpacing', 3.33e-5, 'Unit', 'second', 'SourceUnit', s, ...
+    'Shape', 'old'), ...
+    struct('variable', label('time'), 'along', 0, 'unit', label('second'), 'source_unit', s, ...
+    'origin', struct('value', 0, 'source_value', 0), ...
+    'spacing', struct('value', 3.33e-5, 'source_value', 3.33e-5)), 'did2:build:typeMismatch');
 new = did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 3.33e-5, ...
     'SourceOrigin', 0, 'SourceSpacing', 3.33e-5, 'Unit', 'second', 'SourceUnit', s, 'Shape', 'new');
 verifyEqual(testCase, new.origin, 0);
@@ -137,7 +163,9 @@ end
 
 function testCovariateMatrixBecomesNumeric(testCase)
 rgb = [1 0 0; 0 1 0; 0 0 1; 1 1 1];
-old = did2.build.covariate('rgb', 0, 'Matrix', rgb, 'Unit', 'arbitrary unit', 'Shape', 'old');
+old = oldBuilt(testCase, @() did2.build.covariate('rgb', 0, 'Matrix', rgb, ...
+    'Unit', 'arbitrary unit', 'Shape', 'old'), ...
+    struct('variable', label('rgb'), 'along', 0, 'unit', label('arbitrary unit'), 'matrix', rgb));
 new = did2.build.covariate('rgb', 0, 'Matrix', rgb, 'Unit', 'arbitrary unit', 'Shape', 'new');
 verifyEqual(testCase, new.numeric, rgb);
 verifyFalse(testCase, isfield(new, 'matrix'));
@@ -165,17 +193,28 @@ end
 
 function testConditionAndParameterInBothShapes(testCase)
 for shape = {'old', 'new'}
-    c = did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', '0.40', 'Shape', shape{1});
-    p = did2.build.parameter('threshold', 'Value', 4.5, 'SourceValue', '4.5', 'Unit', 'volt', ...
-        'Shape', shape{1});
-    m = did2.build.parameter('colour palette', 'Matrix', [1 2; 3 4], 'Unit', 'arbitrary unit', ...
-        'Shape', shape{1});
+    build = { ...
+        @() did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', '0.40', 'Shape', shape{1}), ...
+        @() did2.build.parameter('threshold', 'Value', 4.5, 'SourceValue', '4.5', 'Unit', 'volt', ...
+            'Shape', shape{1}), ...
+        @() did2.build.parameter('colour palette', 'Matrix', [1 2; 3 4], 'Unit', 'arbitrary unit', ...
+            'Shape', shape{1})};
     if strcmp(shape{1}, 'old')
-        for x = {c, p, m}
-            verifyError(testCase, @() did2.read.numeric(x{1}), OLD, 'old shape');
+        byHand = { ...
+            struct('variable', label('OD600'), 'quantity', struct('value', 0.4, 'source_value', '0.40')), ...
+            struct('variable', label('threshold'), 'unit', label('volt'), ...
+                'quantity', struct('value', 4.5, 'source_value', '4.5')), ...
+            struct('variable', label('colour palette'), 'unit', label('arbitrary unit'), ...
+                'matrix', [1 2; 3 4])};
+        for k = 1:numel(build)
+            x = oldBuilt(testCase, build{k}, byHand{k});
+            verifyError(testCase, @() did2.read.numeric(x), OLD, 'old shape');
         end
         continue;
     end
+    c = build{1}();
+    p = build{2}();
+    m = build{3}();
     rc = did2.read.numeric(c);
     rp = did2.read.numeric(p);
     rm = did2.read.numeric(m);
@@ -194,9 +233,20 @@ function testAStatementValidatesInBothShapes(testCase)
 % one voltage observation with every list kind, built in each shape: both
 % pass the builder's rules and the validator, and read back the same
 docs = struct();
-for shape = {'old', 'new'}
-    docs.(shape{1}) = recording(testCase, shape{1});
-    did2.schema.cache.shared().validateDocument(docs.(shape{1}));
+docs.new = recording(testCase, 'new');
+did2.schema.cache.shared().validateDocument(docs.new);
+if did2.unittest.helpers.oldListShapeDeclared()
+    docs.old = recording(testCase, 'old');
+    did2.schema.cache.shared().validateDocument(docs.old);
+else
+    % did-schema without the old shape (section 9 step 4): the builder
+    % refuses it, and the same document in the old shape is written by hand
+    verifyError(testCase, @() recording(testCase, 'old'), 'did2:build:unknownField');
+    docs.old = docs.new;
+    docs.old.data.covariates = toOldItems(docs.new.data.covariates, true);
+    docs.old.statement.conditions = toOldItems(docs.new.statement.conditions, false);
+    docs.old.interaction.method.parameters = toOldItems(docs.new.interaction.method.parameters, false);
+    docs.old.voltage.value = struct('volts', num2cell(docs.new.voltage.value.volts));
 end
 oldCovs = docs.old.data.covariates;
 newCovs = docs.new.data.covariates;
@@ -316,12 +366,15 @@ ok = doc;
 ok.voltage.value = struct('volts', [1 2], 'source_numeric', [1000 2000]);
 cache.validateDocument(ok);
 % a covariate mixing the two shapes
+% (refused by the rule while the schema declares `quantity`; once it does
+% not, by the builder, which writes only declared fields)
 cov = struct('variable', struct('node', '', 'name', 'depth'), 'along', 0, ...
     'quantity', struct('value', [1 2]), 'source_numeric', [1 2]);
 verifyError(testCase, @() did2.build.statement('observation', did.ido.unique_id(), 'voltage', ...
     did2.build.valueCell('voltage', [1 2]), 'Dimensions', did2.build.dimension('time', 2), ...
     'Covariates', cov, 'TimeReferenceIds', {did.ido.unique_id()}, ...
-    'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage'), 'did2:build:ruleViolated');
+    'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage'), ...
+    oldOrNew('did2:build:ruleViolated', 'did2:build:unknownField'));
 % the new shape's fields go with their form (plan section 6, "New")
 cov = struct('variable', struct('node', '', 'name', 'depth'), 'along', 0, ...
     'numeric', [1 2], 'source_origin', 0);
@@ -334,7 +387,8 @@ cov = struct('variable', struct('node', '', 'name', 'time'), 'along', 0, ...
 verifyError(testCase, @() did2.build.statement('observation', did.ido.unique_id(), 'voltage', ...
     did2.build.valueCell('voltage', [1 2]), 'Dimensions', did2.build.dimension('time', 2), ...
     'Covariates', cov, 'TimeReferenceIds', {did.ido.unique_id()}, ...
-    'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage'), 'did2:build:ruleViolated');
+    'SessionId', testCase.TestData.sid, 'ValueKind', 'voltage'), ...
+    oldOrNew('did2:build:ruleViolated', 'did2:build:typeMismatch'));
 end
 
 % ===================== logical ==============================================
@@ -369,21 +423,23 @@ function testFitCoefficientsInBothShapes(testCase)
 cache = did2.schema.cache.shared();
 assumeTrue(testCase, cache.hasClass('tuning_curve_calculation'), 'no tuning_curve_calculation');
 docs = struct();
-for shape = {'old', 'new'}
-    f = did2.build.fitEntry('von Mises', 'Coefficients', {'amplitude', 12.1; 'width', 30}, ...
-        'Shape', shape{1}, 'Target', 'tuning_curve_calculation.tuning_curve.value.model_fit');
-    v = struct('mean', [1 2 3 4], 'model_fit', f);
-    docs.(shape{1}) = did2.build.statement('tuning_curve_calculation', did.ido.unique_id(), ...
-        'response', v, 'Dimensions', did2.build.dimension('direction', 4), ...
-        'Covariates', did2.build.covariate('direction', 0, 'Unit', 'degree', ...
-            'Value', [0 90 180 270], 'Shape', shape{1}), ...
-        'TimeReferenceIds', {did.ido.unique_id()}, 'SessionId', testCase.TestData.sid);
-    cache.validateDocument(docs.(shape{1}));
-end
+fitDoc = @(shape) fitStatement(testCase, shape);
+docs.new = fitDoc('new');
+cache.validateDocument(docs.new);
 newCoef = docs.new.tuning_curve.value.model_fit.coefficients;
 verifyEqual(testCase, [newCoef.numeric], [12.1 30]);
 verifyFalse(testCase, isfield(newCoef, 'value'));
-verifySameReading(testCase, docs.old.tuning_curve.value.model_fit.coefficients, newCoef);
+if did2.unittest.helpers.oldListShapeDeclared()
+    docs.old = fitDoc('old');
+    cache.validateDocument(docs.old);
+    oldCoef = docs.old.tuning_curve.value.model_fit.coefficients;
+else
+    % did-schema without the old shape: refused by the builder; the old
+    % coefficients {variable, value} written by hand
+    verifyError(testCase, @() fitDoc('old'), 'did2:build:unknownField');
+    oldCoef = struct('variable', {label('amplitude'), label('width')}, 'value', {12.1, 30});
+end
+verifySameReading(testCase, oldCoef, newCoef);
 % a coefficient given in the new shape is accepted whatever the setting
 f = did2.build.fitEntry('von Mises', 'Coefficients', struct('variable', ...
     did2.build.term('', 'amplitude'), 'numeric', 12.1, 'unit', did2.build.term('', 'hertz')), ...
@@ -399,10 +455,12 @@ assumeTrue(testCase, did2.build.compressionBlockDeclared(), ...
 prev = did2.build.numericShape('');
 testCase.addTeardown(@() did2.build.numericShape(prev));
 settings = struct('cname', 'zstd', 'clevel', 5, 'ratio', 0.5);
-did2.build.numericShape('old');
-old = did2.build.compression('blosc-zstd', 'Settings', settings);
 did2.build.numericShape('new');
 new = did2.build.compression('blosc-zstd', 'Settings', settings);
+did2.build.numericShape('old');
+old = oldBuilt(testCase, @() did2.build.compression('blosc-zstd', 'Settings', settings), ...
+    struct('parameters', toOldItems(new.parameters, false)));
+did2.build.numericShape('new');
 verifySameReading(testCase, old.parameters, new.parameters);
 ratio = new.parameters(end);
 verifyEqual(testCase, ratio.numeric, 0.5);
@@ -410,6 +468,89 @@ verifyFalse(testCase, isfield(new.parameters, 'quantity'));
 end
 
 % ===================== helpers ==============================================
+
+function x = oldBuilt(testCase, build, byHand, refusedAs)
+% A list item (or block) in the OLD shape. While the loaded schema declares
+% the old shape, the builder writes it (BUILD). Once did-schema removes it
+% (numeric shape plan section 9 step 4, Waltham-Data-Science/did-schema #373)
+% the builder refuses it -- checked here, as REFUSEDAS (default
+% did2:build:unknownField) -- and the same item is written by hand (BYHAND),
+% so what the test checks of the old shape (the readers refuse it) is
+% checked on either schema.
+if nargin < 4
+    refusedAs = 'did2:build:unknownField';
+end
+if did2.unittest.helpers.oldListShapeDeclared()
+    x = build();
+else
+    verifyError(testCase, build, refusedAs, 'the schema declares no old list shape');
+    x = byHand;
+end
+end
+
+function id = oldOrNew(whileDeclared, onceRemoved)
+% the error id that refuses an old-shape field: WHILEDECLARED while the schema
+% declares the old list shape, ONCEREMOVED once it does not
+if did2.unittest.helpers.oldListShapeDeclared()
+    id = whileDeclared;
+else
+    id = onceRemoved;
+end
+end
+
+function t = label(name)
+t = struct('node', '', 'name', name);
+end
+
+function out = toOldItems(items, isCovariate)
+% ITEMS (new shape, a struct array or a cell) in the old shape, by hand: a
+% number becomes `quantity` {value, source_value} (text on a condition or
+% parameter, as the old builders wrote it), an array on a condition or
+% parameter `matrix`, a flat origin/spacing the {value, source_value} block;
+% the other forms are the same in both shapes
+items = asItems(items);
+out = cell(1, numel(items));
+for k = 1:numel(items)
+    e = items{k};
+    o = struct();
+    for f = reshape(fieldnames(e), 1, [])
+        if ~any(strcmp(f{1}, {'numeric', 'source_numeric', 'tolerance', 'origin', 'spacing', ...
+                'source_origin', 'source_spacing'})) && ~isempty(e.(f{1}))
+            o.(f{1}) = e.(f{1});
+        end
+    end
+    if isfield(e, 'numeric') && ~isempty(e.numeric)
+        src = [];
+        if isfield(e, 'source_numeric'); src = e.source_numeric; end
+        if ~isCovariate && ~isscalar(e.numeric)
+            o.matrix = e.numeric;
+        else
+            q = struct('value', e.numeric);
+            if ~isempty(src)
+                if ~isCovariate && isnumeric(src); src = num2str(src); end
+                q.source_value = src;
+            end
+            o.quantity = q;
+        end
+    end
+    if isfield(e, 'origin') && ~isempty(e.origin)
+        o.origin = struct('value', e.origin);
+        o.spacing = struct('value', e.spacing);
+    end
+    out{k} = o;
+end
+end
+
+function doc = fitStatement(testCase, shape)
+f = did2.build.fitEntry('von Mises', 'Coefficients', {'amplitude', 12.1; 'width', 30}, ...
+    'Shape', shape, 'Target', 'tuning_curve_calculation.tuning_curve.value.model_fit');
+v = struct('mean', [1 2 3 4], 'model_fit', f);
+doc = did2.build.statement('tuning_curve_calculation', did.ido.unique_id(), ...
+    'response', v, 'Dimensions', did2.build.dimension('direction', 4), ...
+    'Covariates', did2.build.covariate('direction', 0, 'Unit', 'degree', ...
+        'Value', [0 90 180 270], 'Shape', shape), ...
+    'TimeReferenceIds', {did.ido.unique_id()}, 'SessionId', testCase.TestData.sid);
+end
 
 function doc = recording(testCase, shape)
 uV = did2.build.term('om:microvolt', 'microvolt');
@@ -468,5 +609,4 @@ end
 
 function id = OLD
 id = 'did2:read:oldNumericShapeReMigrate';
-end
 end

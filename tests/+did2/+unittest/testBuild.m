@@ -635,8 +635,15 @@ v = did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', 0.4);
 verifyEqual(testCase, v.numeric, 0.4, '''Value'' is the same option as ''Quantity''');
 % [numeric shape details] (1), Jess Haley, 2026-11-17: the source's own type
 verifyEqual(testCase, v.source_numeric, 0.4, 'a numeric SourceValue stays a number');
-o = did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', 0.4, 'Shape', 'old');
-verifyEqual(testCase, o.quantity.source_value, '0.4', 'the old shape writes it as text');
+if did2.unittest.helpers.oldListShapeDeclared()
+    o = did2.build.condition('OD600', 'Value', 0.4, 'SourceValue', 0.4, 'Shape', 'old');
+    verifyEqual(testCase, o.quantity.source_value, '0.4', 'the old shape writes it as text');
+else
+    % did-schema without the old shape (numeric shape plan section 9 step 4):
+    % the builder writes only what the schema declares, so it refuses it
+    verifyError(testCase, @() did2.build.condition('OD600', 'Value', 0.4, ...
+        'SourceValue', 0.4, 'Shape', 'old'), 'did2:build:unknownField');
+end
 n = did2.build.condition('trial count', 'Count', 12);
 verifyEqual(testCase, n.count, 12);
 t = did2.build.condition('protocol', 'Text', 'free run');

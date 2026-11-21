@@ -129,8 +129,14 @@ verifyEqual(testCase, c.source_numeric, 37);
 verifyClass(testCase, c.source_numeric, 'double');
 p = did2.build.parameter('threshold', 'Value', 0.03, 'SourceValue', '0.030', 'Shape', 'new');
 verifyEqual(testCase, p.source_numeric, '0.030', 'text the source wrote stays text');
-o = did2.build.condition('temperature', 'Value', 37, 'SourceValue', 37, 'Shape', 'old');
-verifyEqual(testCase, o.quantity.source_value, '37', 'the old shape keeps a number as text');
+if did2.unittest.helpers.oldListShapeDeclared()
+    o = did2.build.condition('temperature', 'Value', 37, 'SourceValue', 37, 'Shape', 'old');
+    verifyEqual(testCase, o.quantity.source_value, '37', 'the old shape keeps a number as text');
+else
+    % did-schema without the old shape (numeric shape plan section 9 step 4)
+    verifyError(testCase, @() did2.build.condition('temperature', 'Value', 37, ...
+        'SourceValue', 37, 'Shape', 'old'), 'did2:build:unknownField');
+end
 end
 
 % ===================== [numeric shape details] (2) =========================
