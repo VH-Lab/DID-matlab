@@ -702,6 +702,26 @@ POST_PASSES = [
         ("bodies_by_location", "opaque_bodies by location (files named, presence NOT checked)"),
         ("bodies_size_and_checksum_omitted", "  of which size + checksum omitted (no disk read in this pass)"),
         ("body_owner_links", "  owner_id links (body x observation; shared bodies)"),
+        # [non-specimen channel groups get their own owner] (Jess Haley
+        # 2026-11-17, did-schema did_v2_go_forward_class_audit.md): a digital,
+        # auxiliary or analog output group of an ingested archive is owned by
+        # its own statement, not the recording observations. The three
+        # series rows sum to the first; the four owner rows plus kept-recording
+        # sum to the non-specimen row; the three entity rows sum to the four
+        # owner rows.
+        ("archive_series_seen", "ingested archive series carried  <- GROUP OWNER DENOMINATOR"),
+        ("archive_series_specimen", "  analog input groups (ai): owned by the recording observations"),
+        ("channel_groups_non_specimen", "  digital, auxiliary and analog output groups (di, do, ax, ao)"),
+        ("archive_series_other", "  other series (channel_list.bin, time, events): owned by the recording observations"),
+        ("group_owners_digital", "    owned by a `logical` observation (di, do)"),
+        ("group_owners_auxiliary", "    owned by a voltage observation (ax)"),
+        ("group_owners_analog_output_manipulations", "    owned by a manipulation of the subject by the wired device (ao)"),
+        ("group_owners_analog_output_observations", "    owned by an observation of the acquisition system's output (ao)"),
+        ("group_owner_kept_recording_no_device", "    kept on the recording observations: the system has no device entity"),
+        ("group_owner_entity_wired_device", "      the one device wired to the group's channels: the entity (the instrument of an ao manipulation)"),
+        ("group_owner_entity_acquisition_system_unwired", "      entity: the acquisition system's device (no device wired)"),
+        ("group_owner_entity_acquisition_system_several_devices", "      entity: the acquisition system's device (several devices wired)"),
+        ("group_owners_quarantined", "    group owners QUARANTINED (their bodies withheld, the archive kept)"),
         ("body_build_refused", "  epochs whose bodies could not be BUILT (see first error)"),
         ("bodies_quarantined", "  bodies QUARANTINED"),
         ("observes_retired", "`observes` relations retired (replaced by instrument_id)"),
