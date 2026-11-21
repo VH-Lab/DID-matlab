@@ -325,6 +325,95 @@ for k = 1:size(cases, 1)
 end
 end
 
+function testAnEditorsIdAndDatestampAreAnAcceptedLoss(testCase)
+% Decided by Jess Haley, 2026-11-19 [metadata editor id and datestamp not
+% kept] (did-schema did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#505):
+% Soph's one form (412693752585535d_c0c777d75cd29e4c, Soph run 44511300128:
+% 100,110 of 100,111 clean) in its batch: the dataset's own session (its
+% reference becomes the dataset entity's local_identifier) and the dataset's
+% remote record (its ndicloud: global_identifier, and the richer entity, so
+% the entity's datestamp is the record's). The form's own id and datestamp are
+% listed as the accepted loss, and the shared entity's identifiers are the
+% rest of the batch's, so the form round trips clean.
+[bodies, out] = editorBatch('me_W', 'ds_W', 'haley_ref');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyFalse(testCase, any(strcmp({r.failures.source_id}, 'me_W')), describeFailure(r, 'me_W'));
+verifyEqual(testCase, r.ids_accepted_lost_by_class.metadata_editor, 1);
+mine = r.accepted_losses(strcmp({r.accepted_losses.source_id}, 'me_W'));
+verifyNotEmpty(testCase, mine);
+verifyTrue(testCase, all(strcmp({mine.name}, 'metadata editor id and datestamp')));
+verifyTrue(testCase, any(strcmp({mine.path}, '(the v1 id)')), 'the id, after the id check');
+verifyTrue(testCase, any(strcmp({mine.path}, 'base.datestamp')), ...
+    'the datestamp, rebuilt as the remote record''s');
+verifyEqual(testCase, r.accepted_losses_by_name.metadataEditorIdAndDatestamp, numel(mine));
+end
+
+function testAnEditorIdADocumentNamesIsLost(testCase)
+% CONTROL: the id check first ([v1 session document id not kept]'s rule): a
+% v1 document that names the form's id (here the session's reference) is
+% reported, and the id is lost, not accepted
+[bodies, out] = editorBatch('me_R', 'ds_R', 'me_R');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyGreaterThanOrEqual(testCase, double(r.accepted_id_check.ids_referenced), 1);
+verifyTrue(testCase, any(strcmp({r.accepted_id_check.referenced.id}, 'me_R')));
+verifyFalse(testCase, isfield(r.ids_accepted_lost_by_class, 'metadata_editor'));
+verifyTrue(testCase, any(strcmp(r.ids_lost_ids, 'me_R')));
+end
+
+function testTheSharedDatasetIdentifiersAreReadFromTheBatch(testCase)
+% [metadata editor id and datestamp not kept]: the inverse reads the dataset
+% entity's global_identifier and local_identifier from the rest of the batch
+% (with the whole-batch index), as the dataset_remote inverse does. CONTROL:
+% compared alone (no index), they are still unplaced.
+[~, out] = editorBatch('me_C', 'ds_C', 'haley_ref');
+docs = cellfun(@(d) d.toStruct(), out.migrated, 'UniformOutput', false);
+v1 = writerEditor('me_C', 'ds_C', sophForm());
+mine = {};
+for k = 1:numel(docs)
+    if isfield(docs{k}, 'entity') && strcmp(char(docs{k}.base.id), 'ds_C')
+        mine{end+1} = docs{k}; %#ok<AGROW>
+    elseif ~isfield(docs{k}, 'entity') && isfield(docs{k}, 'statement') ...
+            && any(strcmp(entityIds(docs{k}), 'ds_C'))
+        mine{end+1} = docs{k}; %#ok<AGROW>
+    end
+end
+alone = did2.convert.roundtrip.check(v1, mine);
+verifyTrue(testCase, any(contains(alone.unplaced, 'global_identifier')), ...
+    strjoin(alone.unplaced, '; '));
+verifyTrue(testCase, any(contains(alone.unplaced, 'local_identifier')), ...
+    strjoin(alone.unplaced, '; '));
+withCtx = did2.convert.roundtrip.check(v1, mine, struct('docs', {docs}));
+verifyEmpty(testCase, withCtx.unplaced, strjoin(withCtx.unplaced, '; '));
+end
+
+function [bodies, out] = editorBatch(editorId, datasetId, sessionReference)
+% Soph's shape: a form, the dataset's own session, the dataset's remote
+% record; the form's datestamp differs from the record's
+e = writerEditor(editorId, datasetId, sophForm());
+e.base.datestamp = '2025-09-25T17:57:03.018Z';
+% the other two ids do not contain the form's (the id check matches text)
+s = writerSession(['ss' editorId(3:end)], datasetId, sessionReference);
+dr = writerRemote(['dr' editorId(3:end)], datasetId);
+bodies = {e, s, dr};
+out = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
+out = did2.convert.resolveDatasetEntities(out, 'Validate', false, 'TargetVersion', 'did_v2');
+end
+
+function ids = entityIds(b)
+% the ids b's entity_id edge names (either edge spelling, as the inverse reads it)
+deps = did2.convert.v1read.readDependsOn(b, 'Name', '^entity_id$');
+ids = arrayfun(@(d) char(d.document_id), deps, 'UniformOutput', false);
+end
+
+function s = describeFailure(r, id)
+k = find(strcmp({r.failures.source_id}, id), 1);
+s = '';
+if isempty(k); return; end
+f = r.failures(k);
+s = sprintf('lost: %s; invented: %s; unplaced: %s', strjoin(f.lost, ', '), ...
+    strjoin(f.invented, ', '), strjoin(f.unplaced, '; '));
+end
+
 % ===================== stimulus_presentation =============================
 
 function testWriterPresentationsAreCarriedUntouched(testCase)

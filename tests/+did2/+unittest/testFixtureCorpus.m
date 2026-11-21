@@ -674,6 +674,7 @@ try
     result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
     did2.build.unregisteredTerms('-reset');
     result = did2.convert.resolveDeferredBaths(result, 'Validate', false, 'TargetVersion', 'did_v2');
+    result = did2.convert.resolveRegionParts(result, 'Validate', false, 'TargetVersion', 'did_v2');
     result = did2.convert.resolveOpenmindsCitations(result, 'Validate', false, 'TargetVersion', 'did_v2');
     result = did2.convert.resolveDatasetEntities(result, 'Validate', false, 'TargetVersion', 'did_v2');
     result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
@@ -1667,6 +1668,11 @@ function result = fixturePipeline(bodies, validate)
 %   testTheFixturePipelineMintsTheSameIdsTwice.
 result = did2.convert.v1_to_v2(bodies, 'Validate', validate, 'TargetVersion', 'did_v2');
 result = did2.convert.resolveDeferredBaths(result, ...
+    'Validate', validate, 'TargetVersion', 'did_v2');
+% Region parts (VH-Lab/DID-matlab #488): the copies of one region part merged,
+% a side another document gives attached; after the baths, as in
+% runCorpusDiscovery and ndi.migrate.local.
+result = did2.convert.resolveRegionParts(result, ...
     'Validate', validate, 'TargetVersion', 'did_v2');
 % TEAM DECISION 2026-08-11 ("Do B"): assemble the openMINDS dataset CITATION
 % graph into the entity tier. BEFORE resolveDatasetEntities, and that order is

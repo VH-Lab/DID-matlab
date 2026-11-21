@@ -24,7 +24,8 @@ function [result, report] = resolveClockAlignment(result, options)
 %   WHAT IT READS AND WRITES (tools/batch_pass_order.py derives and checks the
 %   pass order from these; [migration reliability practices] (c), Jess Haley,
 %   2026-10-26). Read from this file's code, class by class.
-%   BATCH-PASS-READS: session, syncgraph, acquisition_system, syncrule
+%   BATCH-PASS-READS: session, syncgraph, acquisition_system, syncrule,
+%       acquisition_configuration
 %   BATCH-PASS-ADDS: clock_alignment_policy, clock_alignment_configuration,
 %       entity(software minted by a batch pass)
 %   BATCH-PASS-CHANGES: NONE -- each fold replaces its source (REMOVES, ADDS)
@@ -355,15 +356,17 @@ systemIds = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % +migrators_j/daqsystem.m). A system with no device is named itself, as before.
 deviceOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
 for k = 1:n
-    if ~strcmp(classes{k}, 'acquisition_system'); continue; end
+    % either class name ([acquisition configuration renamed]); the block is
+    % named after the class
+    if ~did2.convert.isAcquisitionConfiguration(classes{k}); continue; end
     report.acquisition_systems_indexed = report.acquisition_systems_indexed + 1;
     nm = '';
     b = bodies{k};
     dv = depValueOfDevice(b);
     if ~isempty(dv) && ~isempty(docId{k}); deviceOf(docId{k}) = dv; end
-    if isfield(b, 'acquisition_system') && isstruct(b.acquisition_system) ...
-            && isfield(b.acquisition_system, 'name')
-        nm = char(b.acquisition_system.name);
+    blk = classes{k};
+    if isfield(b, blk) && isstruct(b.(blk)) && isfield(b.(blk), 'name')
+        nm = char(b.(blk).name);
     end
     if isempty(nm) || isempty(sessionId{k}) || isempty(docId{k}); continue; end
     key = systemKey(sessionId{k}, nm);

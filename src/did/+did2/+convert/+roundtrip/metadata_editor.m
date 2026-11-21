@@ -1,4 +1,4 @@
-function [v1, spec] = metadata_editor(bodies)
+function [v1, spec] = metadata_editor(bodies, ctx)
 %METADATA_EDITOR Rebuild a v1 `metadata_editor` from what the migration made
 %   of it.
 %
@@ -9,9 +9,11 @@ function [v1, spec] = metadata_editor(bodies)
 %   what did2.convert.migrators_j.metadata_editor emits:
 %
 %     base.id                       not kept (absent: the round trip reports
-%                                   it lost)
+%                                   it lost; an accepted loss, below)
 %     base.session_id               the dataset entity's id
 %     base.datestamp                the dataset entity's creation_timestamp
+%                                   (another source's when the entity is
+%                                   shared: an accepted loss, below)
 %     base.name                     '' (the writer sets none)
 %     DatasetFullName               the dataset entity's name
 %     Description                   the dataset entity's description
@@ -42,11 +44,34 @@ function [v1, spec] = metadata_editor(bodies)
 %
 %   Any other emitted document, assertion or field is unplaced.
 %
+%   THE FORM'S OWN ID AND DATESTAMP ARE AN ACCEPTED LOSS. Decided by Jess
+%   Haley, 2026-11-19 [metadata editor id and datestamp not kept] (did-schema
+%   did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#505): "a
+%   `metadata_editor`'s own id and datestamp are an accepted loss, like the
+%   session id ([v1 session document id not kept]); its content is carried by
+%   the v2 documents it writes. The round trip lists them as that loss; its
+%   inverse reads the dataset entity's `global_identifier` and
+%   `local_identifier` from the rest of the batch, as the `dataset_remote`
+%   inverse does." The loss is listed and counted by
+%   did2.convert.roundtrip.wholeBatch (its ACCEPTED_LOSSES, after its check
+%   that no document names the id); this inverse still rebuilds no id, and the
+%   dataset entity's creation time as the datestamp.
+%
+%   THE DATASET ENTITY IS SHARED (did2.convert.roundtrip.dataset_remote says
+%   how): did2.convert.resolveDatasetEntities keeps one dataset entity per
+%   dataset, and the `dataset_remote` and the dataset's own session give it a
+%   `global_identifier` (its `ndicloud:` id) and a `local_identifier` (the
+%   session reference). So with CTX (the whole-batch round trip hands the index
+%   of the final batch) those two fields are the rest of the batch's, not
+%   reported as this source's; without CTX (one source alone) they are still
+%   unplaced, as before. [V1, SPEC] = ...(BODIES, CTX).
+%
 %   See also did2.convert.roundtrip.check,
 %            did2.convert.migrators_j.metadata_editor.
 
 arguments
     bodies cell
+    ctx = []
 end
 
 spec = emptySpec();
@@ -72,8 +97,13 @@ used(ds) = true;
 [base, dsEntity] = rebuildBase(bodies{ds});
 dsId = base.id;
 ms = struct();
-spec.unplaced = [spec.unplaced, others(dsEntity, {'type', 'name', 'notes'}, ...
-    'dataset entity')];
+dsOwn = {'type', 'name', 'notes'};
+if ~isempty(ctx)
+    % shared: the rest of the batch's ([metadata editor id and datestamp not
+    % kept], Jess Haley, 2026-11-19; as did2.convert.roundtrip.dataset_remote)
+    dsOwn = [dsOwn, {'global_identifier', 'local_identifier'}];
+end
+spec.unplaced = [spec.unplaced, others(dsEntity, dsOwn, 'dataset entity')];
 if ~isempty(fieldText(dsEntity, 'name'))
     ms.DatasetFullName = fieldText(dsEntity, 'name');
 end

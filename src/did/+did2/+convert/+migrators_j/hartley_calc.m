@@ -405,7 +405,7 @@ pValueId = did2.convert.mintId('receptive_field_calculation null cumulative prob
 extra = [];
 sequence = stimulusSequence(hrc);
 if ~isempty(fieldnames(sequence))
-    extra = jParameterList(struct('stimulus_sequence', sequence));
+    extra = onsetTimeVariable(jParameterList(struct('stimulus_sequence', sequence)));
 end
 % [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03): the
 % per-frame hartley numbers are data, one row per frame, not method parameters
@@ -827,6 +827,38 @@ if ~isempty(frameTimes)
     sequence.frame_times = frameTimes;
 end
 % hartley_numbers: data, not parameters (hartleyNumbersBody)
+end
+
+function params = onsetTimeVariable(params)
+%ONSETTIMEVARIABLE The frame-times parameter named by its registered term.
+%
+%   Decided by Jess Haley, 2026-11-19 [hartley frame times are onset times]
+%   (did-schema did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486): the
+%   v1 `hartley_reverse_correlation.frameTimes` is the time each Hartley frame
+%   came on screen, and "the parameter's variable is the registered
+%   EMPTY:0000368 "onset time" ([onset and offset terms]), with the
+%   stimulus-sequence grouping kept as the other hartley entries keep theirs;
+%   the values and units are unchanged; no new term". The other hartley
+%   entries named by a decided term (X_sample, Y_sample) keep their v1 place
+%   through did2.convert.hartleyParameterNames ({v1 path, v2 name}), which the
+%   round trip reads back; the frame times' row there is
+%   `stimulus_sequence.frame_times` -> 'onset time'. The node is written here,
+%   not looked up by name, so it does not depend on the registry in use (the
+%   name is the registry's label when it holds the node). Only the variable
+%   changes: the entry's value form and value are jParameterList's, as before.
+%   Before this decision the variable was the label 'stimulus sequence.frame
+%   times' (the round trip reads both).
+if isempty(params)
+    return;
+end
+term = did2.convert.registeredTerm('EMPTY:0000368', 'onset time');
+for k = 1:numel(params)
+    v = params(k).variable;
+    if isstruct(v) && isscalar(v) && isfield(v, 'name') ...
+            && strcmp(char(v.name), 'stimulus sequence.frame times')
+        params(k).variable = term;
+    end
+end
 end
 
 function [body, unplaced] = hartleyNumbersBody(preBody, hrc, ownerId)

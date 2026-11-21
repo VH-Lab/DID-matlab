@@ -538,6 +538,13 @@ if isfield(result, 'valid_interval_decompose')
     report.valid_interval_decompose = result.valid_interval_decompose;
 end
 
+% `region_part_resolution` (did2.convert.resolveRegionParts, VH-Lab/DID-matlab
+% #488): the region-part merge and the sides attached. PERSISTED for the same
+% reason as every pass here. Written unconditionally with whatever the pass left.
+if isfield(result, 'region_part_resolution')
+    report.region_part_resolution = result.region_part_resolution;
+end
+
 % `clock_alignment_fold` (#57 syncgraph half). PERSISTED for the same reason as
 % every pass above: a report that never reaches the artifact is a pass that
 % measured nothing. Written unconditionally with whatever the pass left.
