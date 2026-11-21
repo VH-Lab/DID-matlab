@@ -73,7 +73,7 @@ for k = 1:numel(bodies)
     f = edgeIds(b, 'coordinate_system_id');
     if isempty(f); f = {''}; end
     frames = [frames, f(1)]; %#ok<AGROW>
-    % one reading per cell (old numeric shape) or one cell of readings (new)
+    % one cell of readings (cellReadings refuses one cell per reading)
     [col, readingUnits, missing] = cellReadings(getIn(b, 'length', 'value'));
     for j = reshape(find(missing), 1, [])
         spec.unplaced{end+1} = sprintf('%s value %d states no source value', vname, j);

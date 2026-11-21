@@ -291,10 +291,12 @@ conds = asCell(conds);
 for k = 1:numel(conds)
     [n, ~] = termParts(getIn(conds{k}, 'variable'));
     if strcmp(n, node)
-        m = getIn(conds{k}, 'matrix');
-        if isempty(m)
-            m = getIn(conds{k}, 'numeric');   % the new numeric shape's array
+        old = did2.read.oldNumericForm(conds{k});
+        if ~isempty(old)
+            % [no migrated database is kept] (Jess Haley, 2026-11-19)
+            did2.read.refuseOldNumericShape(sprintf('Condition "%s"', node), old);
         end
+        m = getIn(conds{k}, 'numeric');   % the numeric shape's array
         if iscell(m); m = cell2mat(m); end
         m = double(m);
         return;
@@ -319,8 +321,8 @@ ts = [];
 clk = '';
 extra = {};
 [aclk, atol] = anchorClock(anchor);
-% source_value, or the new numeric shape's source_numeric ([numeric shape
-% details] (2), Jess Haley, 2026-11-17)
+% source_numeric ([numeric shape details] (2), Jess Haley, 2026-11-17;
+% cellSource refuses an old source_value)
 start = numberOf(cellSource(getIn(anchor, 'relative_time_reference', 'value', 'start')));
 if ~isempty(start) && strcmp(aclk, 'utc')
     ts = start;

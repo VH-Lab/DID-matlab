@@ -456,11 +456,13 @@ groups = cell(1, numel(conds));
 for g = 1:numel(conds)
     c = conds{g};
     nums = [];
-    if isstruct(c) && isfield(c, 'matrix')
-        nums = c.matrix;
+    old = did2.read.oldNumericForm(c);
+    if ~isempty(old)
+        % [no migrated database is kept] (Jess Haley, 2026-11-19)
+        did2.read.refuseOldNumericShape('A wiring relation''s channel group', old);
     end
-    if isempty(nums) && isstruct(c) && isfield(c, 'numeric')
-        nums = c.numeric;   % the new numeric shape ([one shape for measured numbers])
+    if isstruct(c) && isfield(c, 'numeric')
+        nums = c.numeric;   % the numeric shape ([one shape for measured numbers])
     end
     groups{g} = struct('type', {getIn(c, 'variable')}, 'numbers', {nums});
 end

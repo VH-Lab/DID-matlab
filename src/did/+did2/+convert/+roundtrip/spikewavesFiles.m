@@ -83,9 +83,9 @@ for c = 1:numel(covs)
     if iscell(covs); cv = covs{c}; end
     al = getIn(cv, 'along');
     if isequal(double(al(:)'), 1) && isfield(cv, 'origin') && isfield(cv, 'spacing')
-        % either numeric shape: the old {value, source_value} blocks or the
-        % new flat origin and spacing (itemRegular; [one shape for measured
-        % numbers], Jess Haley, 2026-11-17)
+        % the flat origin and spacing (itemRegular, which refuses the old
+        % {value, source_value} blocks; [one shape for measured numbers],
+        % Jess Haley, 2026-11-17)
         origin = numberOf(itemRegular(cv, 'origin'));
         spacing = numberOf(itemRegular(cv, 'spacing'));
     end

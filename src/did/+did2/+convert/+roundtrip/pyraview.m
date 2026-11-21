@@ -351,27 +351,13 @@ end
 
 function v = regularNumber(c, which)
 % a covariate's origin or spacing (else what the source wrote) as a number:
-% the old {value, source_value} block or the new flat origin / spacing and
-% source_origin / source_spacing (itemRegular; [one shape for measured
+% the flat origin / spacing and source_origin / source_spacing (itemRegular,
+% which refuses the old {value, source_value} block; [one shape for measured
 % numbers], Jess Haley, 2026-11-17)
 [x, src] = itemRegular(c, which);
 v = numberOf(x);
 if isempty(v)
-    v = num(struct('source_value', {src}));
-end
-end
-
-function v = num(x)
-% a composite's `value` (else its source_value) as a number
-v = numberOf(getIn(x, 'value'));
-if isempty(v)
-    sv = getIn(x, 'source_value');
-    if ischar(sv) || (isstring(sv) && isscalar(sv))
-        v = str2double(sv);
-        if isnan(v); v = []; end
-    else
-        v = numberOf(sv);
-    end
+    v = numberOf(src);
 end
 end
 
