@@ -241,7 +241,8 @@ if did2.unittest.helpers.oldListShapeDeclared()
 else
     % did-schema without the old shape (section 9 step 4): the builder
     % refuses it, and the same document in the old shape is written by hand
-    verifyError(testCase, @() recording(testCase, 'old'), 'did2:build:unknownField');
+    % (its first covariate's origin block is refused where a flat number is declared)
+    verifyError(testCase, @() recording(testCase, 'old'), 'did2:build:typeMismatch');
     docs.old = docs.new;
     docs.old.data.covariates = toOldItems(docs.new.data.covariates, true);
     docs.old.statement.conditions = toOldItems(docs.new.statement.conditions, false);
@@ -459,7 +460,7 @@ did2.build.numericShape('new');
 new = did2.build.compression('blosc-zstd', 'Settings', settings);
 did2.build.numericShape('old');
 old = oldBuilt(testCase, @() did2.build.compression('blosc-zstd', 'Settings', settings), ...
-    struct('parameters', toOldItems(new.parameters, false)));
+    struct('parameters', {toOldItems(new.parameters, false)}));
 did2.build.numericShape('new');
 verifySameReading(testCase, old.parameters, new.parameters);
 ratio = new.parameters(end);
