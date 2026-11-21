@@ -8,9 +8,12 @@ function [v1, spec] = daqsystem(bodies)
 %   the rig's `device` entity (Jess Haley 2026-11-19 [acquisition system is
 %   a device entity], [migration mints the device by name]; did-schema
 %   docs/plans/did_v2_standing_wiring_plan.md), which the configuration names
-%   by `device_id`. The device holds nothing v1 does not: its name and
-%   local_identifier are the rig name, so the round trip checks them against
-%   acquisition_system.name and reads nothing else from it. A batch migrated
+%   by `device_id`. The device holds nothing v1 does not: its name is the
+%   rig name and it writes no local_identifier ([local identifier required
+%   only where looked up], Jess Haley, 2026-11-19), so the round trip checks
+%   the name against acquisition_system.name, reports any other field the
+%   device states (local_identifier included), and reads nothing else from
+%   it. A batch migrated
 %   before the device was minted has neither, and reads as before.
 %
 %     base.id, session_id, datestamp   the acquisition_system's (rebuildBase)
@@ -82,7 +85,7 @@ end
 function [bodies, spec] = takeDevice(bodies, spec, sysClass)
 % The rig's device: the entity of type device the acquisition_system's
 % `device_id` names, removed from BODIES once it is checked to hold only the
-% rig name (its name and local_identifier), so daqParts finds no extra
+% rig name (its name; no local_identifier), so daqParts finds no extra
 % document. A `device_id` naming no emitted device, or a device holding
 % anything else, is reported.
 k = find(cellfun(@(b) strcmp(classNameOf(b), sysClass), bodies), 1);
@@ -104,12 +107,11 @@ if isempty(j)
     return;
 end
 dev = bodies{j};
-if ~strcmp(fieldText(dev.entity, 'name'), rigName) ...
-        || ~strcmp(fieldText(dev.entity, 'local_identifier'), rigName)
+if ~strcmp(fieldText(dev.entity, 'name'), rigName)
     spec.unplaced{end+1} = 'the rig''s device is not named by the rig name';
 end
 for f = reshape(fieldnames(dev.entity), 1, [])
-    if ~any(strcmp(f{1}, {'type', 'name', 'local_identifier'})) && ~allEmpty(dev.entity.(f{1}))
+    if ~any(strcmp(f{1}, {'type', 'name'})) && ~allEmpty(dev.entity.(f{1}))
         spec.unplaced{end+1} = sprintf('the rig''s device states entity.%s', f{1}); %#ok<AGROW>
     end
 end

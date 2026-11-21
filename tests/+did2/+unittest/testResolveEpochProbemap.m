@@ -1516,7 +1516,9 @@ verifyEqual(testCase, depVal(w, 'parent_id'), rigDeviceOf(out, 'acqsys_d'));
 dev = docById(out, rigDeviceOf(out, 'acqsys_d'));
 verifyEqual(testCase, did2.unittest.helpers.classKey(dev), 'device');
 verifyEqual(testCase, char(dev.entity.name), 'intan1');
-verifyEqual(testCase, char(dev.entity.local_identifier), 'intan1');
+% [local identifier required only where looked up] (Jess Haley, 2026-11-19):
+% the rig's device writes `name` only
+verifyTrue(testCase, ~isfield(dev.entity, 'local_identifier') || isempty(dev.entity.local_identifier));
 verifyEqual(testCase, rep.wiring_parent_device, 1);
 verifyEqual(testCase, rep.wiring_parent_acquisition_system, 0);
 verifyEqual(testCase, rep.rig_devices_indexed, 1, 'denominator: the rigs with a device');

@@ -136,7 +136,15 @@ function report = wholeBatch(v1Bodies, result)
 %                              orphaned parameters document with an
 %                              identical used twin, [orphaned response
 %                              settings are an accepted loss], Jess Haley,
-%                              2026-11-12). An accepted loss marked LISTED
+%                              2026-11-12; and did2.convert.
+%                              resolveOpenmindsCitations, the openminds
+%                              documents of a dataset graph that matches its
+%                              metadata_editor form, [metadata editor graph
+%                              compared with its form], Jess Haley,
+%                              2026-11-20, twin_id the form's id; the id
+%                              check does not count a graph document naming
+%                              another one dropped with it). An accepted loss
+%                              marked LISTED
 %                              covers only such a source: its id is counted
 %                              in ids_accepted_lost (after the id check
 %                              below) and the source is not compared, as
@@ -690,6 +698,18 @@ a(end+1) = struct('name', 'orphaned response settings', ...
     'decision', '[orphaned response settings are an accepted loss] (Jess Haley, 2026-11-12)', ...
     'classes', {{'stimulus_response_scalar_parameters_basic'}}, 'paths', {{'base.id'}}, ...
     'id', true, 'when', [], 'listed', true, 'pathsOf', []);
+% [metadata editor graph compared with its form] (Decided by Jess Haley,
+% 2026-11-20, amending [metadata editor form is the source]; did-schema
+% did_v2_go_forward_class_audit.md): "(1) both present and matching: the
+% graph's documents are dropped as derived"; "the round trip lists a dropped
+% graph's ids as an accepted loss, since the form path mints its own". LISTED:
+% only an openminds document did2.convert.resolveOpenmindsCitations recorded
+% in RESULT.not_migrated; the graph's documents name each other, which the id
+% check does not count against a document dropped with them (acceptedIdCheck)
+a(end+1) = struct('name', 'openMINDS graph derived from its form', ...
+    'decision', '[metadata editor graph compared with its form] (Jess Haley, 2026-11-20)', ...
+    'classes', {{'openminds'}}, 'paths', {{'base.id'}}, ...
+    'id', true, 'when', [], 'listed', true, 'pathsOf', []);
 end
 
 function paths = removedFileLocations(v1, docs, ctx)
@@ -927,6 +947,7 @@ check = struct('documents_scanned', 0, 'ids_checked', 0, 'ids_referenced', 0, ..
 ids = {};
 classes = {};
 owners = [];
+losses = {};
 for r = 1:numel(rows)
     row = rows(r);
     if row.input_index < 1 || row.input_index > numel(bodies)
@@ -942,6 +963,8 @@ for r = 1:numel(rows)
     ids{end+1} = id; %#ok<AGROW>
     classes{end+1} = cls; %#ok<AGROW>
     owners(end+1) = row.input_index; %#ok<AGROW>
+    a = acceptedIdLoss(accepted, cls, isKey(notMigrated, id));
+    if a.listed; losses{end+1} = a.name; else; losses{end+1} = ''; end %#ok<AGROW>
 end
 check.ids_checked = numel(ids);
 if isempty(ids)
@@ -955,8 +978,20 @@ for k = 1:numel(bodies)
     catch
         txt = '';
     end
+    % a document not migrated by the same LISTED loss is dropped with the id
+    % it names ([metadata editor graph compared with its form]: a dropped
+    % graph's documents name each other), so it does not count against it
+    kLoss = '';
+    kId = v1Id(bodies{k});
+    if ~isempty(kId) && isKey(notMigrated, kId)
+        ka = acceptedIdLoss(accepted, v1ClassName(bodies{k}), true);
+        if ~isempty(ka) && ka.listed; kLoss = ka.name; end
+    end
     for i = 1:numel(ids)
         if owners(i) == k || ~contains(txt, ids{i})
+            continue;
+        end
+        if ~isempty(kLoss) && strcmp(kLoss, losses{i})
             continue;
         end
         referenced(ids{i}) = true;

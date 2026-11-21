@@ -512,14 +512,18 @@ function testDaqsystemMintsTheRigsDevice(testCase)
 % entity] -- the rig is an `entity` of type device and the acquisition_system
 % is the configuration that points at it by `device_id`; [migration mints the
 % device by name] -- named by the v1 rig name (`daqsystem` base.name) only;
-% [one device per session]. The device type requires `local_identifier`; the
-% rig name is the only identifier v1 has, so it is that too.
+% [one device per session]. [local identifier required only where looked up]
+% (Jess Haley, 2026-11-19, did-schema did_v2_go_forward_class_audit.md): the
+% device type requires `name`, and the rig's device writes `name` only, so
+% its local_identifier is empty.
 out = runJ(daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'}));
 sys = firstOfClass(out, did2.convert.acquisitionConfigurationClass());
 dev = firstOfClass(out, 'device');
 verifyNotEmpty(testCase, dev, 'the daqsystem mints no device entity');
 verifyEqual(testCase, dev.get('entity.name'), 'intan1');
-verifyEqual(testCase, dev.get('entity.local_identifier'), 'intan1');
+ds = dev.toStruct();
+verifyTrue(testCase, ~isfield(ds.entity, 'local_identifier') || isempty(ds.entity.local_identifier), ...
+    'the rig''s device writes name only, no local_identifier');
 verifyEqual(testCase, depValue(sys, 'device_id'), dev.get('base.id'));
 verifyEqual(testCase, did2.schema.cache.sessionIdOf(dev.toStruct()), 'session_id_1');
 % a fresh id: neither the rig's own (kept by the acquisition_system) nor its software's
