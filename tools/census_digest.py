@@ -233,7 +233,8 @@ POST_PASSES = [
     #
     # TWO SUMS HOLD BY CONSTRUCTION and are the cheapest defect check here:
     #     components_seen  == planned + without_dataset_version
-    #     components_planned == consumed + withheld + reverted_on_validation
+    #     components_planned == consumed + dropped_as_derived + withheld
+    #                           + reverted_on_validation
     # Every component takes exactly one of those exits (resolveOpenmindsCitations
     # .m:380-455), so a violation is a counter that stopped being incremented,
     # not a corpus fact.
@@ -252,6 +253,25 @@ POST_PASSES = [
         # those holding an author's second affiliation, which has no place;
         # their openminds documents are carried as v1.
         ("components_withheld_unplaced", "    of those: unplaced affiliations, CARRIED AS v1"),
+        # [metadata editor graph compared with its form] (Jess Haley,
+        # 2026-11-20): a graph beside its dataset's metadata_editor form is
+        # dropped when it matches what the form produced, carried as v1 when
+        # it differs (carry-174). The forms are read from pass 1's
+        # source_outputs, whose row count is their denominator.
+        ("components_withheld_differing_from_form", "    of those: graph DIFFERS from its form, CARRIED AS v1 (carry-174)"),
+        ("differing_form_carried_as_v1", "      of those: the form itself is carried as v1"),
+        ("differing_several_forms", "      of those: several forms state the dataset"),
+        ("graph_documents_carried_differing", "      their openminds DOCUMENTS carried"),
+        ("components_dropped_as_derived", "  DROPPED: graph matches its form (derived)"),
+        ("graph_documents_dropped_as_derived", "    their openminds DOCUMENTS dropped (ids an accepted loss)"),
+        ("source_outputs_read", "pass-1 source_outputs rows read  <- THE FORMS' DENOMINATOR"),
+        ("forms_seen", "  metadata_editor forms among them"),
+        ("forms_converted", "    converted"),
+        ("forms_carried_as_v1", "    carried as v1"),
+        ("forms_without_dataset_id", "    with no document in the batch (not keyed)"),
+        ("components_compared_with_form", "components compared with their dataset's form"),
+        ("components_without_form", "components with no form (converted as before)"),
+        ("form_graph_facts_compared", "  facts compared, form and graph together"),
         ("components_reverted_on_validation", "  REVERTED (a body failed validation)"),
         # A DOCUMENT count, not a component count. One component is typically
         # many documents (a person alone is five), so this must not be read
@@ -4833,15 +4853,20 @@ def _render_openminds_citations_reading(rep, p):
     consumed = _int_or_none(rep.get("components_consumed"))
     withheld = _int_or_none(rep.get("components_withheld"))
     reverted = _int_or_none(rep.get("components_reverted_on_validation"))
+    # [metadata editor graph compared with its form] (2026-11-20): a component
+    # whose graph matches its form is dropped, a fourth exit; a report from
+    # before then has no such counter, read as 0
+    dropped = _int_or_none(rep.get("components_dropped_as_derived")) or 0
     if None not in (comps, planned, noroot) and comps != planned + noroot:
         p("          *** components_seen (%d) != planned (%d) + no-root (%d)."
           % (comps, planned, noroot))
         p("          *** Every component takes exactly one of those exits, so")
         p("          *** this is a counter that stopped being incremented.")
     if None not in (planned, consumed, withheld, reverted) \
-            and planned != consumed + withheld + reverted:
+            and planned != consumed + dropped + withheld + reverted:
         p("          *** planned (%d) != consumed (%d) + withheld (%d) +"
           % (planned, consumed, withheld))
+        p("          *** dropped as derived (%d) +" % dropped)
         p("          *** reverted (%d). Same reading: a defect in the pass's"
           % reverted)
         p("          *** bookkeeping, not a fact about this corpus.")
