@@ -89,18 +89,44 @@ function testAConditionWhoseCanonicalIsListedHoldsItsSourceValue(testCase)
 % absent and listed as a gap, holds ONE value (first use: an image stack's
 % acquisition time on a clock that is not UTC, [acquisition time on its
 % clock]). Unlisted, it still holds none and is refused.
+% The new numeric shape ([one shape for measured numbers], did-schema
+% did_v2_numeric_shape_plan.md): `source_numeric` kept, `numeric` absent and
+% listed as the gap. The old shape (`quantity.source_value`, gap
+% `quantity.value`) is checked too while the schema declares it.
+variable = did2.build.term('AFO:AFR_0001158', 'acquisition time');
 cond = did2.build.composite('statement', 'conditions', struct( ...
-    'variable', did2.build.term('AFO:AFR_0001158', 'acquisition time'), ...
-    'quantity', struct('source_value', '739038.5')));
-g = struct('field', 'statement.conditions(1).quantity.value', ...
-    'reason', 'a datenum on a clock that is not UTC');
+    'variable', variable, 'source_numeric', '739038.5'));
+verifyGapHoldsOneValue(testCase, cond, 'statement.conditions(%d).numeric');
+doc = buildObs(testCase, cond, struct('field', 'statement.conditions(1).numeric', ...
+    'reason', 'a datenum on a clock that is not UTC'));
+verifyEqual(testCase, doc.statement.conditions(1).source_numeric, '739038.5');
+verifyFalse(testCase, isfield(doc.statement.conditions(1), 'numeric') ...
+    && ~isempty(doc.statement.conditions(1).numeric));
+old = struct('variable', variable, 'quantity', struct('source_value', '739038.5'));
+if did2.unittest.helpers.oldListShapeDeclared()
+    cond = did2.build.composite('statement', 'conditions', old);
+    verifyGapHoldsOneValue(testCase, cond, 'statement.conditions(%d).quantity.value');
+    doc = buildObs(testCase, cond, struct('field', 'statement.conditions(1).quantity.value', ...
+        'reason', 'a datenum on a clock that is not UTC'));
+    verifyFalse(testCase, isfield(doc.statement.conditions(1).quantity, 'value'));
+else
+    % did-schema without the old shape (numeric shape plan section 9 step 4)
+    verifyError(testCase, @() did2.build.composite('statement', 'conditions', old), ...
+        'did2:build:unknownField');
+end
+end
+
+function verifyGapHoldsOneValue(testCase, cond, gapPattern)
+% COND's canonical listed as a gap (GAPPATTERN, with the condition's index):
+% the document builds and the report holds the gap; unlisted, or listed for
+% another condition, it holds no value and is refused
+g = struct('field', sprintf(gapPattern, 1), 'reason', 'a datenum on a clock that is not UTC');
 doc = buildObs(testCase, cond, g);
-verifyFalse(testCase, isfield(doc.statement.conditions(1).quantity, 'value'));
 listed = did2.convert.migrationReport('gaps', doc.base.id);
 verifyEqual(testCase, listed(1).field, g.field);
 verifyError(testCase, @() buildObs(testCase, cond, []), 'did2:build:ruleViolated', ...
     'a condition with no value and no gap listed holds none');
-other = struct('field', 'statement.conditions(2).quantity.value', 'reason', 'r');
+other = struct('field', sprintf(gapPattern, 2), 'reason', 'r');
 verifyError(testCase, @() buildObs(testCase, cond, other), 'did2:build:ruleViolated', ...
     'a gap for another condition excuses nothing here');
 end

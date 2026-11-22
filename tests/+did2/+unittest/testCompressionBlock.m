@@ -118,27 +118,39 @@ function testABuiltNumericSettingReadsBackInTheNewShape(testCase)
 did2.unittest.helpers.compressionBlockSchema(testCase);
 prevShape = did2.build.numericShape('');
 testCase.addTeardown(@() did2.build.numericShape(prevShape));
-for shape = {'old', 'new'}
-    did2.build.numericShape(shape{1});
-    c = did2.build.compression('gzip', 'Settings', struct('ratio', 0.25));
-    p = c.parameters;
-    if iscell(p); p = p{1}; end
-    if strcmp(shape{1}, 'new')
-        verifyTrue(testCase, isfield(p, 'numeric') && ~isfield(p, 'quantity'), ...
-            'the new shape writes the flat numeric');
-    else
-        verifyTrue(testCase, isfield(p, 'quantity') && ~isfield(p, 'numeric'), ...
-            'the old shape writes quantity');
-        verifyError(testCase, @() did2.build.compressionCodec(c), ...
-            'did2:read:oldNumericShapeReMigrate', 'the old shape is refused');
-        continue;
-    end
-    [codec, s] = did2.build.compressionCodec(c);
-    verifyEqual(testCase, codec, 'gzip', shape{1});
-    verifyTrue(testCase, isfield(s, 'ratio'), [shape{1} ': the setting is read']);
-    if isfield(s, 'ratio')
-        verifyEqual(testCase, s.ratio, 0.25, shape{1});
-    end
+did2.build.numericShape('new');
+c = did2.build.compression('gzip', 'Settings', struct('ratio', 0.25));
+p = c.parameters;
+if iscell(p); p = p{1}; end
+verifyTrue(testCase, isfield(p, 'numeric') && ~isfield(p, 'quantity'), ...
+    'the new shape writes the flat numeric');
+[codec, s] = did2.build.compressionCodec(c);
+verifyEqual(testCase, codec, 'gzip');
+verifyTrue(testCase, isfield(s, 'ratio'), 'the setting is read');
+if isfield(s, 'ratio')
+    verifyEqual(testCase, s.ratio, 0.25);
+end
+% the same setting in the old shape, written by hand (the builder writes it
+% only while the schema declares it): refused
+old = c;
+old.parameters = struct('variable', p.variable, ...
+    'quantity', struct('value', 0.25, 'source_value', '0.25'));
+verifyError(testCase, @() did2.build.compressionCodec(old), ...
+    'did2:read:oldNumericShapeReMigrate', 'the old shape is refused');
+% and what the builder does with 'old' depends on the schema it runs on
+did2.build.numericShape('old');
+if did2.unittest.helpers.oldListShapeDeclared()
+    o = did2.build.compression('gzip', 'Settings', struct('ratio', 0.25));
+    op = o.parameters;
+    if iscell(op); op = op{1}; end
+    verifyTrue(testCase, isfield(op, 'quantity') && ~isfield(op, 'numeric'), ...
+        'the old shape writes quantity');
+    verifyError(testCase, @() did2.build.compressionCodec(o), ...
+        'did2:read:oldNumericShapeReMigrate', 'the built old shape is refused');
+else
+    % did-schema without the old shape (numeric shape plan section 9 step 4)
+    verifyError(testCase, @() did2.build.compression('gzip', 'Settings', ...
+        struct('ratio', 0.25)), 'did2:build:unknownField');
 end
 end
 

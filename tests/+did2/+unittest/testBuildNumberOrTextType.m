@@ -210,14 +210,15 @@ end
 
 function declare(testCase, file, listName)
 % insert the source_numeric declaration into LISTNAME's entry, before its
-% `quantity`; a file already declaring it there is left as it is
+% `count` (declared in the old numeric shape and the new one); a file
+% already declaring it there is left as it is
 assertTrue(testCase, isfile(file), [file ' is not in the schema in use']);
 t = fileread(file);
 at = strfind(t, ['"name": "' listName '"']);
 assertNotEmpty(testCase, at, sprintf('%s declares no %s', file, listName));
 rest = t(at(1):end);
-q = strfind(rest, '"name": "quantity"');
-assertNotEmpty(testCase, q, sprintf('%s.%s declares no quantity', file, listName));
+q = strfind(rest, '"name": "count"');
+assertNotEmpty(testCase, q, sprintf('%s.%s declares no count', file, listName));
 q = at(1) + q(1) - 1;
 already = strfind(t(at(1):q), '"name": "source_numeric"');
 if ~isempty(already)
