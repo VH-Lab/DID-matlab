@@ -758,6 +758,23 @@ POST_PASSES = [
         ("archive_kept_referenced", "  KEPT: still referenced by a survivor"),
         ("archive_dangling_references", "    dangling references found (and avoided)"),
         ("archive_kept_clock_not_carried", "  KEPT: a clock it states is on no emitted time reference"),
+        # [stimulus log owned by its presentation] (Jess Haley 2026-11-19): a
+        # stimulus system's archive (channel_list.bin + evmktx, no recording
+        # owner) -> bodies of the epoch's presentation, else a fallback
+        # observation of the rig's device; the archive then retires as above.
+        ("stimulus_log_archives_seen", "stimulus-log archives (no recording owner)  <- STIMULUS LOG DENOMINATOR"),
+        ("stimulus_log_to_presentation", "  owned by the epoch's stimulus presentation"),
+        ("stimulus_log_to_fallback", "  owned by a fallback observation (no presentation)"),
+        ("stimulus_log_fallback_entity_system", "    of them, entity the acquisition system (no rig device)"),
+        ("stimulus_log_kept_several_presentations", "  KEPT: several presentations match"),
+        ("stimulus_log_kept_no_epoch", "  KEPT: no epoch entity"),
+        ("stimulus_log_kept_no_system", "  KEPT: not exactly one acquisition system for its reader"),
+        ("stimulus_log_kept_clock", "  KEPT: a clock reference not built"),
+        ("stimulus_log_kept_no_anchor", "  KEPT: no epoch anchor for the fallback observation"),
+        ("stimulus_log_kept_not_built", "  KEPT: its bodies could not be built"),
+        ("stimulus_log_quarantined", "  documents QUARANTINED"),
+        ("stimulus_log_bodies", "  log bodies emitted"),
+        ("stimulus_log_clock_references_emitted", "  clock references emitted for the logs"),
         # [clock only on the time reference] (Jess Haley 2026-11-01): the
         # archive's epochtable -> one relative_time_reference per clock onto the
         # epoch, named by the epoch's recording observations.

@@ -112,6 +112,16 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %                               channel], Jess Haley, 2026-11-19), so only
 %                               its analog length is deferred
 %
+%   A STIMULUS LOG ([stimulus log owned by its presentation], Jess Haley,
+%   2026-11-19): when the bodies' owner is the epoch's stimulus presentation,
+%   which names no acquisition system and no clock, the reader and the epoch
+%   are read from the bodies' notes ("The stimulus log of epoch <e>, read by
+%   the NDI reader <r>.", resolveEpochProbemap's stimulusLogKey), the epoch
+%   entity through the ingestion_manifest of that reader's system's file
+%   pattern, and the clocks are the relative_time_references onto it that no
+%   statement of another acquisition system names. A log owned by the
+%   fallback observation is read as above (it names the system and clocks).
+%
 %   A body that is not an opaque_body or a sampled_body, or whose v1 names
 %   cannot be rebuilt, is unplaced.
 %
@@ -312,6 +322,22 @@ for i = 1:numel(owners)
     end
 end
 
+% [stimulus log owned by its presentation] (Jess Haley, 2026-11-19): a
+% stimulus log owned by its presentation names no acquisition system and no
+% clock (the presentation is the v1 document pass 1 carries, or the
+% manipulation NDI's second pass makes of it); its bodies' notes name the
+% epoch and the reader (stimulusLogKeyOf), and its clocks are the references
+% onto that epoch no other system's statement names (stimulusLogClocks)
+[logEpoch, logReader] = stimulusLogKeyOf(bodies);
+if ~isempty(logReader) && isempty(readers)
+    readers = {logReader};
+end
+if ~isempty(logEpoch) && (isempty(epochId) || isempty(clockRefs))
+    [eid, refs] = stimulusLogClocks(ctx, logReader, logEpoch);
+    if isempty(epochId); epochId = eid; end
+    if isempty(clockRefs); clockRefs = refs; end
+end
+
 % base: the clock references carry the archive's own creation time
 base = struct('id', '', 'session_id', sessionId, 'name', '', 'datestamp', '');
 if ~isempty(clockRefs)
@@ -392,6 +418,92 @@ function v = NO_DIGITAL_DEFAULT()
 % mfdaq.m ingest_epochfiles: sample_digital_segment = 1e7 ([archive with no
 % digital channel], Jess Haley, 2026-11-19)
 v = 10000000;
+end
+
+function [epochString, readerId] = stimulusLogKeyOf(bodies)
+% the epoch and reader a stimulus log's bodies name: their notes open with
+% "The stimulus log of epoch <e>, read by the NDI reader <r>." (DID-matlab
+% resolveEpochProbemap stimulusLogKey; NDI-matlab
+% ndi.vintage.ingestedStimulusLogKey); '' when no body's do, or they disagree
+epochString = '';
+readerId = '';
+seen = {};
+for k = 1:numel(bodies)
+    notes = char(getIn(bodies{k}, 'data_body', 'notes'));
+    tok = regexp(notes, '^The stimulus log of epoch (.+?), read by the NDI reader (\S+?)\.(\s|$)', ...
+        'tokens', 'once');
+    if isempty(tok); continue; end
+    pair = [tok{1} '|' tok{2}];
+    if ~any(strcmp(seen, pair)); seen{end+1} = pair; end %#ok<AGROW>
+end
+if isscalar(seen)
+    parts = regexp(seen{1}, '^(.*)\|([^|]*)$', 'tokens', 'once');
+    epochString = parts{1};
+    readerId = parts{2};
+end
+end
+
+function [epochId, refs] = stimulusLogClocks(ctx, readerId, epochString)
+% the epoch entity of a stimulus log (the epoch of an ingestion_manifest of
+% the file pattern of an acquisition configuration (or acquisition_system)
+% whose reader is READERID, whose
+% local_identifier is EPOCHSTRING) and its clock references: the
+% relative_time_references onto it that state a clock, a start and a
+% duration, and that no statement naming another acquisition system names
+epochId = '';
+refs = {};
+systems = {};
+for i = ctxReferrers(ctx, readerId)
+    d = ctx.docs{i};
+    if any(strcmp(classNameOf(d), did2.convert.acquisitionConfigurationNames())) ...
+            && any(strcmp(edgeIds(d, 'reader_id'), readerId))
+        systems{end+1} = char(getIn(d, 'base', 'id')); %#ok<AGROW>
+    end
+end
+for s = 1:numel(systems)
+    sys = ctxDoc(ctx, systems{s});
+    for nav = edgeIds(sys, 'epoch_file_pattern_id')
+        for i = ctxReferrers(ctx, nav{1})
+            m = ctx.docs{i};
+            if ~strcmp(classNameOf(m), 'ingestion_manifest'); continue; end
+            for e = edgeIds(m, 'epoch_id')
+                ent = ctxDoc(ctx, e{1});
+                if isempty(ent); continue; end
+                if strcmp(fieldText(getIn(ent, 'entity'), 'local_identifier'), epochString)
+                    epochId = e{1};
+                end
+            end
+        end
+        if ~isempty(epochId); break; end
+    end
+    if ~isempty(epochId); break; end
+end
+if isempty(epochId); return; end
+for i = ctxReferrers(ctx, epochId)
+    ref = ctx.docs{i};
+    % a clock reference states a clock, a start and a duration
+    % (did2.convert.epochClockReferences); a reference onto the epoch that
+    % states a clock without them (a spike train's, Soph) is not one, as
+    % NDI-matlab's readers skip it (+vintage/private/anchorClockExtent)
+    if ~strcmp(classNameOf(ref), 'relative_time_reference') ...
+            || isempty(clockText(getIn(ref, 'relative_time_reference', 'value', 'clock'))) ...
+            || isempty(numberOf(getIn(ref, 'relative_time_reference', 'value', 'start', 'seconds'))) ...
+            || isempty(numberOf(getIn(ref, 'relative_time_reference', 'value', 'duration', 'seconds')))
+        continue;
+    end
+    other = false;
+    for j = ctxReferrers(ctx, char(getIn(ref, 'base', 'id')))
+        named = edgeIds(ctx.docs{j}, 'acquisition_system_id');
+        named = named(~cellfun(@isempty, named));
+        if ~isempty(named) && ~any(ismember(named, systems))
+            other = true;
+            break;
+        end
+    end
+    if ~other
+        refs{end+1} = ref; %#ok<AGROW>
+    end
+end
 end
 
 function tf = sameFileSet(v1List, rebuiltList)
