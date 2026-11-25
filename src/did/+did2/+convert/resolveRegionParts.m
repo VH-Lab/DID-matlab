@@ -438,14 +438,6 @@ ch = edgeValue(s, 'child_id');
 pa = edgeValue(s, 'parent_id');
 end
 
-end
-
-end
-
-if wasCell; deps = num2cell(deps); end
-s.depends_on = deps;
-end
-
 function s = setEdge(s, name, value)
 if ~isfield(s, 'depends_on') || isempty(s.depends_on)
     if ~isempty(value)
