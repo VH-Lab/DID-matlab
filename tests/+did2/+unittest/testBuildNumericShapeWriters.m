@@ -159,10 +159,17 @@ old = did2.build.relativeTimeReference(did.ido.unique_id(), 'Clock', 'dev_local_
 verifyEqual(testCase, old.relative_time_reference.value.start.source_numeric, 12500);
 prev = did2.build.numericShape('old');
 testCase.addTeardown(@() did2.build.numericShape(prev));
-o = did2.build.relativeTimeReference(did.ido.unique_id(), 'Clock', 'dev_local_time', ...
+oldRef = @() did2.build.relativeTimeReference(did.ido.unique_id(), 'Clock', 'dev_local_time', ...
     'Start', 12.5, 'StartSourceValue', 12500, 'StartSourceUnit', ms, 'SessionId', sid);
-verifyEqual(testCase, o.relative_time_reference.value.start.source_value, 12500, ...
-    'the old shape keeps source_value');
+if did2.unittest.helpers.oldValueCellShapeDeclared()
+    o = oldRef();
+    verifyEqual(testCase, o.relative_time_reference.value.start.source_value, 12500, ...
+        'the old shape keeps source_value');
+else
+    % did-schema without the old value-cell shape (#346): the builder
+    % writes only what the schema declares
+    verifyError(testCase, oldRef, 'did2:build:unknownField');
+end
 end
 
 function testAbsoluteDurationWritesSourceNumericAndTheTimestampKeepsItsText(testCase)

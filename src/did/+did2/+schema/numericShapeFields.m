@@ -1,4 +1,4 @@
-function [defs, kind] = numericShapeFields(defs, parentName)
+function [defs, kind] = numericShapeFields(defs, parentName, canonicalNames)
 %NUMERICSHAPEFIELDS A field list with the new numeric shape declared beside the old.
 %
 %   [DEFS, KIND] = did2.schema.numericShapeFields(DEFS, PARENTNAME) takes one level of a
@@ -53,13 +53,20 @@ function [defs, kind] = numericShapeFields(defs, parentName)
 %
 %   'cell'  a numeric value class's value cell (voltage.value, mass.value,
 %           concentration.value, dose's amount_per_body_mass, ...): declares a
-%           numeric `source_value` and a `source_unit` and no `variable`.
-%           Added: source_numeric (source_value renamed). When the list is a
+%           `source_unit`, no `variable`, and its source's number -- a numeric
+%           `source_value` (the old shape's name), a numeric `source_numeric`
+%           (the new one's: once did-schema removes `source_value` from the
+%           value cells, section 9 step 4, did-schema#346, this is how a cell
+%           is recognised), or, where the caller passes CANONICALNAMES (the
+%           class's `canonical` list, plan section 2), every field that list
+%           names. Added, while only `source_value` is declared:
+%           source_numeric (source_value renamed). When the list is a
 %           statement's own value (PARENTNAME 'value': voltage.value, not
 %           dose.value.amount_per_body_mass or a time reference's start), the
-%           cell's canonical field(s) -- the run of numeric fields it declares
-%           first (volts; concentration's seven; score's score) until a class
-%           declares its `canonical` (plan section 2) -- and source_numeric
+%           cell's canonical field(s) -- the fields CANONICALNAMES lists when
+%           given, else the run of numeric fields it declares first (volts;
+%           concentration's seven; score's score; the same fields, for each
+%           class that declares a `canonical` list) -- and source_numeric
 %           are marked `series`: in the new shape a statement's series is ONE
 %           cell whose canonical field is an array (plan section 8, answer 4),
 %           while the old shape is an array of cells of one number each.
@@ -67,7 +74,12 @@ function [defs, kind] = numericShapeFields(defs, parentName)
 %           private/fillField). PARENTNAME is the name of the field whose
 %           sub-fields DEFS are; omitted, no field is marked `series`.
 %           Not a cell here: date and the absolute time references, whose
-%           source_value is text (plan section 7, "Not changed").
+%           source_value is text (plan section 7, "Not changed"), and
+%           logical's block {logical}, which has no source_unit.
+%
+%   CANONICALNAMES (optional, a cellstr; did2.schema.classCanonical reads it
+%   from a class) names a value class's canonical fields. Omitted or empty,
+%   the cell and its series are recognised from DEFS alone, as above.
 %
 %   A definition this function adds carries `numeric_shape: true`, so a
 %   caller can tell it from one the schema declares.
@@ -77,6 +89,10 @@ function [defs, kind] = numericShapeFields(defs, parentName)
 if nargin < 2
     parentName = '';
 end
+if nargin < 3 || isempty(canonicalNames)
+    canonicalNames = {};
+end
+canonicalNames = cellstr(canonicalNames);
 if isstruct(defs)
     defs = num2cell(reshape(defs, 1, []));
 elseif isempty(defs)
@@ -103,11 +119,18 @@ elseif numel(names) == 2 && has('variable') && has('value') ...
         && any(strcmp(typeOf(defs{strcmp(names, 'value')}), {'double', 'matrix'}))
     kind = 'fit';
     defs = fitFields(defs, names);
-elseif ~has('variable') && has('source_unit') && has('source_value') ...
-        && any(strcmp(typeOf(defs{strcmp(names, 'source_value')}), {'double', 'matrix'}))
+elseif ~has('variable') && has('source_unit') ...
+        && (numericDecl(defs, names, 'source_value') || numericDecl(defs, names, 'source_numeric') ...
+            || (~isempty(canonicalNames) && all(ismember(canonicalNames, names))))
     kind = 'cell';
-    defs = cellFields(defs, names, strcmp(char(parentName), 'value'));
+    defs = cellFields(defs, names, strcmp(char(parentName), 'value'), canonicalNames);
 end
+end
+
+function tf = numericDecl(defs, names, n)
+% N is declared, as a number (a value cell's source record)
+j = find(strcmp(names, n), 1);
+tf = ~isempty(j) && any(strcmp(typeOf(defs{j}), {'double', 'matrix'}));
 end
 
 % -------------------------------------------------------------------------
@@ -181,9 +204,17 @@ end
 defs = insertAt(defs, names, added, find(strcmp(names, 'value'), 1) + 1);
 end
 
-function defs = cellFields(defs, names, isSeries)
-% the canonical field(s): the numeric fields the cell declares first
-if isSeries
+function defs = cellFields(defs, names, isSeries, canonicalNames)
+% the canonical field(s): those the class's `canonical` list names, else the
+% numeric fields the cell declares first
+if isSeries && ~isempty(canonicalNames)
+    for k = 1:numel(defs)
+        if any(strcmp(names{k}, canonicalNames))
+            defs{k}.series = true;
+            defs{k}.mustBeScalar = false;
+        end
+    end
+elseif isSeries
     for k = 1:numel(defs)
         if ~any(strcmp(typeOf(defs{k}), {'double', 'matrix'})) ...
                 || any(strcmp(names{k}, {'source_value', 'source_numeric'}))
@@ -202,6 +233,9 @@ if any(strcmp(names, 'source_numeric'))
     return;
 end
 sv = find(strcmp(names, 'source_value'), 1);
+if isempty(sv)
+    return;   % recognised by its canonical list alone: nothing to rename
+end
 d = defs{sv};
 d.name = 'source_numeric';
 d.documentation = 'The number(s) as the source wrote them, in `source_unit` (source_value renamed).';

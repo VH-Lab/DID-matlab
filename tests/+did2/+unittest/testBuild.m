@@ -410,14 +410,21 @@ end
 
 function testValueCellVoltage(testCase)
 [mV, written] = sourceUnit('om:millivolt', 'millivolt', 'mV');
-% the old numeric shape: one cell per reading
-v = did2.build.valueCell('voltage', [0.012 0.013], 'SourceValue', [12 13], ...
+% the old numeric shape: one cell per reading, written while the schema
+% declares it; once did-schema removes it from the value cells
+% (Waltham-Data-Science/did-schema #346) the builder refuses it
+oldV = @() did2.build.valueCell('voltage', [0.012 0.013], 'SourceValue', [12 13], ...
     'SourceUnit', mV, 'Approximate', false, 'Shape', 'old');
-verifyEqual(testCase, size(v), [1 2]);
-verifyEqual(testCase, fieldnames(v)', {'volts', 'source_unit', 'source_value', 'approximate'}, ...
-    'cell fields come out in the schema''s declared order');
-verifyEqual(testCase, [v.volts], [0.012 0.013]);
-verifyEqual(testCase, {v.source_unit}, {written, written});
+if did2.unittest.helpers.oldValueCellShapeDeclared()
+    v = oldV();
+    verifyEqual(testCase, size(v), [1 2]);
+    verifyEqual(testCase, fieldnames(v)', {'volts', 'source_unit', 'source_value', 'approximate'}, ...
+        'cell fields come out in the schema''s declared order');
+    verifyEqual(testCase, [v.volts], [0.012 0.013]);
+    verifyEqual(testCase, {v.source_unit}, {written, written});
+else
+    verifyError(testCase, oldV, 'did2:build:unknownField');
+end
 % the new shape (the default since step 2 of did-schema
 % did_v2_numeric_shape_plan.md): ONE cell whose canonical field and
 % source_numeric are arrays, one source_unit for the series
@@ -428,6 +435,8 @@ verifyEqual(testCase, v.volts, [0.012 0.013]);
 verifyEqual(testCase, v.source_numeric, [12 13]);
 verifyEqual(testCase, v.source_unit, written);
 verifyFalse(testCase, isfield(v, 'source_value'));
+verifyEqual(testCase, fieldnames(v)', {'volts', 'source_unit', 'source_numeric', 'approximate'}, ...
+    'cell fields come out in the schema''s declared order');
 end
 
 function testValueCellLeavesOutWhatWasNotGiven(testCase)
@@ -849,7 +858,7 @@ if ~c.hasClass('dose') || ~isfield(c.getClass('dose'), 'rules') ...
     assumeFail(testCase, 'the loaded schema has no dose ingredients_match_edges rule');
 end
 sid = testCase.TestData.sid;
-apbm = struct('amount_per_body_mass', struct('grams_per_gram', 1e-6, 'source_value', 1));
+apbm = struct('amount_per_body_mass', struct('grams_per_gram', 1e-6, 'source_numeric', 1));
 val = struct('volume', did2.build.valueCell('volume', NaN), 'ingredients', apbm);
 base = struct('entity_id', newId(), 'time_reference_id', newId(), 'formulation_id', newId());
 withEdge = base; withEdge.ingredient_id = {newId()};
@@ -948,12 +957,12 @@ chemA = did2.build.document('chemical', struct('value', struct('substance', ...
 chemB = did2.build.document('chemical', struct('value', struct('substance', ...
     did2.build.term('EFO:0002677', 'saline'))), 'SessionId', sid);
 form = did2.build.document('formulation', struct('value', struct('ingredients', ...
-    {{struct('concentration', struct('molar', 1e-3, 'source_value', 1e-3)), ...
-      struct('concentration', struct('molar', 1e-3, 'source_value', 1e-3))}})), ...
+    {{struct('concentration', struct('molar', 1e-3, 'source_numeric', 1e-3)), ...
+      struct('concentration', struct('molar', 1e-3, 'source_numeric', 1e-3))}})), ...
     'SessionId', sid, 'Edges', struct('ingredient_id', ...
     {{chemA.base.id, chemB.base.id}}));
 perMass = struct('amount_per_body_mass', struct('grams_per_gram', 1e-6, ...
-    'source_value', 1));
+    'source_numeric', 1));
 value = struct('volume', did2.build.valueCell('volume', NaN), ...
     'ingredients', perMass);
 doc = did2.build.statement('manipulation', newId(), 'treatment', value, ...
@@ -1440,8 +1449,14 @@ verifyEqual(testCase, s.tolerance, struct('minus', 60, 'plus', 60));
 verifyFalse(testCase, s.approximate, 'an explicit Approximate is kept');
 % one row per cell is the old numeric shape; the new shape's series has one
 % tolerance ([one shape for measured numbers], plan section 8, answer 4)
-c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1], 'Shape', 'old');
-verifyEqual(testCase, c(2).tolerance, struct('minus', 0, 'plus', 0.1), 'one row per cell');
+oldMass = @() did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1], 'Shape', 'old');
+if did2.unittest.helpers.oldValueCellShapeDeclared()
+    c = oldMass();
+    verifyEqual(testCase, c(2).tolerance, struct('minus', 0, 'plus', 0.1), 'one row per cell');
+else
+    % did-schema without the old value-cell shape (#346): refused
+    verifyError(testCase, oldMass, 'did2:build:unknownField');
+end
 verifyError(testCase, @() did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05; 0 0.1]), ...
     'did2:build:sizeMismatch');
 c = did2.build.valueCell('mass', [1.5 2.5], 'Tolerance', [0.05 0.05]);

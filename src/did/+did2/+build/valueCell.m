@@ -7,11 +7,12 @@ function cells = valueCell(typeName, canonical, options)
 %   (series-as-cardinality, Brainstorm I: a single reading is the length-1
 %   case). The cell's fields are read from TYPENAME's schema, e.g.
 %
-%       voltage        {volts, source_unit, source_value, approximate}
+%       voltage        {volts, source_unit, source_numeric, approximate, tolerance}
 %       count          {count, approximate}
-%       score          {score, scale, scale_min, scale_max, source_unit, source_value, approximate}
+%       score          {score, scale, scale_min, scale_max, source_unit, source_numeric, approximate}
 %       date           {instant, precision, source_value, approximate}
-%       concentration  {molar, grams_per_liter, ..., source_unit, source_value, approximate}
+%       concentration  {molar, grams_per_liter, ..., source_unit, source_numeric, approximate}
+%       logical        {logical}
 %
 %   CANONICAL fills the canonical field -- by default the FIRST field the type
 %   declares (volts, seconds, grams, count, score, instant, molar, ...). It is a
@@ -22,8 +23,10 @@ function cells = valueCell(typeName, canonical, options)
 %   Options:
 %     'Canonical'    which field CANONICAL fills, when the type has several
 %                    (concentration: 'molar', 'grams_per_liter', ...).
-%     'SourceValue'  what the source wrote, one per cell (numeric array, or a
-%                    cellstr when the type's source_value is text).
+%     'SourceValue'  what the source wrote, one per reading (numeric array, or a
+%                    cellstr when the type's source_value is text, as a
+%                    date's). In a numeric cell's new shape it fills
+%                    `source_numeric`.
 %     'SourceUnit'   the source's unit: one for all cells, or one per cell.
 %                    Where the schema declares `source_unit` an ontology_term
 %                    (did-schema V_eta_source_unit_plan.md) it is the unit's
@@ -58,7 +61,16 @@ function cells = valueCell(typeName, canonical, options)
 %                    when they differ per reading). Other types (count, date,
 %                    ...) are written as before in either shape. For `logical`
 %                    'new' writes the block {logical: CANONICAL} (plan section
-%                    3); the old shape has no cell for it (notACell).
+%                    3), one block for the series; the old shape has no cell
+%                    for it (notACell). Once did-schema removes the old shape
+%                    from the value cells (section 9 step 4, did-schema#346: no
+%                    `source_value` in a numeric cell, `logical.value`
+%                    declared as the block {logical}), 'old' is refused for
+%                    them (did2:build:unknownField): the builder writes only
+%                    what the schema declares. A numeric cell is recognised
+%                    by did2.schema.numericShapeFields, from its
+%                    `source_value` or `source_numeric` or its class's
+%                    `canonical` list (did2.schema.classCanonical).
 %     'SchemaCache'  a did2.schema.cache; default the shared one.
 %   An option the type does not declare (e.g. 'SourceUnit' for count) is an
 %   error, as is any required cell field left unfilled (date.precision).
@@ -93,8 +105,18 @@ isNew = strcmp(shape, 'new');
 cache = schemaCache(options.SchemaCache);
 def = fieldDef(cache, typeName, 'value');
 subDefs = asDefs(getSub(def));
-if isempty(subDefs) && isNew && strcmp(char(def.type), 'boolean')
-    % logical.value.logical ([one shape for measured numbers], section 3)
+logicalBlock = did2.schema.cache.declaresLogicalBlock(def);
+if logicalBlock && ~isNew
+    % did-schema declares logical's value as the block (#346): its old
+    % shape, a bare true/false, is no longer declared, and the builder
+    % writes only what the schema declares
+    error('did2:build:unknownField', ...
+        ['valueCell: "%s.value" is declared as the block {logical}; the old ' ...
+         'shape (a bare true/false) is not declared by the loaded schema.'], typeName);
+end
+if isNew && (logicalBlock || (isempty(subDefs) && strcmp(char(def.type), 'boolean')))
+    % logical.value.logical ([one shape for measured numbers], section 3):
+    % ONE block whose `logical` holds every reading
     v = canonical;
     if ~(islogical(v) || (isnumeric(v) && all(v(:) == 0 | v(:) == 1)))
         error('did2:build:typeMismatch', 'valueCell: a logical value is true/false.');
@@ -125,6 +147,19 @@ n = numel(canon);
 if n == 0
     error('did2:build:missingField', 'valueCell: no canonical value given.');
 end
+[shapedDefs, cellKind] = did2.schema.numericShapeFields(subDefs, 'value', ...
+    did2.schema.classCanonical(typeName, cache));
+isCell = strcmp(cellKind, 'cell');
+shapedNames = cellfun(@(d) char(d.name), shapedDefs, 'UniformOutput', false);
+if isCell && ~isNew && ~any(strcmp('source_value', names))
+    % did-schema has removed the old value-cell shape (section 9 step 4,
+    % did-schema#346): one cell per reading with `source_value` is no longer
+    % declared, and the builder writes only what the schema declares
+    error('did2:build:unknownField', ...
+        ['valueCell: the old shape of "%s.value" (one cell per reading, ' ...
+         '`source_value`) is not declared by the loaded schema; it declares ' ...
+         'the new shape (one cell, `source_numeric`).'], typeName);
+end
 source = asList(options.SourceValue);
 unit = asList(options.SourceUnit);
 approx = asList(options.Approximate);
@@ -136,7 +171,12 @@ if ~isempty(extra) && ~(isscalar(extra) || numel(extra) == n)
     error('did2:build:sizeMismatch', ...
         'valueCell: ''Fields'' has %d elements for %d cells.', numel(extra), n);
 end
-requireDeclared('SourceValue', 'source_value', source, names, typeName);
+if isCell && isNew
+    % in the new shape 'SourceValue' fills `source_numeric`
+    requireDeclared('SourceValue', 'source_numeric', source, shapedNames, typeName);
+else
+    requireDeclared('SourceValue', 'source_value', source, names, typeName);
+end
 requireDeclared('SourceUnit', 'source_unit', unit, names, typeName);
 requireDeclared('Approximate', 'approximate', approx, names, typeName);
 tol = options.Tolerance;
@@ -151,8 +191,7 @@ if ~isempty(tol)
     end
 end
 
-[~, cellKind] = did2.schema.numericShapeFields(subDefs, 'value');
-if isNew && strcmp(cellKind, 'cell')
+if isNew && isCell
     cells = fillField(def, seriesCell(canonName, canon, source, unit, approx, tol, extra), ...
         [typeName '.value']);
     return;
