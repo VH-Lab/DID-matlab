@@ -17,16 +17,19 @@ function [partBodies, entityId] = jRegionSite(preBody, siteTerm)
 %   assertion, `part_of` relation, anchor), the part's id COMPUTED from the
 %   subject id, region term and side so that every document naming one region
 %   of one subject yields the same part ... a side stated in a separate v1
-%   document still needs the batch pass." [region parts] (2026-10-21): a
+%   document still needs the batch pass." -- amended 2026-11-25 by [side said
+%   about its region]: such a side is attached to no part. [region parts] (2026-10-21): a
 %   statement about an anatomical region of a subject targets that region's
 %   part entity. [region part ids computed] (2026-11-19) (3): the ids.
 %
 %   A SIDE IS NOT A REGION. A v1 treatment states one location; when it is a
 %   laterality term (did2.convert.lateralityOf: a cerebral hemisphere, read
 %   from its node), the document gives a side, not the region it is the side
-%   of, so it stays the site observation and did2.convert.resolveRegionParts
-%   attaches it ([part re-keyed when its side arrives], [region part ids
-%   computed] (2)).
+%   of, so it stays the site observation about the subject ([side said
+%   about its region], Jess Haley, 2026-11-25, amending [region part ids
+%   computed] (2): a side attaches to a part only when one v1 document names
+%   the region and its side together; did2.convert.resolveRegionParts counts
+%   it and attaches it to no part).
 %
 %   The part's session and creation timestamp are the source's; copies minted
 %   by several sources are merged to the earliest source's values by

@@ -71,8 +71,9 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   did2.convert.resolveRegionParts merges. A location that is a side
 %   (did2.convert.lateralityOf) names no region of its own: it stays the
 %   location observation, co-anchored with the bath, which resolveRegionParts
-%   attaches ([part re-keyed when its side arrives]) and the NDI second pass
-%   (ndi.migrate.internal.pathSPromotion) reads otherwise. The generic bath
+%   counts and attaches to no part ([side said about its region], Jess
+%   Haley, 2026-11-25) and the NDI second pass
+%   (ndi.migrate.internal.pathSPromotion) reads. The generic bath
 %   gets neither -- it is no site on the subject, the same call
 %   +migrators_j/private/jTreatmentRoute makes for a treatment.
 %   ---------------------------------------------------------------------
@@ -711,8 +712,8 @@ bodies{end+1} = f;
 % (subject, region) ([region parts]; [site scaffolding not a loss] (2) and
 % [region part ids computed], Jess Haley, 2026-10-26 / 2026-11-19); the generic
 % bath is about the subject; a location that is a side names no region of its
-% own, so it stays the site observation did2.convert.resolveRegionParts
-% attaches ([part re-keyed when its side arrives])
+% own, so it stays the site observation about the subject (did2.convert.
+% resolveRegionParts attaches it to no part, [side said about its region])
 loc = locationTerm(v1Body);
 located = (~isempty(loc.node) || ~isempty(loc.name)) && ~isGenericBath(loc);
 partBodies = {};

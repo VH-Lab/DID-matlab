@@ -1669,8 +1669,9 @@ function result = fixturePipeline(bodies, validate)
 result = did2.convert.v1_to_v2(bodies, 'Validate', validate, 'TargetVersion', 'did_v2');
 result = did2.convert.resolveDeferredBaths(result, ...
     'Validate', validate, 'TargetVersion', 'did_v2');
-% Region parts (VH-Lab/DID-matlab #488): the copies of one region part merged,
-% a side another document gives attached; after the baths, as in
+% Region parts (VH-Lab/DID-matlab #488): the copies of one region part merged
+% (a side another document gives stays where it is, [side said about its
+% region]); after the baths, as in
 % runCorpusDiscovery and ndi.migrate.local.
 result = did2.convert.resolveRegionParts(result, ...
     'Validate', validate, 'TargetVersion', 'did_v2');

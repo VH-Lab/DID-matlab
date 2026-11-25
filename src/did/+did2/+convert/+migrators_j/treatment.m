@@ -214,8 +214,9 @@ if ~isempty(partBodies)
     % loss] (2), [region part ids computed]; jRegionSite)
     v2Body = [v2Body, partBodies];
 elseif ~isempty(siteTerm)
-    % a side (jRegionSite): the site observation did2.convert.resolveRegionParts
-    % attaches to the subject's part ([part re-keyed when its side arrives])
+    % a side (jRegionSite): the site observation about the subject, which
+    % stays there; did2.convert.resolveRegionParts counts it and attaches it
+    % to no part ([side said about its region], Jess Haley, 2026-11-25)
     obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
         did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), siteTerm, ...
         'TimeReferenceIds', {anchor.base.id}, 'ValueKind', 'term');

@@ -162,8 +162,9 @@ POST_PASSES = [
 
     # VH-Lab/DID-matlab #488 ([duplicate parts merged in DID], [part re-keyed
     # when its side arrives], [region part ids computed], Jess Haley,
-    # 2026-11-17 / 2026-11-19): the copies of one region part merged to the
-    # earliest source's, a side another document gives attached. READ
+    # 2026-11-17 / 2026-11-19; [side said about its region], 2026-11-25): the
+    # copies of one region part merged to the earliest source's; a side
+    # another document gives is left where it is, counted. READ
     # `region_part_documents_seen` and `side_observations_seen` BESIDE what
     # was done: 0 merged of 0 seen is a corpus with no body-site treatment.
     ("region_part_resolution", "did2.convert.resolveRegionParts", [
@@ -176,17 +177,11 @@ POST_PASSES = [
         ("duplicate_copies_differing", "  copies that STILL DIFFER (kept the first)"),
         ("side_observations_seen", "side observations (a side another document gives)"),
         ("side_observations_not_co_anchored", "  side site observations with no manipulation (a probe's; left)"),
-        ("sides_attached", "  sides ATTACHED"),
-        ("sides_not_attached_no_part", "  not attached: the subject has no no-side part"),
-        ("sides_not_attached_several_parts", "  not attached: several no-side parts"),
-        ("sides_not_attached_several_sides", "  not attached: several sides"),
-        ("parts_rekeyed", "parts RE-KEYED"),
-        ("parts_rekeyed_onto_existing_part", "  onto a sided part already in the batch"),
-        ("rekey_quarantined", "re-key QUARANTINED (not applied)"),
-        ("edges_renamed", "edges renamed onto a re-keyed part's ids"),
-        ("manipulations_retargeted", "side documents' manipulations moved onto the part"),
+        # [side said about its region] (Jess Haley, 2026-11-25): a side
+        # another document gives is never attached to a part; counted
+        ("sides_not_attached", "  sides NOT ATTACHED (each stays a site observation)"),
+        ("sides_not_attached_subject_has_one_unsided_part", "    of them: subject has exactly one unsided part (the old rule attached these)"),
         ("documents_removed", "documents removed"),
-        ("documents_added", "documents added"),
         ("migrated_before", "batch before"),
         ("migrated_after", "  after"),
     ]),

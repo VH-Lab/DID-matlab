@@ -22,8 +22,9 @@ function p = treatmentParts(bodies)
 %     site        the term statement that names the site: the part's
 %                 anatomical-structure (kind) assertion (UBERON:0000061), or
 %                 the `observation` about the subject whose variable is
-%                 NCIT:C13717 "Anatomic Site" (a side, which
-%                 did2.convert.resolveRegionParts attaches); either holds the
+%                 NCIT:C13717 "Anatomic Site" (a side another document
+%                 gives, which stays about the subject: [side said about
+%                 its region]); either holds the
 %                 site's term at `term.value`
 %     laterality  the part's Laterality assertion (NCIT:C25185), when it has one
 %     relations   every `directed_relation`
