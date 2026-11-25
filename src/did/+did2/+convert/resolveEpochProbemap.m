@@ -61,7 +61,7 @@ function [result, report] = resolveEpochProbemap(result, options)
 %       relative_time_reference(epoch anchor), result.epoch_mint,
 %       manipulation(stimulus presentation)
 %   BATCH-PASS-ADDS: observation(recording per epoch),
-%       opaque_body(stimulus log), observation(stimulus log owner),
+%       opaque_body(stimulus log), manipulation(stimulus log owner),
 %       manipulation(stimulator per epoch), opaque_body(epoch file by location),
 %       opaque_body(spike train), opaque_body(ingested archive),
 %       relative_time_reference(epoch anchor), relative_reference(epoch anchor),
@@ -398,12 +398,14 @@ report = struct( ...
     'stimulus_log_archives_seen',     0, ...
     'stimulus_log_to_presentation',   0, ...
     'stimulus_log_to_fallback',       0, ...
-    'stimulus_log_fallback_entity_system', 0, ...
+    'stimulus_log_fallback_no_stimulator', 0, ...
     'stimulus_log_kept_no_epoch',     0, ...
     'stimulus_log_kept_no_system',    0, ...
     'stimulus_log_kept_clock',        0, ...
     'stimulus_log_kept_several_presentations', 0, ...
     'stimulus_log_kept_no_anchor',    0, ...
+    'stimulus_log_kept_no_subject',   0, ...
+    'stimulus_log_kept_several_subjects', 0, ...
     'stimulus_log_kept_not_built',    0, ...
     'stimulus_log_quarantined',       0, ...
     'stimulus_log_bodies',            0, ...
@@ -1528,12 +1530,13 @@ appended = [appended, fileBodies];
 % --- [stimulus log owned by its presentation] (Jess Haley, 2026-11-19) ------
 % an archive no recording owns that holds only a stimulus system's log
 % (channel_list.bin and an evmktx file): its files become bodies of the
-% epoch's stimulus presentation, or of a fallback observation of the rig's
-% device; the archive then retires below like any other (stimulusLogOwners)
+% epoch's stimulus presentation, or, with none, of a manipulation of the
+% epoch's subject ([stimulus log fallback is a manipulation], 2026-11-25); the
+% archive then retires below like any other (stimulusLogOwners)
 [logDocs, logQuarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, kindOf, ...
     sessionIds, docIds, archiveIdxAll, archiveCarried, clockIdsByArchiveIdx, ...
     clockHasSurvivor, producedById, anchorByEpochId, anchorHasSurvivor, epochIdByKey, ...
-    subjectIdByKey, readerIdByNavId, deviceOfSystem, options, report);
+    subjectIdByKey, readerIdByNavId, options, report);
 appended = [appended, logDocs];
 newQuarantine = [newQuarantine, logQuarantine];
 
@@ -2871,9 +2874,10 @@ end
 function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, kindOf, ...
         sessionIds, docIds, archiveIdxAll, archiveCarried, clockIdsByArchiveIdx, ...
         clockHasSurvivor, producedById, anchorByEpochId, anchorHasSurvivor, epochIdByKey, ...
-        subjectIdByKey, readerIdByNavId, deviceOfSystem, options, report)
+        subjectIdByKey, readerIdByNavId, options, report)
 %STIMULUSLOGOWNERS A stimulus system's ingested archive files, owned by the
-%   epoch's stimulus presentation or by a fallback observation.
+%   epoch's stimulus presentation or, with none, by a manipulation of the
+%   epoch's subject.
 %
 %   Decided by Jess Haley, 2026-11-19 [stimulus log owned by its presentation]
 %   (did-schema docs/plans/did_v2_standing_wiring_plan.md): "an epoch's
@@ -2886,7 +2890,8 @@ function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, c
 %   owns them, as [non-specimen channel groups get their own owner] does,
 %   counted; the archive document then goes ([segment length is the time
 %   chunk])." NDI-matlab reads the log from both homes first (NDI-matlab
-%   #1293, ndi.vintage.ingestedStimulusLogBodies).
+%   #1293, ndi.vintage.ingestedStimulusLogBodies), by its key whatever owns
+%   it. The fallback owner is amended (THE FALLBACK, below).
 %
 %   WHICH ARCHIVES. A v1 `daqreader_*_epochdata_ingested` that no recording
 %   observation's bodies carried (mkEpochFileBodies) and whose every attached
@@ -2912,15 +2917,28 @@ function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, c
 %   exactly one, 0 to none, 0 to several). Several: the decision does not say
 %   which wins, so the archive is kept, counted.
 %
-%   THE FALLBACK (no presentation). An `observation` of value kind `time`
-%   (data_body, variable NCIT:C25499 "Event", the term NDI-matlab's second
-%   pass gives an unpacked event channel), entity the rig's device
-%   ([acquisition system is a device entity]; the acquisition system itself,
-%   counted, where the system names no device), instrument and
-%   acquisition_system_id the archive's system, timed by the epoch's anchor
-%   and the archive's clock references, as [non-specimen channel groups get
-%   their own owner] gives an auxiliary group's owner. Its variable is this
-%   function's choice, not stated by the decision.
+%   THE FALLBACK (no presentation). Decided by Jess Haley, 2026-11-25
+%   [stimulus log fallback is a manipulation] (did-schema
+%   docs/plans/did_v2_standing_wiring_plan.md), amending the above: "where an
+%   epoch has a stimulus log and no presentation, the log is a data body of a
+%   `manipulation` of the epoch's subject, with the stimulator as
+%   `instrument_id` and variable NCIT:C41210 "Stimulus", not an observation
+%   of the rig's device with variable NCIT:C25499 "Event" ...; an epoch whose
+%   subject is not found is counted and its archive kept as v1." So the owner
+%   is a `manipulation` of value kind `time` (data_body), variable
+%   NCIT:C41210 "Stimulus", entity the epoch's subject, instrument the
+%   stimulator, acquisition_system_id the archive's system, timed by the
+%   epoch's anchor and the archive's clock references (as the observation it
+%   replaces was; NDI-matlab reads the log by its key whatever owns it,
+%   ndi.vintage.ingestedStimulusLogBodies). Both are read from the probe map
+%   of that epoch on the archive's system (the epochfiles_ingested above):
+%   THE SUBJECT is the one subject its rows name (subjectstring); none found
+%   is `stimulus_log_kept_no_subject`, several `stimulus_log_kept_several_
+%   subjects` (the decision does not say which), each archive kept as v1.
+%   THE STIMULATOR is the probe of its stimulator rows (localModality
+%   'stimulator'); where there is not exactly one, `instrument_id` (optional)
+%   is omitted, counted `stimulus_log_fallback_no_stimulator`, as an
+%   unresolved instrument is everywhere in this pass.
 %
 %   THE BODIES. One opaque_body per attached series (archiveBodies, the bytes
 %   as attached), notes opening with the key NDI's readers find them by,
@@ -2943,6 +2961,8 @@ quarantine = [];
 presBy = containers.Map('KeyType', 'char', 'ValueType', 'any');    % sid|epoch -> {id, element}
 sysBy = containers.Map('KeyType', 'char', 'ValueType', 'any');     % sid|reader -> {system ids}
 probesBy = containers.Map('KeyType', 'char', 'ValueType', 'any');  % sid|reader|epoch -> {probe ids}
+subjectsBy = containers.Map('KeyType', 'char', 'ValueType', 'any'); % sid|reader|epoch -> {subject ids}
+stimsBy = containers.Map('KeyType', 'char', 'ValueType', 'any');    % sid|reader|epoch -> {stimulator ids}
 for k = 1:numel(bodies)
     b = bodies{k};
     if isempty(b) || isempty(docIds{k}); continue; end
@@ -2975,13 +2995,29 @@ for k = 1:numel(bodies)
             rows = parseProbemapRows(probemapCharOf(b));
             held = {};
             if isKey(probesBy, key); held = probesBy(key); end
+            subj = {};
+            if isKey(subjectsBy, key); subj = subjectsBy(key); end
+            stims = {};
+            if isKey(stimsBy, key); stims = stimsBy(key); end
             for r = 1:numel(rows)
                 pk = epochKey(sid, probeLocalIdentifier(rows(r).name, rows(r).reference));
                 if isKey(subjectIdByKey, pk)
                     held{end+1} = subjectIdByKey(pk); %#ok<AGROW>
+                    [~, disposition] = localModality(rows(r).type);
+                    if strcmp(disposition, 'stimulator')
+                        stims{end+1} = subjectIdByKey(pk); %#ok<AGROW>
+                    end
+                end
+                if ~isempty(rows(r).subjectstring)
+                    sk = epochKey(sid, rows(r).subjectstring);
+                    if isKey(subjectIdByKey, sk)
+                        subj{end+1} = subjectIdByKey(sk); %#ok<AGROW>
+                    end
                 end
             end
             probesBy(key) = unique(held);
+            subjectsBy(key) = unique(subj);
+            stimsBy(key) = unique(stims);
     end
 end
 
@@ -3081,22 +3117,38 @@ for i = 1:numel(archiveIdxAll)
                 continue;
             end
             anchorId = anchorByEpochId(epochDocId);
-            entity = sysId;
-            if isKey(deviceOfSystem, sysId)
-                entity = deviceOfSystem(sysId);
+            % [stimulus log fallback is a manipulation] (Jess Haley,
+            % 2026-11-25): a manipulation of the epoch's subject, the
+            % stimulator its instrument, variable NCIT:C41210 "Stimulus"
+            pmKey = [sid '|' rdr '|' es];
+            subjects = {};
+            if isKey(subjectsBy, pmKey); subjects = subjectsBy(pmKey); end
+            if isempty(subjects)
+                report.stimulus_log_kept_no_subject = report.stimulus_log_kept_no_subject + 1;
+                continue;
+            elseif numel(subjects) > 1
+                report.stimulus_log_kept_several_subjects = ...
+                    report.stimulus_log_kept_several_subjects + 1;
+                continue;
+            end
+            stims = {};
+            if isKey(stimsBy, pmKey); stims = stimsBy(pmKey); end
+            stimId = '';
+            if isscalar(stims)
+                stimId = stims{1};
                 kind = 'fallback';
             else
-                kind = 'fallback_system';
+                kind = 'fallback_no_stimulator';
             end
-            obs = did2.build.statement('observation', char(entity), ...
-                did2.convert.registeredTerm('NCIT:C25499', 'Event'), [], ...
+            man = did2.build.statement('manipulation', char(subjects{1}), ...
+                did2.convert.registeredTerm('NCIT:C41210', 'Stimulus'), [], ...
                 'ValueKind', 'time', 'DataBody', true, ...
                 'TimeReferenceIds', [{anchorId}, reshape(cids, 1, [])], ...
-                'InstrumentId', char(sysId), 'AcquisitionSystemId', char(sysId), ...
+                'InstrumentId', char(stimId), 'AcquisitionSystemId', char(sysId), ...
                 'Id', did2.convert.mintId('stimulus log owner', baseField(b, 'id')), ...
                 'SessionId', sid, 'CreationTimestamp', ds, 'Validate', false);
-            ownerId = char(obs.base.id);
-            made{end+1} = obs; %#ok<AGROW>
+            ownerId = char(man.base.id);
+            made{end+1} = man; %#ok<AGROW>
         end
         % a log holds no digital, auxiliary or analog-output group, so
         % archiveBodies mints no group owner; its series counters are the
@@ -3154,11 +3206,11 @@ for p = 1:numel(plans)
         case 'presentation'
             report.stimulus_log_to_presentation = report.stimulus_log_to_presentation + 1;
         otherwise
-            nBodies = nBodies - 1;   % the first is the observation
+            nBodies = nBodies - 1;   % the first is the manipulation
             report.stimulus_log_to_fallback = report.stimulus_log_to_fallback + 1;
-            if strcmp(pl.kind, 'fallback_system')
-                report.stimulus_log_fallback_entity_system = ...
-                    report.stimulus_log_fallback_entity_system + 1;
+            if strcmp(pl.kind, 'fallback_no_stimulator')
+                report.stimulus_log_fallback_no_stimulator = ...
+                    report.stimulus_log_fallback_no_stimulator + 1;
             end
             if ~(isKey(anchorHasSurvivor, pl.anchor) && anchorHasSurvivor(pl.anchor))
                 anchorHasSurvivor(pl.anchor) = true;
@@ -3183,7 +3235,8 @@ function t = kindText(kind)
 if strcmp(kind, 'presentation')
     t = 'stimulus presentation';
 else
-    t = 'observation of the stimulus rig (no presentation for the epoch)';
+    t = ['manipulation of its subject (no presentation for the epoch; [stimulus ' ...
+        'log fallback is a manipulation], Jess Haley, 2026-11-25)'];
 end
 end
 

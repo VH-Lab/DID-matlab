@@ -120,7 +120,9 @@ function [v1, spec] = daqreader_mfdaq_epochdata_ingested(bodies, ctx)
 %   entity through the ingestion_manifest of that reader's system's file
 %   pattern, and the clocks are the relative_time_references onto it that no
 %   statement of another acquisition system names. A log owned by the
-%   fallback observation is read as above (it names the system and clocks).
+%   fallback manipulation of the epoch's subject ([stimulus log fallback is
+%   a manipulation], Jess Haley, 2026-11-25) is read as above (it names the
+%   system and clocks).
 %
 %   A body that is not an opaque_body or a sampled_body, or whose v1 names
 %   cannot be rebuilt, is unplaced.

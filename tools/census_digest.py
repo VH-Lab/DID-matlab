@@ -755,17 +755,21 @@ POST_PASSES = [
         ("archive_kept_clock_not_carried", "  KEPT: a clock it states is on no emitted time reference"),
         # [stimulus log owned by its presentation] (Jess Haley 2026-11-19): a
         # stimulus system's archive (channel_list.bin + evmktx, no recording
-        # owner) -> bodies of the epoch's presentation, else a fallback
-        # observation of the rig's device; the archive then retires as above.
+        # owner) -> bodies of the epoch's presentation, else (2026-11-25,
+        # [stimulus log fallback is a manipulation]) of a manipulation of the
+        # epoch's subject, the stimulator its instrument; the archive then
+        # retires as above.
         ("stimulus_log_archives_seen", "stimulus-log archives (no recording owner)  <- STIMULUS LOG DENOMINATOR"),
         ("stimulus_log_to_presentation", "  owned by the epoch's stimulus presentation"),
-        ("stimulus_log_to_fallback", "  owned by a fallback observation (no presentation)"),
-        ("stimulus_log_fallback_entity_system", "    of them, entity the acquisition system (no rig device)"),
+        ("stimulus_log_to_fallback", "  owned by a fallback manipulation of the subject (no presentation)"),
+        ("stimulus_log_fallback_no_stimulator", "    of them, not exactly one stimulator (instrument omitted)"),
         ("stimulus_log_kept_several_presentations", "  KEPT: several presentations match"),
         ("stimulus_log_kept_no_epoch", "  KEPT: no epoch entity"),
         ("stimulus_log_kept_no_system", "  KEPT: not exactly one acquisition system for its reader"),
         ("stimulus_log_kept_clock", "  KEPT: a clock reference not built"),
-        ("stimulus_log_kept_no_anchor", "  KEPT: no epoch anchor for the fallback observation"),
+        ("stimulus_log_kept_no_anchor", "  KEPT: no epoch anchor for the fallback manipulation"),
+        ("stimulus_log_kept_no_subject", "  KEPT: no presentation and the epoch's subject not found"),
+        ("stimulus_log_kept_several_subjects", "  KEPT: no presentation and several subjects in the epoch's probe map"),
         ("stimulus_log_kept_not_built", "  KEPT: its bodies could not be built"),
         ("stimulus_log_quarantined", "  documents QUARANTINED"),
         ("stimulus_log_bodies", "  log bodies emitted"),

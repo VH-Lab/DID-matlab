@@ -605,9 +605,12 @@ end
 % Decided by Jess Haley, 2026-11-19 (did-schema
 % docs/plans/did_v2_standing_wiring_plan.md): a stimulus system's archive
 % (channel_list.bin and the evmktx file, no recording owner) becomes bodies
-% of the epoch's stimulus presentation, or, with no presentation, of an
-% observation of the stimulus rig's device; the archive then goes. The
-% round trip rebuilds the archive from those bodies.
+% of the epoch's stimulus presentation, or, with no presentation, of a
+% manipulation of the epoch's subject, the stimulator its instrument and
+% NCIT:C41210 "Stimulus" its variable ([stimulus log fallback is a
+% manipulation], Jess Haley, 2026-11-25, amending the observation of the
+% rig's device with NCIT:C25499 "Event"); the archive then goes. The round
+% trip rebuilds the archive from those bodies.
 
 function testAStimulusLogMovesToItsPresentation(testCase)
 [bodies, result, rep] = stimLogBatch(testCase, 'wb_sl', 'c1', 1);
@@ -641,11 +644,13 @@ verifyEmpty(testCase, archiveFailure(r, 'wb_sl_arc'), ...
 verifyFalse(testCase, isfield(r.failures_by_class, 'stimulus_presentation'), describe(r));
 end
 
-function testAStimulusLogWithNoPresentationIsOwnedByAnObservation(testCase)
+function testAStimulusLogWithNoPresentationIsOwnedByAManipulationOfTheSubject(testCase)
 [bodies, result, rep] = stimLogBatch(testCase, 'wb_sf', 'c2', 0);
 verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
 verifyEqual(testCase, rep.stimulus_log_to_presentation, 0);
 verifyEqual(testCase, rep.stimulus_log_to_fallback, 1);
+verifyEqual(testCase, rep.stimulus_log_fallback_no_stimulator, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_no_subject, 0);
 verifyEqual(testCase, rep.stimulus_log_quarantined, 0);
 verifyEqual(testCase, rep.archive_docs_retired, 1, 'the archive goes');
 docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
@@ -653,16 +658,43 @@ logs = stimLogBodies(docs);
 assertNumElements(testCase, logs, 2);
 owner = ownerIdsOf(logs{1});
 assertNumElements(testCase, owner, 1);
+verifyEqual(testCase, ownerIdsOf(logs{2}), owner, 'one owner for the log''s files');
 k = find(cellfun(@(d) strcmp(char(d.base.id), owner{1}), docs), 1);
 assertNotEmpty(testCase, k, 'the owner is in the batch');
-obs = docs{k};
-verifyEqual(testCase, char(obs.document_class.class_name), 'observation');
-verifyEqual(testCase, edgeValue(obs, 'acquisition_system_id'), 'wb_sf_daq', ...
-    'the fallback observation names the stimulus system');
-verifyEqual(testCase, edgeValue(obs, 'instrument_id'), 'wb_sf_daq');
+man = docs{k};
+verifyEqual(testCase, char(man.document_class.class_name), 'manipulation', ...
+    'the log records what was done to the animal, not a measurement of the rig');
+verifyEqual(testCase, char(man.statement.variable.node), 'NCIT:C41210');
+verifyEqual(testCase, char(man.statement.variable.name), 'Stimulus');
+verifyEqual(testCase, edgeValue(man, 'entity_id'), 'wb_sf_spec', ...
+    'the manipulation is of the epoch''s subject');
+verifyEqual(testCase, edgeValue(man, 'instrument_id'), 'wb_sf_stim', ...
+    'the stimulator is the instrument');
+verifyEqual(testCase, edgeValue(man, 'acquisition_system_id'), 'wb_sf_daq', ...
+    'the manipulation names the stimulus system');
+verifyFalse(testCase, any(cellfun(@(d) strcmp(char(d.document_class.class_name), ...
+    'observation') && isfield(d, 'statement') && isfield(d.statement, 'variable') ...
+    && strcmp(char(d.statement.variable.node), 'NCIT:C25499'), docs)), ...
+    'no Event observation of the rig is written for the log');
 verifyEmpty(testCase, result.quarantine);
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyEmpty(testCase, archiveFailure(r, 'wb_sf_arc'), describe(r));
+end
+
+function testAStimulusLogWithNoPresentationAndNoSubjectIsKept(testCase)
+% "an epoch whose subject is not found is counted and its archive kept as v1"
+[~, result, rep] = stimLogBatch(testCase, 'wb_sn', 'c4', 0, 'NOBODY');
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_kept_no_subject, 1);
+verifyEqual(testCase, rep.stimulus_log_to_fallback, 0);
+verifyEqual(testCase, rep.stimulus_log_to_presentation, 0);
+docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
+ids = cellfun(@(d) char(d.base.id), docs, 'UniformOutput', false);
+k = find(strcmp(ids, 'wb_sn_arc'), 1);
+assertNotEmpty(testCase, k, 'the archive is kept');
+verifyEqual(testCase, char(docs{k}.document_class.schema_version), 'did_v1', ...
+    'the archive is kept as v1');
+verifyEmpty(testCase, stimLogBodies(docs));
 end
 
 function testAStimulusLogWithSeveralPresentationsIsKept(testCase)
@@ -678,11 +710,13 @@ verifyTrue(testCase, any(strcmp(ids, 'wb_s2_arc')), 'the archive is kept');
 verifyEmpty(testCase, stimLogBodies(docs));
 end
 
-function [bodies, result, rep] = stimLogBatch(testCase, stem, tail, nPresentations)
+function [bodies, result, rep] = stimLogBatch(testCase, stem, tail, nPresentations, subjectString)
 % a stimulus epoch as B holds it: the vhvis_spike2 system's manifest naming
 % the stimulator once per marker channel, its archive holding only
 % channel_list.bin and the event file, and NPRESENTATIONS presentations of
-% the stimulator in that epoch
+% the stimulator in that epoch. SUBJECTSTRING (default 'L', the subject's)
+% is the probe map's subject column.
+if nargin < 5; subjectString = 'L'; end
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
 sid = ['41268b6f5c6a3d4e_00000000000000' tail];
@@ -694,7 +728,8 @@ bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), .
     daqsystemV1([stem '_daq'], sid, 'vis', [stem '_nav']), ...
     manifestV1([stem '_efi'], sid, 't0001', [stem '_nav'], ...
         sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
-        'vis\t1\tstimulator\tvis:mk1\tL\n' 'vis\t1\tstimulator\tvis:e1\tL\n'])), ...
+        'vis\t1\tstimulator\tvis:mk1\t%s\n' 'vis\t1\tstimulator\tvis:e1\t%s\n'], ...
+        subjectString, subjectString)), ...
     arc};
 for p = 1:nPresentations
     bodies{end+1} = presentationV1(sprintf('%s_pres%d', stem, p), sid, 't0001', ...
