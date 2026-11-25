@@ -682,8 +682,11 @@ verifyEmpty(testCase, archiveFailure(r, 'wb_sf_arc'), describe(r));
 end
 
 function testAStimulusLogWithNoPresentationAndNoSubjectIsKept(testCase)
-% "an epoch whose subject is not found is counted and its archive kept as v1"
-[~, result, rep] = stimLogBatch(testCase, 'wb_sn', 'c4', 0, 'NOBODY');
+% "an epoch whose subject is not found is counted and its archive kept as v1".
+% The stimulus system's probe map names no subject of the batch; a recording
+% system in the same epoch names one, so the pass has work and reaches the
+% log (with nothing to convert at all it returns before reading any log)
+[~, result, rep] = stimLogBatch(testCase, 'wb_sn', 'c4', 0, 'NOBODY', true);
 verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
 verifyEqual(testCase, rep.stimulus_log_kept_no_subject, 1);
 verifyEqual(testCase, rep.stimulus_log_to_fallback, 0);
@@ -710,13 +713,17 @@ verifyTrue(testCase, any(strcmp(ids, 'wb_s2_arc')), 'the archive is kept');
 verifyEmpty(testCase, stimLogBodies(docs));
 end
 
-function [bodies, result, rep] = stimLogBatch(testCase, stem, tail, nPresentations, subjectString)
+function [bodies, result, rep] = stimLogBatch(testCase, stem, tail, nPresentations, ...
+        subjectString, withRecording)
 % a stimulus epoch as B holds it: the vhvis_spike2 system's manifest naming
 % the stimulator once per marker channel, its archive holding only
 % channel_list.bin and the event file, and NPRESENTATIONS presentations of
 % the stimulator in that epoch. SUBJECTSTRING (default 'L', the subject's)
-% is the probe map's subject column.
+% is the probe map's subject column. WITHRECORDING (default false) adds a
+% recording system (an intan1 n-trode of the subject, its manifest and its
+% archive) in the same epoch.
 if nargin < 5; subjectString = 'L'; end
+if nargin < 6; withRecording = false; end
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
 sid = ['41268b6f5c6a3d4e_00000000000000' tail];
@@ -731,6 +738,14 @@ bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), .
         'vis\t1\tstimulator\tvis:mk1\t%s\n' 'vis\t1\tstimulator\tvis:e1\t%s\n'], ...
         subjectString, subjectString)), ...
     arc};
+if withRecording
+    bodies = [bodies, {elementV1([stem '_probe'], sid, 'p', 1, 'n-trode', [stem '_spec']), ...
+        daqsystemV1([stem '_rdaq'], sid, 'intan1', [stem '_rnav']), ...
+        manifestV1([stem '_refi'], sid, 't0001', [stem '_rnav'], ...
+            sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+            'p\t1\tn-trode\tintan1:ai1-2\tL\n'])), ...
+        archiveV1([stem '_rarc'], sid, 't0001', ['rdr_' stem '_rdaq'])}];
+end
 for p = 1:nPresentations
     bodies{end+1} = presentationV1(sprintf('%s_pres%d', stem, p), sid, 't0001', ...
         [stem '_stim']); %#ok<AGROW>
