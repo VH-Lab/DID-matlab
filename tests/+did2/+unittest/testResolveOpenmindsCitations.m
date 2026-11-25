@@ -917,6 +917,100 @@ verifyEqual(testCase, numel(classesOf(out, 'person')), 0, ...
 verifyNotEmpty(testCase, docWithIdIn(out, 'om_dsv'), 'the graph was not carried');
 end
 
+% [several metadata forms are malformed] (Decided by Jess Haley, 2026-11-25,
+% did-schema did_v2_go_forward_class_audit.md): "a dataset with more than one
+% `metadata_editor` form is malformed source data: none of its forms and not
+% its openMINDS graph is converted, all are carried unchanged as v1, and the
+% migration report names the dataset and the number of forms as malformed.
+% Replaces the #521 behaviour where each form converted and only the graph was
+% carried." INVERTED from that behaviour: the two forms used to convert.
+
+function testSeveralFormsAndTheirGraphAreCarriedAsV1(testCase)
+forms = {editorForm(graphForm(), 'me_01'), editorForm(graphForm(), 'me_02')};
+bodies = [citationGraph(), forms];
+[out, rep] = runPass(testCase, bodies);
+verifyEqual(testCase, rep.forms_seen, 2, 'DENOMINATOR: the forms');
+verifyEqual(testCase, rep.forms_carried_as_v1, 2, 'a form converted');
+verifyEqual(testCase, rep.forms_converted, 0);
+verifyEqual(testCase, rep.datasets_with_several_forms, 1);
+verifyEqual(testCase, rep.forms_in_datasets_with_several_forms, 2);
+verifyEqual(testCase, rep.components_planned, 1, 'DENOMINATOR: the graph');
+verifyEqual(testCase, rep.components_withheld_several_forms_malformed, 1);
+verifyEqual(testCase, rep.components_withheld, 1);
+verifyEqual(testCase, rep.graph_documents_carried_malformed, 12);
+verifyEqual(testCase, rep.components_compared_with_form, 0, 'compared with a form');
+verifyEqual(testCase, rep.components_withheld_differing_from_form, 0);
+verifyEqual(testCase, rep.components_dropped_as_derived, 0);
+verifyEqual(testCase, rep.components_consumed, 0);
+assertNumElements(testCase, rep.malformed_datasets, 1);
+m = rep.malformed_datasets{1};
+verifyTrue(testCase, contains(m, 'ds_01') && contains(m, '2 metadata_editor forms') ...
+    && contains(m, 'me_01') && contains(m, 'me_02'), m);
+% nothing converted: no person, funding or publication from either store
+verifyEqual(testCase, numel(classesOf(out, 'person')), 0);
+verifyEqual(testCase, numel(classesOf(out, 'funding')), 0);
+verifyEqual(testCase, numel(classesOf(out, 'publication')), 0);
+% every form and every graph document is in the batch, unchanged, as v1
+graphIds = cellfun(@(b) char(b.base.id), citationGraph(), 'UniformOutput', false);
+verifyEqual(testCase, sort(intersect(allIds(out), graphIds)), sort(graphIds), ...
+    'the graph is carried whole, all or none');
+for f = 1:numel(forms)
+    b = docWithIdIn(out, forms{f}.base.id);
+    assertNotEmpty(testCase, b, ['the form is not carried: ' forms{f}.base.id]);
+    verifyEqual(testCase, char(b.document_class.schema_version), 'did_v1');
+    verifyEqual(testCase, b.metadata_editor, forms{f}.metadata_editor, ...
+        'the form is not carried unchanged');
+end
+% the migration report names the dataset and the number of forms as malformed,
+% for each form and each graph document
+notes = did2.convert.reportNote('collect');
+assertTrue(testCase, isfield(notes, 'carried_as_v1'));
+d = notes.carried_as_v1.distinct_details;
+hit = d(contains(d, 'malformed: dataset ds_01 holds 2 metadata_editor forms'));
+verifyNumElements(testCase, hit, 2, strjoin(d, ' / '));
+verifyEqual(testCase, sum(notes.carried_as_v1.distinct_detail_counts( ...
+    contains(d, 'malformed: dataset ds_01 holds 2 metadata_editor forms'))), 14, ...
+    'two forms and twelve graph documents, each named');
+verifyFalse(testCase, any(contains(d, 'carry-174')), 'cited the differing-graph row');
+% the round trip finds every carried document as itself
+wb = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyEmpty(testCase, intersect(wb.ids_lost_ids, [graphIds, {'me_01', 'me_02'}]), ...
+    'a carried id is counted lost');
+end
+
+function testSeveralFormsWithNoGraphAreCarriedAsV1(testCase)
+forms = {editorForm(graphForm(), 'me_01'), editorForm(graphForm(), 'me_02'), ...
+    editorForm(graphForm(), 'me_03')};
+[out, rep] = runPass(testCase, forms);
+verifyEqual(testCase, rep.forms_seen, 3, 'DENOMINATOR: the forms');
+verifyEqual(testCase, rep.openminds_documents_seen, 0, 'premise: no graph');
+verifyEqual(testCase, rep.forms_carried_as_v1, 3);
+verifyEqual(testCase, rep.datasets_with_several_forms, 1);
+verifyEqual(testCase, rep.forms_in_datasets_with_several_forms, 3);
+assertNumElements(testCase, rep.malformed_datasets, 1);
+verifyTrue(testCase, contains(rep.malformed_datasets{1}, '3 metadata_editor forms'), ...
+    rep.malformed_datasets{1});
+verifyEqual(testCase, numel(classesOf(out, 'person')), 0, 'a form converted');
+for f = 1:numel(forms)
+    b = docWithIdIn(out, forms{f}.base.id);
+    assertNotEmpty(testCase, b);
+    verifyEqual(testCase, char(b.document_class.schema_version), 'did_v1');
+end
+so = out.source_outputs(strcmp({out.source_outputs.class_name}, 'metadata_editor'));
+verifyTrue(testCase, all([so.carried]), 'source_outputs does not record the carry');
+end
+
+function testOneFormInEachOfTwoDatasetsConverts(testCase)
+% CONTROL: two forms, one per dataset, are not several forms of one dataset
+other = editorForm(graphForm(), 'me_02');
+other.base.session_id = 'ds_02';
+[out, rep] = runPass(testCase, {editorForm(graphForm(), 'me_01'), other});
+verifyEqual(testCase, rep.forms_seen, 2, 'DENOMINATOR');
+verifyEqual(testCase, rep.forms_converted, 2);
+verifyEqual(testCase, rep.datasets_with_several_forms, 0);
+verifyEmpty(testCase, rep.malformed_datasets);
+end
+
 function testAFormWithNoGraphConvertsAsBefore(testCase)
 [out, rep] = runPass(testCase, {editorForm(graphForm(), 'me_01')});
 verifyEqual(testCase, rep.forms_seen, 1, 'DENOMINATOR: the form is seen');

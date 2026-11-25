@@ -942,6 +942,16 @@ for k = 1:numel(bodies)
     did2.convert.mintId('-popto', mintDepth);
 end
 
+% [several metadata forms are malformed] (Decided by Jess Haley, 2026-11-25,
+% did-schema docs/plans/did_v2_go_forward_class_audit.md): a dataset with more
+% than one `metadata_editor` form is malformed source data; none of its forms
+% is converted, each is carried unchanged as v1, and the report names the
+% dataset and the number of forms (did2.convert.resolveOpenmindsCitations
+% carries its openMINDS graph with them).
+[migrated, passthrough, classCountNames, classCountValues, srcCarried, srcOut] = ...
+    carrySeveralMetadataForms(bodies, migrated, passthrough, classCountNames, ...
+    classCountValues, srcDone, srcCarried, srcTarget, srcClass, srcId, srcOut);
+
 % [fit classes kept; session list rebuilt] (Decided by Jess Haley, 2026-10-27,
 % did-schema V_eta_go_forward_class_audit.md): a dataset_session_info writes no
 % v2 document; it is rebuilt from the dataset's session memberships, and one
@@ -1717,6 +1727,95 @@ for k = reshape(find(done & carried & withElement), 1, [])
             'it %s ([global-clock oneepoch carried with its element])'], why));
     end
 end
+end
+
+function [migrated, passthrough, names, counts, carried, outs] = carrySeveralMetadataForms( ...
+        bodies, migrated, passthrough, names, counts, done, carried, target, ...
+        cls, ids, outs)
+%CARRYSEVERALMETADATAFORMS [several metadata forms are malformed] (Decided by
+%   Jess Haley, 2026-11-25, did-schema docs/plans/did_v2_go_forward_class_audit.md):
+%   "a dataset with more than one `metadata_editor` form is malformed source
+%   data: none of its forms and not its openMINDS graph is converted, all are
+%   carried unchanged as v1, and the migration report names the dataset and
+%   the number of forms as malformed." NDI-matlab `origin/main`
+%   +metadata_ds_core/saveEditor2Doc.m deletes every existing
+%   `metadata_editor` document before it saves one, and
+%   +metadata_app/+fun/readExistingMetadata.m reads only the first, so NDI's
+%   writer never leaves two.
+%
+%   After every source has migrated: the `metadata_editor` sources of this
+%   batch are grouped by their dataset (base.session_id, the dataset's id: the
+%   form is saved into the dataset's own session). In a dataset with more
+%   than one, each CONVERTED form has its documents replaced by its v1 source
+%   carried whole (the raw document, as every other carry), stamped did_v1
+%   and recorded as a passthrough; a form already carried stays carried.
+%   EVERY form of that dataset gets a `carried_as_v1` note naming the dataset
+%   and the number of forms as malformed, so the run's migration report lists
+%   each form with that reason. A form with no dataset id is left as it is.
+%   The graph is carried by did2.convert.resolveOpenmindsCitations, which
+%   reads these forms (all carried) from result.source_outputs.
+%   OUTS (each source's indices into MIGRATED) is returned renumbered for the
+%   documents removed, so carryDependents, which reads it next, still finds
+%   every source's documents; a form carried here owns its v1 document.
+isForm = cellfun(@(c) ischar(c) && strcmp(c, 'metadata_editor'), cls);
+formIdx = reshape(find(done & ~target & isForm), 1, []);
+if numel(formIdx) < 2
+    return;
+end
+dsOf = repmat({''}, 1, numel(formIdx));
+for j = 1:numel(formIdx)
+    body = ensureStruct(bodies{formIdx(j)});
+    if isfield(body, 'base') && isstruct(body.base) && isfield(body.base, 'session_id') ...
+            && ~isempty(body.base.session_id)
+        dsOf{j} = char(body.base.session_id);
+    end
+end
+datasets = unique(dsOf(~cellfun(@isempty, dsOf)));
+drop = false(1, numel(migrated));
+for d = 1:numel(datasets)
+    here = formIdx(strcmp(dsOf, datasets{d}));
+    if numel(here) < 2
+        continue;
+    end
+    detail = sprintf(['malformed: dataset %s holds %d metadata_editor forms (%s); ' ...
+        'NDI''s writer keeps one, so none of them, and not the dataset''s openMINDS ' ...
+        'graph, is converted ([several metadata forms are malformed], Jess Haley, ' ...
+        '2026-11-25)'], datasets{d}, numel(here), strjoin(reshape(ids(here), 1, []), ', '));
+    for k = here
+        if ~carried(k)
+            body = ensureStruct(bodies{k});   % the v1 source, as every carry
+            if isfield(body, 'document_class') && isstruct(body.document_class)
+                body.document_class.schema_version = 'did_v1';
+            end
+            for i = outs{k}
+                [names, counts] = dropClassCounter(names, counts, migrated{i}.className());
+            end
+            drop(outs{k}) = true;
+            migrated{end+1} = did2.document(body); %#ok<AGROW>
+            drop(end+1) = false; %#ok<AGROW>
+            outs{k} = numel(migrated);
+            [names, counts] = bumpClassCounter(names, counts, cls{k});
+            passthrough([passthrough.input_index] == k) = [];
+            passthrough(end+1) = struct('input_index', k, 'id', ids{k}, ...
+                'class_name', cls{k}, 'body', body); %#ok<AGROW>
+            carried(k) = true;
+        end
+        % carry-register: none (the decision names the case malformed; the
+        % carry register holds no row for it yet, and none is invented here)
+        did2.convert.reportNote('carried_as_v1', cls{k}, ids{k}, detail);
+    end
+end
+if ~any(drop)
+    return;
+end
+kept = ~drop;
+renumber = cumsum(kept);
+for j = 1:numel(outs)
+    o = outs{j};
+    if isempty(o); continue; end
+    outs{j} = renumber(o(kept(o)));
+end
+migrated = migrated(kept);
 end
 
 function [migrated, passthrough, names, counts, carried] = carryDependents(bodies, ...

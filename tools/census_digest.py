@@ -255,8 +255,12 @@ POST_PASSES = [
         # source_outputs, whose row count is their denominator.
         ("components_withheld_differing_from_form", "    of those: graph DIFFERS from its form, CARRIED AS v1 (carry-174)"),
         ("differing_form_carried_as_v1", "      of those: the form itself is carried as v1"),
-        ("differing_several_forms", "      of those: several forms state the dataset"),
         ("graph_documents_carried_differing", "      their openminds DOCUMENTS carried"),
+        # [several metadata forms are malformed] (Jess Haley, 2026-11-25): a
+        # dataset with more than one metadata_editor form: every form and its
+        # graph carried as v1, the dataset named in malformed_datasets.
+        ("components_withheld_several_forms_malformed", "    of those: the dataset has SEVERAL FORMS (malformed), CARRIED AS v1"),
+        ("graph_documents_carried_malformed", "      their openminds DOCUMENTS carried"),
         ("components_dropped_as_derived", "  DROPPED: graph matches its form (derived)"),
         ("graph_documents_dropped_as_derived", "    their openminds DOCUMENTS dropped (ids an accepted loss)"),
         ("source_outputs_read", "pass-1 source_outputs rows read  <- THE FORMS' DENOMINATOR"),
@@ -264,6 +268,8 @@ POST_PASSES = [
         ("forms_converted", "    converted"),
         ("forms_carried_as_v1", "    carried as v1"),
         ("forms_without_dataset_id", "    with no document in the batch (not keyed)"),
+        ("datasets_with_several_forms", "  datasets with SEVERAL forms (MALFORMED; must read 0 on the corpora)"),
+        ("forms_in_datasets_with_several_forms", "    their forms (all carried as v1)"),
         ("components_compared_with_form", "components compared with their dataset's form"),
         ("components_without_form", "components with no form (converted as before)"),
         ("form_graph_facts_compared", "  facts compared, form and graph together"),
