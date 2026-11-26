@@ -144,11 +144,15 @@ if isempty(anchor)
     anchor = anchors{1};
 end
 
-% the record is migration output: its plain-text parameter labels (source
-% and target format, not decided) are not registry terms, as a migrator's own
-% terms are not (did2.convert.v1_to_v2 disarms the check the same way)
-prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
-restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+% The T19 TermRegistry check is left as the caller set it (armed by default),
+% so a term the record builds that the registry does not hold is an error,
+% did2:build:unregisteredTerm (it is still collected when
+% did2.build.unregisteredTerms('-collect') is on). [early migration pieces
+% fixed] item 3 (Jess Haley, 2026-10-26, did-schema
+% did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486): the check stays on
+% during migration. The record built no unregistered term on any corpus
+% (DID-matlab V2 f1a781b8, Test code run 45635644069, Soph run 45706973786), so
+% it no longer turns the check off; did2.convert.v1_to_v2 still does.
 
 version = options.Version;
 if isempty(version)

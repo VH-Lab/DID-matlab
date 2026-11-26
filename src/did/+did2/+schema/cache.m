@@ -1841,8 +1841,11 @@ classdef cache < handle
                     ... ontology term in a vocabulary slot (a variable, method,
                     ... unit, condition, parameter or key) that the schema's
                     ... term registry does not hold. Only did2.build reads it;
-                    ... did2.convert turns it off while it migrates, because a
-                    ... migrator transcribes the v1 source's own terms. A
+                    ... did2.convert.v1_to_v2 turns it off while it migrates,
+                    ... because a migrator transcribes the v1 source's own
+                    ... terms; the batch passes after it leave it as the
+                    ... caller set it ([early migration pieces fixed] item 3,
+                    ... VH-Lab/DID-matlab#486). A
                     ... schema with no registry (did-schema main) checks
                     ... nothing. DID_ENFORCE_TERM_REGISTRY=0 turns it off.
                     'TermRegistry', ...

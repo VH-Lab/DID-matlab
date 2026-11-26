@@ -439,12 +439,15 @@ mintDepth = did2.convert.mintId('-depth');
 did2.convert.mintId('-push', '');
 restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
-% A batch pass builds documents from the v1 source's own terms, exactly as a
-% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
-% runs, as it is there, and restored after (unregistered terms are still
-% collected when did2.build.unregisteredTerms('-collect') is on).
-prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
-restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
+% The T19 TermRegistry check is left as the caller set it (armed by default),
+% so a term this pass builds that the registry does not hold is an error,
+% did2:build:unregisteredTerm (it is still collected when
+% did2.build.unregisteredTerms('-collect') is on). [early migration pieces
+% fixed] item 3 (Jess Haley, 2026-10-26, did-schema
+% did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486): the check stays on
+% during migration. This pass built no unregistered term on any corpus
+% (DID-matlab V2 f1a781b8, Test code run 45635644069, Soph run 45706973786), so
+% it no longer turns the check off; did2.convert.v1_to_v2 still does.
 % [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
 % left as the caller set it (armed by default), so no step of the migration
 % builds a document of a retire class. Its exception for the generic migration
