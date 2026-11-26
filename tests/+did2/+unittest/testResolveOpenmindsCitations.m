@@ -968,6 +968,9 @@ assertTrue(testCase, isfield(notes, 'carried_as_v1'));
 d = notes.carried_as_v1.distinct_details;
 hit = d(contains(d, 'malformed: dataset ds_01 holds 2 metadata_editor forms'));
 verifyNumElements(testCase, hit, 2, strjoin(d, ' / '));
+% [malformed cases cite carry-120] (Jess Haley, 2026-11-26): every such note,
+% the forms' and the graph's, cites carry-120
+verifyTrue(testCase, all(startsWith(hit, '[carry-120] malformed: dataset ds_01')), strjoin(hit, ' / '));
 verifyEqual(testCase, sum(notes.carried_as_v1.distinct_detail_counts( ...
     contains(d, 'malformed: dataset ds_01 holds 2 metadata_editor forms'))), 14, ...
     'two forms and twelve graph documents, each named');

@@ -600,7 +600,8 @@ for c = 1:numel(cases)
     verifyTrue(testCase, isfield(notes, 'carried_as_v1'), [label ': the carry is noted']);
     if isfield(notes, 'carried_as_v1')
         d = notes.carried_as_v1.distinct_details{1};
-        verifyTrue(testCase, startsWith(d, 'malformed: rig system_id_1 has no name'), d);
+        % [malformed cases cite carry-120] (Jess Haley, 2026-11-26)
+        verifyTrue(testCase, startsWith(d, '[carry-120] malformed: rig system_id_1 has no name'), d);
         verifyTrue(testCase, contains(d, '[unnamed rig is malformed]'), d);
     end
     % the run's migration report lists it under carried_as_v1 with that reason
