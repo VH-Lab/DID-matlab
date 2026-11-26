@@ -131,9 +131,13 @@ end
 % did2.build.unregisteredTerms('-collect') is on). [early migration pieces
 % fixed] item 3 (Jess Haley, 2026-10-26, did-schema
 % did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486): the check stays on
-% during migration. This pass built no unregistered term on any corpus
-% (DID-matlab V2 f1a781b8, Test code run 45635644069, Soph run 45706973786), so
-% it no longer turns the check off; did2.convert.v1_to_v2 still does.
+% during migration. This pass builds no unregistered term in DID-matlab's
+% Test code (unit tests and corpora), Quick migrator and did2.build runs or
+% in NDI-matlab's No Cloud, end-to-end, assemblers and Dab runs (checked on
+% VH-Lab/DID-matlab#526), so it does not turn the check off;
+% did2.convert.v1_to_v2 and the batch passes that still build unregistered
+% terms (migrationRecord, resolveDeferredBaths, resolveEpochProbemap,
+% resolveResponseParameters) do.
 
 report = struct( ...
     'documents_inspected',               0, ...

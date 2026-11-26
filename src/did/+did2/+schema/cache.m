@@ -1843,9 +1843,12 @@ classdef cache < handle
                     ... term registry does not hold. Only did2.build reads it;
                     ... did2.convert.v1_to_v2 turns it off while it migrates,
                     ... because a migrator transcribes the v1 source's own
-                    ... terms; the batch passes after it leave it as the
-                    ... caller set it ([early migration pieces fixed] item 3,
-                    ... VH-Lab/DID-matlab#486). A
+                    ... terms; of the batch passes after it, those that
+                    ... build no unregistered term leave it as the caller set
+                    ... it ([early migration pieces fixed] item 3,
+                    ... VH-Lab/DID-matlab#486), and migrationRecord,
+                    ... resolveDeferredBaths, resolveEpochProbemap and
+                    ... resolveResponseParameters still turn it off. A
                     ... schema with no registry (did-schema main) checks
                     ... nothing. DID_ENFORCE_TERM_REGISTRY=0 turns it off.
                     'TermRegistry', ...

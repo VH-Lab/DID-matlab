@@ -144,15 +144,21 @@ if isempty(anchor)
     anchor = anchors{1};
 end
 
-% The T19 TermRegistry check is left as the caller set it (armed by default),
-% so a term the record builds that the registry does not hold is an error,
-% did2:build:unregisteredTerm (it is still collected when
+% The T19 TermRegistry check is OFF while this pass runs and restored after
+% (unregistered terms are still collected when
 % did2.build.unregisteredTerms('-collect') is on). [early migration pieces
 % fixed] item 3 (Jess Haley, 2026-10-26, did-schema
-% did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486): the check stays on
-% during migration. The record built no unregistered term on any corpus
-% (DID-matlab V2 f1a781b8, Test code run 45635644069, Soph run 45706973786), so
-% it no longer turns the check off; did2.convert.v1_to_v2 still does.
+% did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486) keeps the check on
+% during migration, but this pass still builds terms the registry does not
+% hold, so it cannot be armed until the team registers them or decides
+% otherwise (VH-Lab/DID-matlab#526 measured it). The terms that block it:
+%   - the record's method parameters "source format" and "target format"
+%     (method.parameters(k).variable, by name with no node): "source format"
+%     is refused at its first build (did2:build:unregisteredTerm, every
+%     fromV1Database run and every ndi.migrate.local run); "target format"
+%     is built next and is not in the registry either.
+prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
+restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
 
 version = options.Version;
 if isempty(version)
