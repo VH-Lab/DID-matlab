@@ -1793,7 +1793,7 @@ for d = 1:numel(datasets)
     if numel(here) < 2
         continue;
     end
-    detail = sprintf(['malformed: dataset %s holds %d metadata_editor forms (%s); ' ...
+    detail = sprintf(['[carry-120] malformed: dataset %s holds %d metadata_editor forms (%s); ' ...
         'NDI''s writer keeps one, so none of them, and not the dataset''s openMINDS ' ...
         'graph, is converted ([several metadata forms are malformed], Jess Haley, ' ...
         '2026-11-25)'], datasets{d}, numel(here), strjoin(reshape(ids(here), 1, []), ', '));
@@ -1816,8 +1816,10 @@ for d = 1:numel(datasets)
                 'class_name', cls{k}, 'body', body); %#ok<AGROW>
             carried(k) = true;
         end
-        % carry-register: none (the decision names the case malformed; the
-        % carry register holds no row for it yet, and none is invented here)
+        % [malformed cases cite carry-120] (Jess Haley, 2026-11-26, did-schema
+        % did_v2_go_forward_class_audit.md): the note cites carry-120 [values
+        % no writer produces are malformed]
+        % carry-register: carry-120
         did2.convert.reportNote('carried_as_v1', cls{k}, ids{k}, detail);
     end
 end
