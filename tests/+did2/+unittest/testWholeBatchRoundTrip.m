@@ -649,8 +649,9 @@ function testAStimulusLogWithNoPresentationIsOwnedByAManipulationOfTheSubject(te
 verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
 verifyEqual(testCase, rep.stimulus_log_to_presentation, 0);
 verifyEqual(testCase, rep.stimulus_log_to_fallback, 1);
-verifyEqual(testCase, rep.stimulus_log_fallback_no_stimulator, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_no_stimulator, 0);
 verifyEqual(testCase, rep.stimulus_log_kept_no_subject, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_stimulator_several_subjects, 0);
 verifyEqual(testCase, rep.stimulus_log_quarantined, 0);
 verifyEqual(testCase, rep.archive_docs_retired, 1, 'the archive goes');
 docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
@@ -713,6 +714,167 @@ verifyTrue(testCase, any(strcmp(ids, 'wb_s2_arc')), 'the archive is kept');
 verifyEmpty(testCase, stimLogBodies(docs));
 end
 
+% ---- [stimulus log fallback names the stimulator's subject] -------------
+% Decided by Jess Haley, 2026-11-26 (did-schema
+% docs/plans/did_v2_go_forward_class_audit.md): the fallback manipulation's
+% entity is the stimulator's own v1 subject (its rows of the epoch's probe
+% map), not every subject the rig's rows name; the stimulator's rows naming
+% several subjects is malformed, carried as v1 citing carry-170; with no
+% single stimulator the archive is carried as v1 and counted.
+
+function testAStimulusLogFallbackNamesTheStimulatorsSubjectWithTwoAnimalsOnTheRig(testCase)
+% CONTROL for the change: two animals on the stimulus rig's probe map (the
+% stimulator's rows name L, another probe's row names M). #524 unioned the
+% rig's rows and kept this archive (stimulus_log_kept_several_subjects); now
+% it converts, to a manipulation of L, the stimulator's subject
+stem = 'wb_sa';
+rows = sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+    'vis\t1\tstimulator\tvis:mk1\tL\n' 'vis\t1\tstimulator\tvis:e1\tL\n' ...
+    'cam\t1\tevent\tvis:e2\tM\n']);
+sid = stimLogSid('c5');
+[bodies, result, rep] = stimLogBatchRows(testCase, stem, 'c5', rows, ...
+    {subjectV1([stem '_spec2'], sid, 'M')}, false);
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_to_fallback, 1, ...
+    'the case #524 kept as several subjects now converts');
+verifyEqual(testCase, rep.stimulus_log_kept_stimulator_several_subjects, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_no_stimulator, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_no_subject, 0);
+verifyEqual(testCase, rep.stimulus_log_quarantined, 0);
+docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
+logs = stimLogBodies(docs);
+assertNumElements(testCase, logs, 2);
+owner = ownerIdsOf(logs{1});
+assertNumElements(testCase, owner, 1);
+k = find(cellfun(@(d) strcmp(char(d.base.id), owner{1}), docs), 1);
+assertNotEmpty(testCase, k, 'the owner is in the batch');
+man = docs{k};
+verifyEqual(testCase, char(man.document_class.class_name), 'manipulation');
+verifyEqual(testCase, edgeValue(man, 'entity_id'), [stem '_spec'], ...
+    'the manipulation is of the stimulator''s own subject, not the other animal');
+verifyEqual(testCase, edgeValue(man, 'instrument_id'), [stem '_stim']);
+ids = cellfun(@(d) char(d.base.id), docs, 'UniformOutput', false);
+verifyFalse(testCase, any(strcmp(ids, [stem '_arc'])), 'the archive goes');
+verifyEmpty(testCase, stimLogCarryNotes(result, [stem '_arc']), 'no carry note');
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEmpty(testCase, archiveFailure(r, [stem '_arc']), describe(r));
+end
+
+function testAStimulusLogWhoseStimulatorNamesTwoSubjectsIsCarriedCitingCarry170(testCase)
+% the stimulator's own rows name L and M: malformed v1, the archive kept as
+% v1 with a carried_as_v1 note citing carry-170, counted
+stem = 'wb_sm';
+rows = sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+    'vis\t1\tstimulator\tvis:mk1\tL\n' 'vis\t1\tstimulator\tvis:e1\tM\n']);
+sid = stimLogSid('c6');
+[~, result, rep] = stimLogBatchRows(testCase, stem, 'c6', rows, ...
+    {subjectV1([stem '_spec2'], sid, 'M')}, true);
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_kept_stimulator_several_subjects, 1);
+verifyEqual(testCase, rep.stimulus_log_to_fallback, 0);
+verifyEqual(testCase, rep.stimulus_log_to_presentation, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_no_stimulator, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_no_subject, 0);
+verifyStimLogArchiveKeptAsV1(testCase, result, [stem '_arc']);
+notes = stimLogCarryNotes(result, [stem '_arc']);
+assertNumElements(testCase, notes, 1, 'one carry note for the archive');
+verifyTrue(testCase, startsWith(notes{1}, '[carry-170] malformed: '), notes{1});
+verifyTrue(testCase, contains(notes{1}, '2 subjects (L, M)'), notes{1});
+end
+
+function testAStimulusLogWithNoStimulatorIsCarriedAndCounted(testCase)
+% the map's stimulator rows name a probe that is no element of the batch: no
+% stimulator, so v1 does not say who received the stimuli; kept as v1,
+% counted (no manipulation with no instrument_id is written)
+stem = 'wb_s0';
+rows = sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+    'ghost\t1\tstimulator\tvis:mk1\tL\n' 'ghost\t1\tstimulator\tvis:e1\tL\n']);
+[~, result, rep] = stimLogBatchRows(testCase, stem, 'c7', rows, {}, true);
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_kept_no_stimulator, 1);
+verifyEqual(testCase, rep.stimulus_log_to_fallback, 0);
+verifyEqual(testCase, rep.stimulus_log_to_presentation, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_stimulator_several_subjects, 0);
+verifyStimLogArchiveKeptAsV1(testCase, result, [stem '_arc']);
+verifyEmpty(testCase, stimLogCarryNotes(result, [stem '_arc']), ...
+    'no carry-170 note: this is not the malformed case');
+end
+
+function testAStimulusLogWithTwoStimulatorsIsCarriedAndCounted(testCase)
+% two stimulators on the map, both of L: which one delivered the logged
+% stimuli is not said; kept as v1, counted
+stem = 'wb_s3';
+rows = sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+    'vis\t1\tstimulator\tvis:mk1\tL\n' 'vis2\t1\tstimulator\tvis:e1\tL\n']);
+sid = stimLogSid('c8');
+[~, result, rep] = stimLogBatchRows(testCase, stem, 'c8', rows, ...
+    {elementV1([stem '_stim2'], sid, 'vis2', 1, 'stimulator', [stem '_spec'])}, true);
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_kept_no_stimulator, 1);
+verifyEqual(testCase, rep.stimulus_log_to_fallback, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_stimulator_several_subjects, 0);
+verifyStimLogArchiveKeptAsV1(testCase, result, [stem '_arc']);
+end
+
+function testAStimulusLogWithOnePresentationIsUnchangedByTheStimulatorSubjectRule(testCase)
+% CONTROL: a log matching exactly one presentation (every corpus log: 2,659
+% of 2,659) is owned by it, whatever the map's subjects; no fallback counter
+% moves, even with two animals on the rig
+stem = 'wb_sp';
+rows = sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+    'vis\t1\tstimulator\tvis:mk1\tL\n' 'vis\t1\tstimulator\tvis:e1\tM\n']);
+sid = stimLogSid('c9');
+[~, result, rep] = stimLogBatchRows(testCase, stem, 'c9', rows, ...
+    {subjectV1([stem '_spec2'], sid, 'M'), ...
+    presentationV1([stem '_pres1'], sid, 't0001', [stem '_stim'])}, false);
+verifyEqual(testCase, rep.stimulus_log_archives_seen, 1, 'the denominator');
+verifyEqual(testCase, rep.stimulus_log_to_presentation, 1);
+verifyEqual(testCase, rep.stimulus_log_to_fallback, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_stimulator_several_subjects, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_no_stimulator, 0);
+verifyEqual(testCase, rep.stimulus_log_kept_no_subject, 0);
+docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
+logs = stimLogBodies(docs);
+assertNumElements(testCase, logs, 2);
+for k = 1:numel(logs)
+    verifyEqual(testCase, ownerIdsOf(logs{k}), {[stem '_pres1']});
+end
+verifyEmpty(testCase, stimLogCarryNotes(result, [stem '_arc']));
+end
+
+function verifyStimLogArchiveKeptAsV1(testCase, result, arcId)
+docs = cellfun(@(d) d.toStruct(), result.migrated, 'UniformOutput', false);
+ids = cellfun(@(d) char(d.base.id), docs, 'UniformOutput', false);
+k = find(strcmp(ids, arcId), 1);
+assertNotEmpty(testCase, k, 'the archive is kept');
+verifyEqual(testCase, char(docs{k}.document_class.schema_version), 'did_v1', ...
+    'the archive is kept as v1');
+verifyEmpty(testCase, stimLogBodies(docs), 'no log body is written');
+verifyFalse(testCase, any(cellfun(@(d) strcmp(char(d.document_class.class_name), ...
+    'manipulation') && isfield(d, 'statement') && isfield(d.statement, 'variable') ...
+    && strcmp(char(d.statement.variable.node), 'NCIT:C41210'), docs)), ...
+    'no fallback manipulation is written');
+end
+
+function notes = stimLogCarryNotes(result, arcId)
+% the carried_as_v1 note DETAILs the batch records for ARCID
+notes = {};
+if ~isfield(result, 'summary') || ~isfield(result.summary, 'migration_notes') ...
+        || ~isfield(result.summary.migration_notes, 'carried_as_v1')
+    return;
+end
+c = result.summary.migration_notes.carried_as_v1;
+for k = 1:numel(c.ids)
+    if strcmp(char(c.ids{k}), arcId)
+        notes{end+1} = char(c.details{k}); %#ok<AGROW>
+    end
+end
+end
+
+function sid = stimLogSid(tail)
+sid = ['41268b6f5c6a3d4e_00000000000000' tail];
+end
+
 function [bodies, result, rep] = stimLogBatch(testCase, stem, tail, nPresentations, ...
         subjectString, withRecording)
 % a stimulus epoch as B holds it: the vhvis_spike2 system's manifest naming
@@ -724,19 +886,34 @@ function [bodies, result, rep] = stimLogBatch(testCase, stem, tail, nPresentatio
 % archive) in the same epoch.
 if nargin < 5; subjectString = 'L'; end
 if nargin < 6; withRecording = false; end
+sid = stimLogSid(tail);
+rows = sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+    'vis\t1\tstimulator\tvis:mk1\t%s\n' 'vis\t1\tstimulator\tvis:e1\t%s\n'], ...
+    subjectString, subjectString);
+extra = {};
+for p = 1:nPresentations
+    extra{end+1} = presentationV1(sprintf('%s_pres%d', stem, p), sid, 't0001', ...
+        [stem '_stim']); %#ok<AGROW>
+end
+[bodies, result, rep] = stimLogBatchRows(testCase, stem, tail, rows, extra, withRecording);
+end
+
+function [bodies, result, rep] = stimLogBatchRows(testCase, stem, tail, rows, extra, ...
+        withRecording)
+% stimLogBatch's epoch with the stimulus system's probe map ROWS (a char,
+% header line included) and the v1 bodies EXTRA (a cell) added after it;
+% the subject L (<stem>_spec) and the stimulator vis|1 (<stem>_stim) are
+% always in the batch
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
-sid = ['41268b6f5c6a3d4e_00000000000000' tail];
+sid = stimLogSid(tail);
 arc = archiveV1([stem '_arc'], sid, 't0001', ['rdr_' stem '_daq']);
 keep = ismember({arc.files.file_info.name}, {'channel_list.bin', 'evmktx_group1_seg.nbf_1'});
 arc.files.file_info = arc.files.file_info(keep);
 bodies = {sessionV1([stem '_sess'], sid), subjectV1([stem '_spec'], sid, 'L'), ...
     elementV1([stem '_stim'], sid, 'vis', 1, 'stimulator', [stem '_spec']), ...
     daqsystemV1([stem '_daq'], sid, 'vis', [stem '_nav']), ...
-    manifestV1([stem '_efi'], sid, 't0001', [stem '_nav'], ...
-        sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
-        'vis\t1\tstimulator\tvis:mk1\t%s\n' 'vis\t1\tstimulator\tvis:e1\t%s\n'], ...
-        subjectString, subjectString)), ...
+    manifestV1([stem '_efi'], sid, 't0001', [stem '_nav'], rows), ...
     arc};
 if withRecording
     bodies = [bodies, {elementV1([stem '_probe'], sid, 'p', 1, 'n-trode', [stem '_spec']), ...
@@ -746,10 +923,7 @@ if withRecording
             'p\t1\tn-trode\tintan1:ai1-2\tL\n'])), ...
         archiveV1([stem '_rarc'], sid, 't0001', ['rdr_' stem '_rdaq'])}];
 end
-for p = 1:nPresentations
-    bodies{end+1} = presentationV1(sprintf('%s_pres%d', stem, p), sid, 't0001', ...
-        [stem '_stim']); %#ok<AGROW>
-end
+bodies = [bodies, reshape(extra, 1, [])];
 bodies = cellfun(@(b) jsondecode(jsonencode(b)), bodies, 'UniformOutput', false);
 result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_v2');
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
