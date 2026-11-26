@@ -337,9 +337,9 @@ report = struct( ...
     'rename_skipped_rows_without_home',0, ...
     'wiring_relations_minted',        0, ...
     'wiring_parent_device',           0, ...
-    'wiring_parent_acquisition_system', 0, ...
     'rig_devices_indexed',            0, ...
     'rows_unwirable',                 0, ...
+    'rows_unwirable_rig_no_device',   0, ...
     'wiring_types_interleaved',       0, ...
     'wiring_several_rows_merged',     0, ...
     'wiring_several_rows_folded',     0, ...
@@ -506,10 +506,16 @@ rigsWithoutSystem = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 %     entity +migrators_j/daqsystem.m mints per rig per session). Decided by
 %     Jess Haley, 2026-11-19, did-schema docs/plans/did_v2_standing_wiring_plan.md
 %     [acquisition system is a device entity]: a probe's `connected to`
-%     wiring names the device, not the configuration. A system with no device
-%     (a batch migrated before, a rig with no name) is wired to the system as
-%     before. The devices are kept out of the subject / probe index below: a
-%     rig is not a probe-map subject or probe.
+%     wiring names the device, not the configuration. There is no fallback
+%     to the system: Decided by Jess Haley, 2026-11-26 [unnamed rig is
+%     malformed] (same plan) carries a rig with no name whole as v1, so it
+%     has no configuration here, and +migrators_j/daqsystem.m, the one
+%     writer of a configuration in a migration, gives every other rig its
+%     device. A configuration that still names no device is read as a rig
+%     with no configuration: its rows are unwirable, counted
+%     (rows_unwirable_rig_no_device), and keep their v1 document. The devices
+%     are kept out of the subject / probe index below: a rig is not a
+%     probe-map subject or probe.
 deviceOfSystem = containers.Map('KeyType', 'char', 'ValueType', 'char');
 rigDeviceIds = containers.Map('KeyType', 'char', 'ValueType', 'logical');
 for k = 1:n
@@ -978,6 +984,15 @@ for k = 1:n
             elseif isempty(instrumentId) || isempty(acqSystemId)
                 report.rows_unwirable = report.rows_unwirable + 1;
                 rowsWithoutHome = rowsWithoutHome + 1;
+            elseif ~isKey(deviceOfSystem, acqSystemId)
+                % the rig's configuration names no device: no parent to wire
+                % to ([acquisition system is a device entity]; no fallback
+                % to the configuration since [unnamed rig is malformed]),
+                % so the row is unwirable, as a rig with no configuration is
+                report.rows_unwirable = report.rows_unwirable + 1;
+                report.rows_unwirable_rig_no_device = ...
+                    report.rows_unwirable_rig_no_device + 1;
+                rowsWithoutHome = rowsWithoutHome + 1;
             elseif disagree(r)
                 % [probe in several rows is one wiring], guard (3): a probe
                 % whose several rows disagree on anything but the devicestring
@@ -1000,15 +1015,9 @@ for k = 1:n
                     acId = acIdByKey(ak);
                 else
                     % the parent: the rig's device ([acquisition system is a
-                    % device entity]), else the system (a batch with no device)
-                    wiringParent = acqSystemId;
-                    if isKey(deviceOfSystem, acqSystemId)
-                        wiringParent = deviceOfSystem(acqSystemId);
-                        report.wiring_parent_device = report.wiring_parent_device + 1;
-                    else
-                        report.wiring_parent_acquisition_system = ...
-                            report.wiring_parent_acquisition_system + 1;
-                    end
+                    % device entity]); a rig with none was refused above
+                    wiringParent = deviceOfSystem(acqSystemId);
+                    report.wiring_parent_device = report.wiring_parent_device + 1;
                     acBody = mkWiring(instrumentId, wiringParent, channels, ...
                         anchorId, sid, datestamp);
                     acId = acBody.base.id;
@@ -3411,9 +3420,9 @@ function [stmt, report] = groupOwner(prefix, group, slot, archive, sp, ctx, repo
 %   reader from every owner.
 %
 %   THE WIRED DEVICE is the child of the surviving `connected to` wiring
-%   relations of this epoch (timed by its anchor, parent the system or its
-%   device) with a condition of the group's channel type listing a channel
-%   of this group. A channel's group is NDI's rule, 1 + floor(number /
+%   relations of this epoch (timed by its anchor, parent the rig's device,
+%   the only parent a wiring has since [unnamed rig is malformed]) with a
+%   condition of the group's channel type listing a channel of this group. A channel's group is NDI's rule, 1 + floor(number /
 %   channels per group), 400 per group for analog and auxiliary channels and
 %   512 for digital ones (ndi.file.type.mfdaq_epoch_channel/create_properties,
 %   the defaults ndi.daq.reader.mfdaq ingests with). A `di` group may hold
@@ -3455,7 +3464,7 @@ switch prefix
     case 'ax', types = {'ax'};       perGroup = 400;
     case 'ao', types = {'ao'};       perGroup = 400;
 end
-[devices, wirings] = wiredDevices(ctx.wirings, {sysId, rigDevice}, sp.anchorId, ...
+[devices, wirings] = wiredDevices(ctx.wirings, {rigDevice}, sp.anchorId, ...
     types, group, perGroup);
 entity = rigDevice;
 switch numel(devices)

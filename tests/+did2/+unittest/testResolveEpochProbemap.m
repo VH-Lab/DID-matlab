@@ -35,10 +35,13 @@ end
 
 % ===================== harness =========================================
 
-function [out, rep] = decompose(v1)
+function [out, rep] = decompose(v1, stripDeviceOf)
 %DECOMPOSE Pass 1, then the batch chain up to and including this pass. Validation
 %   is ON for this pass so the minted observations and
-%   anchors are checked against the real V_eta schema.
+%   anchors are checked against the real V_eta schema. STRIPDEVICEOF, when
+%   given, is the id of an acquisition system whose `device_id` edge is
+%   removed before this pass (a configuration no migration writes).
+if nargin < 2; stripDeviceOf = ''; end
 % the sorted units below are labelled single units by their sorting run:
 % [sorted units are cells or groups] (Jess Haley, 2026-10-26); an unlabelled
 % one is carried ([unlabelled units need a map])
@@ -47,6 +50,19 @@ labels = {'el_neuron', 'single', 'el_neuron_x', 'single', 'el_neuron_u', 'single
 out = did2.convert.v1_to_v2(v1, 'Validate', false, 'TargetVersion', 'did_v2', ...
     'UnitQualityLabels', labels);
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
+if ~isempty(stripDeviceOf)
+    removed = false;
+    for k = 1:numel(out.migrated)
+        d = out.migrated{k}.toStruct();
+        if strcmp(char(d.base.id), stripDeviceOf)
+            keep = ~strcmp({d.depends_on.name}, 'device_id');
+            removed = any(~keep);
+            d.depends_on = d.depends_on(keep);
+            out.migrated{k} = did2.document(d);
+        end
+    end
+    assert(removed, 'premise: the system names its device');
+end
 [out, rep] = did2.convert.resolveEpochProbemap(out, 'Validate', true, ...
     'TargetVersion', 'did_v2');
 end
@@ -1540,7 +1556,7 @@ verifyEqual(testCase, char(dev.entity.name), 'intan1');
 % the rig's device writes `name` only
 verifyTrue(testCase, ~isfield(dev.entity, 'local_identifier') || isempty(dev.entity.local_identifier));
 verifyEqual(testCase, rep.wiring_parent_device, 1);
-verifyEqual(testCase, rep.wiring_parent_acquisition_system, 0);
+verifyEqual(testCase, rep.rows_unwirable_rig_no_device, 0);
 verifyEqual(testCase, rep.rig_devices_indexed, 1, 'denominator: the rigs with a device');
 verifyEqual(testCase, depVal(w, 'time_reference_id'), depVal(obs{1}, 'time_reference_id'));
 ch = w.directed_relation.conditions;
@@ -1551,6 +1567,51 @@ verifyEqual(testCase, char(ch(2).variable.node), 'EMPTY:0000372');   % di
 verifyEqual(testCase, double(ch(2).numeric(:))', [0 1 2]);
 % every row decomposed, so the source is renamed to the manifest
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
+end
+
+function testARigWhoseSystemNamesNoDeviceIsNotWiredToTheSystem(testCase)
+% Decided by Jess Haley, 2026-11-26 [unnamed rig is malformed] (did-schema
+% docs/plans/did_v2_standing_wiring_plan.md), unblocking [acquisition system
+% is a device entity] (2026-11-19): the wiring names the rig's device, with
+% no fallback to the acquisition_configuration. The batch is the one of
+% testDeviceStringResolvesAcqSystemAndParsesGroupedChannels (the control: it
+% is wired to the device there) with the system's `device_id` removed before
+% this pass, a configuration no migration writes (+migrators_j/daqsystem.m
+% gives every rig its device, and carries a rig with no name as v1). Its
+% rows are unwirable, as a rig with no system is: no relation names the
+% configuration, and the v1 document is carried whole.
+subj = subjectBody('spec_dn', 'sess_dn', 'L');
+el   = elementBody('el_dn', 'sess_dn', 'p', '1', 'n-trode', 1, 'spec_dn');
+daq  = daqsystemBody('acqsys_dn', 'sess_dn', 'intan1');
+ing  = ingestedWithDeviceRows('ing_dn', 'sess_dn', 't0dn', { ...
+    {'p', '1', 'n-trode', 'intan1:ai27-28,45;di0-2', 'L'}});
+v1 = {sessionBody('sd_dn', 'sess_dn', 'ref'), subj, el, daq, ing};
+
+% the control, the same batch with the device: wired to it
+[outC, repC] = decompose(v1);
+assertEqual(testCase, repC.wiring_relations_minted, 1, 'premise: the control is wired');
+assertEqual(testCase, repC.wiring_parent_device, 1);
+assertEqual(testCase, repC.rows_unwirable_rig_no_device, 0);
+obsC = bodiesNamed(outC, 'migrated_probemap_observation');
+assertNumElements(testCase, obsC, 1);
+wC = wiringOf(outC, obsC{1});
+assertEqual(testCase, depVal(wC, 'parent_id'), rigDeviceOf(outC, 'acqsys_dn'));
+
+[out, rep] = decompose(v1, 'acqsys_dn');
+verifyEqual(testCase, rep.device_strings_seen, 1, 'denominator');
+verifyEqual(testCase, rep.device_acqsystem_resolved, 1, 'the system is found by name');
+verifyEqual(testCase, rep.rig_devices_indexed, 0, 'the system names no device');
+verifyEqual(testCase, rep.wiring_relations_minted, 0);
+verifyEqual(testCase, rep.wiring_parent_device, 0);
+verifyEqual(testCase, rep.rows_unwirable, 1);
+verifyEqual(testCase, rep.rows_unwirable_rig_no_device, 1);
+for b = bodiesOfClass(out, 'directed_relation')
+    verifyNotEqual(testCase, depVal(b{1}, 'parent_id'), 'acqsys_dn', ...
+        'a relation names the acquisition_configuration as its parent');
+end
+verifyEmpty(testCase, bodiesOfClass(out, 'ingestion_manifest'));
+verifyNotEmpty(testCase, bodiesOfClass(out, 'epochfiles_ingested'), ...
+    'the v1 document is carried whole, its devicestring intact');
 end
 
 % ===================== the rename-thin guard (increment 3) =============

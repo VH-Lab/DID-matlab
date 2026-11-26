@@ -157,7 +157,7 @@ verifyEqual(testCase, depValueOf(refs{1}, 'referent_id'), rigDeviceOf(out, 'daq_
     'the reference is anchored to its rig''s device');
 verifyNotEmpty(testCase, rigDeviceOf(out, 'daq_rig1'), 'the rig names no device');
 verifyEqual(testCase, rep.epoch_extent_referent_device, 1);
-verifyEqual(testCase, rep.epoch_extent_referent_acquisition_system, 0);
+verifyEqual(testCase, rep.epoch_extent_refused_no_device, 0);
 verifyNotEqual(testCase, depValueOf(refs{1}, 'referent_id'), ...
     did2.unittest.helpers.sessionDocumentId('sess_doc_1', 'sess_1'));
 verifyNotEqual(testCase, depValueOf(refs{1}, 'referent_id'), ...
@@ -169,6 +169,51 @@ did2.unittest.helpers.verifyClock(testCase, v.clock, 'dev_local_time');   % by n
 verifyEqual(testCase, v.start.seconds, 0);
 % CHANGE 1 of the time model: the EXTENT is t1 - t0, not the raw t1.
 verifyEqual(testCase, v.duration.seconds, 452.709856, 'AbsTol', 1e-9);
+end
+
+function testARigWhoseSystemNamesNoDeviceIsNotTheReferent(testCase)
+% Decided by Jess Haley, 2026-11-26 [unnamed rig is malformed] (did-schema
+% docs/plans/did_v2_standing_wiring_plan.md), unblocking [a rig's clock
+% belongs to its device] (2026-11-19): a tied extent's referent is the
+% rig's device, with no fallback to the acquisition_configuration. The batch
+% of testEpochGainsATimeReferencePerClock (the control: referent the
+% device), with the system's `device_id` removed before the mint, a
+% configuration no migration writes (+migrators_j/daqsystem.m gives every
+% rig its device, and carries a rig with no name as v1). No reference names
+% the configuration; the source is carried, counted.
+v1 = [{sessionBody('sess_doc_1', 'sess_1', 'ref'), ...
+    elementEpochBody('ee_1', 'sess_1', 't00001', 'elem_1')}, ...
+    rigBodies('sess_1', 't00001', {'elem_1'}, 'rig1')];
+[outC, repC] = mintFrom(v1);
+assertEqual(testCase, repC.epoch_extent_referent_device, 1, 'premise: the control is tied');
+assertEqual(testCase, repC.epoch_extent_refused_no_device, 0);
+refsC = ofClass(outC, 'relative_time_reference');
+assertNumElements(testCase, refsC, 1);
+assertEqual(testCase, depValueOf(refsC{1}, 'referent_id'), rigDeviceOf(outC, 'daq_rig1'));
+
+out = runJ(v1);
+removed = false;
+for k = 1:numel(out.migrated)
+    d = out.migrated{k}.toStruct();
+    if strcmp(char(d.base.id), 'daq_rig1')
+        keep = ~strcmp({d.depends_on.name}, 'device_id');
+        removed = any(~keep);
+        d.depends_on = d.depends_on(keep);
+        out.migrated{k} = did2.document(d);
+    end
+end
+assertTrue(testCase, removed, 'premise: the rig names its device');
+[out, rep] = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
+verifyEqual(testCase, rep.epoch_extent_sources_seen, 1, 'the DENOMINATOR');
+verifyEqual(testCase, rep.epoch_extent_refused_no_system, 0, 'the system is found');
+verifyEqual(testCase, rep.epoch_extent_refused_no_device, 1);
+verifyEqual(testCase, rep.epoch_extent_referent_device, 0);
+for r = ofClass(out, 'relative_time_reference')
+    verifyNotEqual(testCase, depValueOf(r{1}, 'referent_id'), 'daq_rig1', ...
+        'a reference names the acquisition_configuration');
+end
+verifyTrue(testCase, any(strcmp(rep.epoch_extent_carried_source_ids, 'ee_1')), ...
+    'the source is carried');
 end
 
 function testTheInlineClocksBlockIsLeftInPlace(testCase)
