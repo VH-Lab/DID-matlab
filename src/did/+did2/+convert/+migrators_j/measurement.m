@@ -139,13 +139,11 @@ if isempty(bodies)
         if isnumeric(numValue) && isscalar(numValue) && isfinite(double(numValue))
             % code audit batch 1 (C3) (Jess Haley, 2026-11-26, under [one
             % correct reading]): a number whose kind would be chosen from the
-            % words of its node or label is carried, not typed. The register
-            % has no row for a measurement (carry-145 is subjectmeasurement's
-            % twin); none is invented here.
-            % carry-register: none (needs_mapping; the register has no
-            %   measurement row for a number of no stated kind)
+            % words of its node or label is carried, not typed. Register row
+            % carry-175 covers it (the twin of subjectmeasurement's carry-145).
+            % carry-register: carry-175
             did2.convert.reportNote('carried_as_v1', 'measurement', jCarryId(src), ...
-                ['needs_mapping: the measurement states no quantity kind or unit ' ...
+                ['[carry-175] needs_mapping: the measurement states no quantity kind or unit ' ...
                  'for its number; the dataset map names them (a quantity is not ' ...
                  'read from label words)']);
         else
