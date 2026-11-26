@@ -637,6 +637,55 @@ verifyFalse(testCase, isfield(rebuilt.hartley_calc, 'input_parameters') ...
 verifyFalse(testCase, any(contains(spec.unplaced, 'onset time')), strjoin(spec.unplaced, '; '));
 end
 
+function testTheOnsetTimeEntryIsBuiltWithItsTermAndIsUnchanged(testCase)
+% [hartley frame times are onset times]: the migrator names the frame times'
+% variable EMPTY:0000368 "onset time" BEFORE did2.build.parameter (the NAMEFN
+% of jParameterList), where it used to build the entry with the label
+% 'stimulus sequence.frame times' and relabel it after. (1) SAME OUTPUT: the
+% entry built with the term equals the entry built with the label and
+% relabelled, and the migrated leaf holds that entry's variable and text.
+% (2) NO UNREGISTERED TERM: with did2.build.unregisteredTerms collecting, the
+% migration records no row for the old label; CONTROL: the collector is live
+% (an unregistered label built in the same window is recorded).
+v1 = hartleyCalcV1();
+ft = v1.hartley_reverse_correlation.frame_times;
+txt = char(jsonencode(ft));
+onset = did2.convert.registeredTerm('EMPTY:0000368', 'onset time');
+built = did2.build.parameter(onset, 'Text', txt);
+relabelled = did2.build.parameter( ...
+    did2.convert.registeredTerm('', 'stimulus sequence.frame times'), 'Text', txt);
+relabelled.variable = onset;
+verifyEqual(testCase, built, relabelled, ...
+    'building with the term gives the entry the relabel gave');
+
+did2.build.unregisteredTerms('-reset');
+prevCollect = did2.build.unregisteredTerms('-collect', true);
+testCase.addTeardown(@() did2.build.unregisteredTerms('-collect', prevCollect));
+testCase.addTeardown(@() did2.build.unregisteredTerms('-reset'));
+out = did2.convert.migrators_j.hartley_calc(v1);
+rows = did2.build.unregisteredTerms();
+did2.build.parameter('zz control label not in the registry', 'Text', 'x');
+control = did2.build.unregisteredTerms();
+verifyTrue(testCase, any(strcmp({control.name}, 'zz control label not in the registry')), ...
+    'CONTROL: the collector records an unregistered label built in this window');
+names = {};
+if ~isempty(rows); names = {rows.name}; end
+verifyFalse(testCase, any(strcmp(names, 'stimulus sequence.frame times')), ...
+    'the old label is never built');
+verifyFalse(testCase, any(strcmp(names, 'onset time')), ...
+    'the onset-time term is registered');
+
+leaves = allOf(out, 'receptive_field_calculation');
+verifyNumElements(testCase, leaves, 2);
+for k = 1:numel(leaves)
+    e = paramEntry(leaves{k}, 'EMPTY:0000368');
+    verifyNotEmpty(testCase, e, 'the onset-time parameter, by its node');
+    if isempty(e); continue; end
+    verifyEqual(testCase, jsonencode(e.variable), jsonencode(built.variable), 'the variable');
+    verifyEqual(testCase, char(e.text), char(built.text), 'the text, unchanged');
+end
+end
+
 function testTheRoundTripReadsTheFrameTimesInBothSpellings(testCase)
 % [hartley frame times are onset times]: a calculation migrated before the
 % decision names the parameter by the label 'stimulus sequence.frame times'

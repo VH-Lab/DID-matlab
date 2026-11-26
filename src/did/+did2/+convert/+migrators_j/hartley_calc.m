@@ -405,7 +405,7 @@ pValueId = did2.convert.mintId('receptive_field_calculation null cumulative prob
 extra = [];
 sequence = stimulusSequence(hrc);
 if ~isempty(fieldnames(sequence))
-    extra = onsetTimeVariable(jParameterList(struct('stimulus_sequence', sequence)));
+    extra = jParameterList(struct('stimulus_sequence', sequence), '', @sequenceParameterName);
 end
 % [hartley numbers stored, copies not] (Decided by Jess Haley, 2026-11-03): the
 % per-frame hartley numbers are data, one row per frame, not method parameters
@@ -829,8 +829,9 @@ end
 % hartley_numbers: data, not parameters (hartleyNumbersBody)
 end
 
-function params = onsetTimeVariable(params)
-%ONSETTIMEVARIABLE The frame-times parameter named by its registered term.
+function [variable, known] = sequenceParameterName(path)
+%SEQUENCEPARAMETERNAME The variable of a stimulus-sequence parameter, named
+%   before the entry is built (jParameterList's NAMEFN).
 %
 %   Decided by Jess Haley, 2026-11-19 [hartley frame times are onset times]
 %   (did-schema did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486): the
@@ -848,16 +849,17 @@ function params = onsetTimeVariable(params)
 %   changes: the entry's value form and value are jParameterList's, as before.
 %   Before this decision the variable was the label 'stimulus sequence.frame
 %   times' (the round trip reads both).
-if isempty(params)
-    return;
-end
-term = did2.convert.registeredTerm('EMPTY:0000368', 'onset time');
-for k = 1:numel(params)
-    v = params(k).variable;
-    if isstruct(v) && isscalar(v) && isfield(v, 'name') ...
-            && strcmp(char(v.name), 'stimulus sequence.frame times')
-        params(k).variable = term;
-    end
+%
+%   The term is given to did2.build.parameter itself, so the label is never
+%   built: before, the entry was built with the label and relabelled after,
+%   and the label reached did2.build as an unregistered term. Any other path
+%   keeps jParameterList's own label (its v1 path, underscores as spaces), so
+%   nothing is left unwritten (KNOWN is always true).
+known = true;
+if strcmp(path, 'stimulus_sequence.frame_times')
+    variable = did2.convert.registeredTerm('EMPTY:0000368', 'onset time');
+else
+    variable = strrep(path, '_', ' ');
 end
 end
 

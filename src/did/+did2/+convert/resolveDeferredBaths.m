@@ -191,10 +191,20 @@ arguments
     options.TargetVersion (1,:) char {mustBeMember(options.TargetVersion, {'did_v2'})} = 'did_v2'
 end
 
-% A batch pass builds documents from the v1 source's own terms, exactly as a
-% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
-% runs, as it is there, and restored after (unregistered terms are still
-% collected when did2.build.unregisteredTerms('-collect') is on).
+% The T19 TermRegistry check is OFF while this pass runs and restored after
+% (unregistered terms are still collected when
+% did2.build.unregisteredTerms('-collect') is on). [early migration pieces
+% fixed] item 3 (Jess Haley, 2026-10-26, did-schema
+% did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486) keeps the check on
+% during migration, but this pass still builds terms the registry does not
+% hold, so it cannot be armed until the team registers them or decides
+% otherwise (VH-Lab/DID-matlab#526 measured it). The terms that block it:
+%   - the bath's chemicals (chemical.value.substance), taken from the v1
+%     mixture table's own nodes, e.g. NCIm:C1098706 "arginine-vasopressin",
+%     NCIm:C0078080, NCIm:C0037494 "sodium chloride", NCIm:C0032825
+%     "potassium chloride" (testRawV1RoundTripBath's Dabrowska and Marder
+%     baths), and the bath location's anatomy term, e.g. UBERON:8910010; with
+%     the check on, every one of those baths is left quarantined.
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
 % [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is
