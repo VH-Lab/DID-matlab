@@ -373,6 +373,10 @@ catch wbErr
     fprintf('[PRED] WHOLE-BATCH ROUND TRIP NOT MEASURED: %s\n', wbErr.message);
 end
 
+% [instrument of an epoch interaction is a link] (Decided by Jess Haley,
+% 2026-11-26): the census asked for before it is built (report-only)
+result.epoch_instrument_census = did2.unittest.helpers.epochInstrumentCensus('PRED', result);
+
 reasons = did2.unittest.helpers.topQuarantineReasons(result.quarantine);
 did2.unittest.helpers.writeCorpusReport('PRED', result, reasons);
 

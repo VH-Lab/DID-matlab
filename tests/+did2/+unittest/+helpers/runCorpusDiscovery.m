@@ -454,6 +454,10 @@ catch wbErr
     fprintf('[%s] WHOLE-BATCH ROUND TRIP NOT MEASURED: %s\n', corpusName, wbErr.message);
 end
 
+% [instrument of an epoch interaction is a link] (Decided by Jess Haley,
+% 2026-11-26): the census asked for before it is built
+result.epoch_instrument_census = did2.unittest.helpers.epochInstrumentCensus(corpusName, result);
+
 % THE EPOCH-STRING RETENTION MEASUREMENT. did2.validate.epochStringRetention was
 % written 2026-08-10 and, until this line, was called from TESTS ONLY -- 8
 % executable call sites, 7 in testEpochStrings.m and 1 in
