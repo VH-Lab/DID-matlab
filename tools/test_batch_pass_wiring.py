@@ -217,6 +217,12 @@ NOT_RENDERED_YET = {
         #     lines, a sample per component whose graph differs from its form.
         #     `components_withheld_differing_from_form` is the number.
         "graph_differences",
+        # malformed_datasets (added 2026-11-25, [several metadata forms are
+        #     malformed]) -- NOT A COUNTER: a CELL ARRAY with one line per
+        #     dataset holding several metadata_editor forms (its id, the number
+        #     of forms and their ids). `datasets_with_several_forms` is the
+        #     number; runCorpusDiscovery prints each line.
+        "malformed_datasets",
     },
     # deferred_bath_resolution.unexpected_error_reasons
     #     NOT A COUNTER, same shape and same reason as withheld_reasons above:

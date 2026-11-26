@@ -1,6 +1,7 @@
 function tests = testRegionParts
 %TESTREGIONPARTS Region parts with computed ids, the merge of their copies,
-%   and a side another document gives (VH-Lab/DID-matlab #488).
+%   and a side another document gives, which stays where pass 1 wrote it
+%   (VH-Lab/DID-matlab #488; [side said about its region], 2026-11-25).
 %
 %   Decided by Jess Haley (did-schema did_v2_go_forward_class_audit.md):
 %   [site scaffolding not a loss] (2) (2026-10-26): pass 1 writes the final
@@ -8,9 +9,10 @@ function tests = testRegionParts
 %   and side; [duplicate parts merged in DID] and [part re-keyed when its side
 %   arrives] (2026-11-17); [region part ids computed] (2026-11-19): (1) copies
 %   take the earliest source document's values, a copy that still differs is
-%   counted and the first kept; (2) a side given later attaches only when the
-%   subject has exactly one no-side part, else it is not attached and counted;
-%   (3) the part, its kind assertion, its laterality assertion and its
+%   counted and the first kept; (2), as amended 2026-11-25 by [side said
+%   about its region]: a side attaches to a part only when one v1 document
+%   names the region and its side together, so a side another document gives
+%   is never attached (counted); (3) the part, its kind assertion, its laterality assertion and its
 %   part_of relation take ids from did2.convert.mintId in a context keyed on
 %   '<subject id>|<region node, lowercased>|side:<side node>'.
 %
@@ -165,44 +167,58 @@ verifyNotEqual(testCase, depVal(byId(out.migrated, 'td_a'), 'entity_id'), ...
     depVal(byId(out.migrated, 'td_b'), 'entity_id'));
 end
 
-% ===================== a side given later ==============================
+% ===================== a side another document gives =====================
+% [side said about its region] (Jess Haley, 2026-11-25) amends (2) of [region
+% part ids computed]: "a side attaches to a region part only when the v1
+% document states it about that region (the region and its side named
+% together) ... and no part is chosen because it is the subject's only
+% unsided one". A side document that names no region stays the site
+% observation pass 1 wrote, about the subject, and is counted.
 
-function testASideGivenLaterReKeysTheSubjectsOnePart(testCase)
+function testASideFromAnotherDocumentIsNotAttachedToTheSubjectsOnePart(testCase)
+% the case the rule before 2026-11-25 attached: the subject has exactly one
+% unsided part, and another document gives a side
 a = drugAt('td_a', '2024-06-01T12:00:00.000Z', 'UBERON:0002436', 'primary visual cortex');
 s = drugAt('td_s', '2024-06-02T12:00:00.000Z', 'UBERON:0002812', 'left cerebral hemisphere');
 out = did2.convert.v1_to_v2({a, s}, 'Validate', true, 'TargetVersion', 'did_v2');
 verifyEmpty(testCase, out.quarantine);
 verifyEqual(testCase, nSideObservations(out.migrated), 1, ...
     'a side names no region: pass 1 leaves the site observation');
+before = sortedJson(out.migrated);
 old = did2.convert.regionPartIds('subj_007', struct('node', 'UBERON:0002436', 'name', ''), []);
 out = did2.convert.resolveRegionParts(out, 'Validate', true, 'TargetVersion', 'did_v2');
 r = out.region_part_resolution;
+verifyEqual(testCase, r.documents_inspected, r.migrated_before, 'the denominator');
 verifyEqual(testCase, r.side_observations_seen, 1);
-verifyEqual(testCase, r.sides_attached, 1);
-verifyEqual(testCase, r.parts_rekeyed, 1);
-verifyEqual(testCase, r.rekey_quarantined, 0);
-% (the labels are the registry's; they make only the local identifier)
+verifyEqual(testCase, r.sides_not_attached, 1);
+verifyEqual(testCase, r.sides_not_attached_subject_has_one_unsided_part, 1, ...
+    'the case is counted');
+verifyEqual(testCase, r.documents_removed, 0);
+verifyEqual(testCase, r.migrated_after, r.migrated_before);
+verifyEqual(testCase, sortedJson(out.migrated), before, 'the batch is left as pass 1 wrote it');
+verifyFalse(testCase, isfield(r, 'sides_attached') || isfield(r, 'parts_rekeyed'), ...
+    'the re-key counters are gone with the re-key');
+% the unsided part keeps its ids; no sided part is made
+for id = {old.part, old.kind, old.relation}
+    verifyEqual(testCase, countId(out.migrated, id{1}), 1, id{1});
+end
 nid = did2.convert.regionPartIds('subj_007', ...
     struct('node', 'UBERON:0002436', 'name', 'primary visual cortex'), ...
     struct('node', 'UBERON:0002812', 'name', 'left cerebral hemisphere'));
-% the part's id matches its content: (subject, region, side)
 for id = {nid.part, nid.kind, nid.laterality, nid.relation}
-    verifyEqual(testCase, countId(out.migrated, id{1}), 1, id{1});
-end
-for id = {old.part, old.kind, old.relation}
     verifyEqual(testCase, countId(out.migrated, id{1}), 0, id{1});
-    verifyEqual(testCase, countEdgesNaming(out.migrated, id{1}), 0, ...
-        ['an edge still names the old id ' id{1}]);
 end
-lat = byId(out.migrated, nid.laterality);
-verifyEqual(testCase, lat.get('term.value').node, 'UBERON:0002812');
-verifyEqual(testCase, depVal(lat, 'entity_id'), nid.part);
-verifyEqual(testCase, char(byId(out.migrated, nid.part).get('entity.local_identifier')), ...
-    nid.local_identifier);
-% both documents' doses are about the sided part; the side observation is gone
-verifyEqual(testCase, depVal(byId(out.migrated, 'td_a'), 'entity_id'), nid.part);
-verifyEqual(testCase, depVal(byId(out.migrated, 'td_s'), 'entity_id'), nid.part);
-verifyEqual(testCase, nSideObservations(out.migrated), 0);
+% the region's dose stays about its part; the side's dose stays about the
+% subject, with its side observation
+verifyEqual(testCase, depVal(byId(out.migrated, 'td_a'), 'entity_id'), old.part);
+verifyEqual(testCase, depVal(byId(out.migrated, 'td_s'), 'entity_id'), 'subj_007');
+verifyEqual(testCase, nSideObservations(out.migrated), 1, 'the side observation stays');
+% and each source still round trips on the documents its ids name
+for v1 = {a, s}
+    r1 = roundTripOf(v1{1}, out);
+    verifyTrue(testCase, r1.ok, sprintf('%s: lost %s; unplaced %s', v1{1}.base.id, ...
+        strjoin({r1.lost.path}, ', '), strjoin(r1.unplaced, '; ')));
+end
 end
 
 function testASideIsNotAttachedWhenTheSubjectHasSeveralParts(testCase)
@@ -211,9 +227,9 @@ b = drugAt('td_b', '2024-06-01T12:00:00.000Z', 'UBERON:0001880', 'bed nucleus of
 s = drugAt('td_s', '2024-06-02T12:00:00.000Z', 'UBERON:0002812', 'left cerebral hemisphere');
 out = merged({a, b, s});
 r = out.region_part_resolution;
-verifyEqual(testCase, r.sides_attached, 0);
-verifyEqual(testCase, r.sides_not_attached_several_parts, 1);
-verifyEqual(testCase, r.parts_rekeyed, 0);
+verifyEqual(testCase, r.side_observations_seen, 1, 'the denominator');
+verifyEqual(testCase, r.sides_not_attached, 1);
+verifyEqual(testCase, r.sides_not_attached_subject_has_one_unsided_part, 0);
 verifyEqual(testCase, nSideObservations(out.migrated), 1, 'the side observation stays');
 verifyEqual(testCase, depVal(byId(out.migrated, 'td_s'), 'entity_id'), 'subj_007');
 end
@@ -222,7 +238,9 @@ function testASideIsNotAttachedWhenTheSubjectHasNoPart(testCase)
 s = drugAt('td_s', '2024-06-02T12:00:00.000Z', 'UBERON:0002812', 'left cerebral hemisphere');
 out = merged({s});
 r = out.region_part_resolution;
-verifyEqual(testCase, r.sides_not_attached_no_part, 1);
+verifyEqual(testCase, r.side_observations_seen, 1, 'the denominator');
+verifyEqual(testCase, r.sides_not_attached, 1);
+verifyEqual(testCase, r.sides_not_attached_subject_has_one_unsided_part, 0);
 verifyEqual(testCase, nSideObservations(out.migrated), 1);
 end
 
@@ -232,8 +250,9 @@ l = drugAt('td_l', '2024-06-02T12:00:00.000Z', 'UBERON:0002812', 'left cerebral 
 g = drugAt('td_g', '2024-06-02T12:00:00.000Z', 'UBERON:0002813', 'right cerebral hemisphere');
 out = merged({a, l, g});
 r = out.region_part_resolution;
-verifyEqual(testCase, r.sides_not_attached_several_sides, 2, '[one part per side]');
-verifyEqual(testCase, r.parts_rekeyed, 0);
+verifyEqual(testCase, r.side_observations_seen, 2, 'the denominator');
+verifyEqual(testCase, r.sides_not_attached, 2);
+verifyEqual(testCase, r.sides_not_attached_subject_has_one_unsided_part, 2);
 verifyEqual(testCase, nSideObservations(out.migrated), 2);
 end
 
@@ -254,7 +273,7 @@ out = merged({a, pl});
 r = out.region_part_resolution;
 verifyEqual(testCase, r.side_observations_seen, 0);
 verifyEqual(testCase, r.side_observations_not_co_anchored, 1);
-verifyEqual(testCase, r.sides_attached + r.sides_not_attached_no_part, 0);
+verifyEqual(testCase, r.sides_not_attached, 0);
 verifyEqual(testCase, nSideObservations(out.migrated), 1, 'the probe''s location stays');
 end
 

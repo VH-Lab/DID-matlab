@@ -88,11 +88,31 @@ function [result, report] = resolveOpenmindsCitations(result, options)
 %       Counted in components_dropped_as_derived and
 %       graph_documents_dropped_as_derived.
 %     - DIFFER (and a form carried as v1, which produces no v2 documents to
-%       match, and several forms for one dataset): the component is withheld,
-%       all or none, so its openminds documents are carried as v1, each with a
-%       carry note citing carry-174 and the first differences. Counted in
-%       components_withheld and components_withheld_differing_from_form; the
-%       differences, a sample, in graph_differences.
+%       match): the component is withheld, all or none, so its openminds
+%       documents are carried as v1, each with a carry note citing carry-174
+%       and the first differences. Counted in components_withheld and
+%       components_withheld_differing_from_form; the differences, a sample,
+%       in graph_differences.
+%     - SEVERAL FORMS. Decided by Jess Haley, 2026-11-25 [several metadata
+%       forms are malformed] (did-schema did_v2_go_forward_class_audit.md):
+%       "a dataset with more than one `metadata_editor` form is malformed
+%       source data: none of its forms and not its openMINDS graph is
+%       converted, all are carried unchanged as v1, and the migration report
+%       names the dataset and the number of forms as malformed. Replaces the
+%       #521 behaviour where each form converted and only the graph was
+%       carried." The forms are carried by did2.convert.v1_to_v2
+%       (carrySeveralMetadataForms: only pass 1 holds their v1 sources), each
+%       with a carry note naming the dataset and the number of forms; here
+%       the dataset's graph component is withheld, all or none, each of its
+%       documents carried with a note saying the same, and not compared.
+%       Counted in components_withheld and
+%       components_withheld_several_forms_malformed (documents:
+%       graph_documents_carried_malformed). Every dataset with several forms,
+%       with or without a graph, is counted in datasets_with_several_forms
+%       (forms: forms_in_datasets_with_several_forms) and named in
+%       malformed_datasets (one line per dataset: its id, the number of forms
+%       and their ids). Neither carry has a carry register row yet: the notes
+%       cite none.
 %   A component with no form converts as before (components_without_form).
 %   The orphan guard and the subject-side guard run first, as before: a
 %   component they withhold is not compared.
@@ -378,8 +398,13 @@ report = struct( ...
     'graph_documents_dropped_as_derived',   0, ...
     'components_withheld_differing_from_form', 0, ...
     'differing_form_carried_as_v1',         0, ...
-    'differing_several_forms',              0, ...
     'graph_documents_carried_differing',    0, ...
+    ... % --- [several metadata forms are malformed] (header)
+    'datasets_with_several_forms',          0, ...
+    'forms_in_datasets_with_several_forms', 0, ...
+    'components_withheld_several_forms_malformed', 0, ...
+    'graph_documents_carried_malformed',    0, ...
+    'malformed_datasets',                   {{}}, ...
     'graph_differences',                    {{}}, ...
     'withheld_reasons',                     {{}}, ...
     'documents_consumed',                   0, ...
@@ -453,6 +478,22 @@ for k = 1:n
     end
 end
 
+% the forms by dataset id (THE FORM IS THE SOURCE, header), and the datasets
+% with more than one ([several metadata forms are malformed], header): named
+% whether or not the batch holds a graph
+[forms, report.forms_without_dataset_id] = formIndex(formRowsRead, bodies, idOf);
+formDatasets = sort(forms.keys);
+for d = 1:numel(formDatasets)
+    entries = forms(formDatasets{d});
+    if numel(entries) < 2; continue; end
+    report.datasets_with_several_forms = report.datasets_with_several_forms + 1;
+    report.forms_in_datasets_with_several_forms = ...
+        report.forms_in_datasets_with_several_forms + numel(entries);
+    report.malformed_datasets{end+1} = sprintf(['dataset %s: %d metadata_editor ' ...
+        'forms (%s), malformed; none converted, its openMINDS graph not converted'], ...
+        formDatasets{d}, numel(entries), strjoin({entries.id}, ', '));
+end
+
 if ~any(isOm)
     result.openminds_citations = report;
     return;     % nothing of this family here. Zeros above say so.
@@ -462,9 +503,6 @@ byId = containers.Map('KeyType', 'char', 'ValueType', 'double');
 for k = 1:n
     if ~isempty(idOf{k}); byId(idOf{k}) = k; end
 end
-
-% the forms by dataset id (THE FORM IS THE SOURCE, header)
-[forms, report.forms_without_dataset_id] = formIndex(formRowsRead, bodies, idOf);
 notMigrated = struct('id', {}, 'class_name', {}, 'reason', {}, 'decision', {}, ...
     'twin_id', {});
 
@@ -599,14 +637,33 @@ for c = 1:nComp
     dsKey = datasetIdOf(bodies{root});
     if ~isempty(dsKey) && isKey(forms, dsKey)
         entries = forms(dsKey);
+        if numel(entries) > 1
+            % [several metadata forms are malformed] (Jess Haley, 2026-11-25):
+            % "none of its forms and not its openMINDS graph is converted, all
+            % are carried unchanged as v1" (the forms by v1_to_v2's
+            % carrySeveralMetadataForms); withheld, all or none
+            report.components_withheld = report.components_withheld + 1;
+            report.components_withheld_several_forms_malformed = ...
+                report.components_withheld_several_forms_malformed + 1;
+            report.graph_documents_carried_malformed = ...
+                report.graph_documents_carried_malformed + numel(planned);
+            report.withheld_reasons{end+1} = sprintf(['component %d: dataset %s ' ...
+                'holds %d metadata_editor forms (%s), malformed -- carried as v1'], ...
+                c, dsKey, numel(entries), strjoin({entries.id}, ', '));
+            detail = sprintf(['malformed: dataset %s holds %d metadata_editor forms ' ...
+                '(%s), so its openMINDS dataset graph is not converted ([several ' ...
+                'metadata forms are malformed], Jess Haley, 2026-11-25)'], dsKey, ...
+                numel(entries), strjoin({entries.id}, ', '));
+            for a = reshape(planned, 1, [])
+                % carry-register: none (the decision names the case malformed;
+                % the carry register holds no row for it yet)
+                did2.convert.reportNote('carried_as_v1', 'openminds', idOf{a}, detail);
+            end
+            continue;
+        end
         report.components_compared_with_form = report.components_compared_with_form + 1;
         diffs = {};
-        if numel(entries) > 1
-            report.differing_several_forms = report.differing_several_forms + 1;
-            diffs{end+1} = sprintf(['%d metadata_editor forms state this dataset ' ...
-                '(%s), so no one form is the source'], numel(entries), ...
-                strjoin({entries.id}, ', '));
-        elseif entries.carried
+        if entries.carried
             report.differing_form_carried_as_v1 = report.differing_form_carried_as_v1 + 1;
             diffs{end+1} = sprintf(['the form %s is carried as v1, so it produced ' ...
                 'no v2 documents to match'], entries.id);

@@ -162,8 +162,9 @@ POST_PASSES = [
 
     # VH-Lab/DID-matlab #488 ([duplicate parts merged in DID], [part re-keyed
     # when its side arrives], [region part ids computed], Jess Haley,
-    # 2026-11-17 / 2026-11-19): the copies of one region part merged to the
-    # earliest source's, a side another document gives attached. READ
+    # 2026-11-17 / 2026-11-19; [side said about its region], 2026-11-25): the
+    # copies of one region part merged to the earliest source's; a side
+    # another document gives is left where it is, counted. READ
     # `region_part_documents_seen` and `side_observations_seen` BESIDE what
     # was done: 0 merged of 0 seen is a corpus with no body-site treatment.
     ("region_part_resolution", "did2.convert.resolveRegionParts", [
@@ -176,17 +177,11 @@ POST_PASSES = [
         ("duplicate_copies_differing", "  copies that STILL DIFFER (kept the first)"),
         ("side_observations_seen", "side observations (a side another document gives)"),
         ("side_observations_not_co_anchored", "  side site observations with no manipulation (a probe's; left)"),
-        ("sides_attached", "  sides ATTACHED"),
-        ("sides_not_attached_no_part", "  not attached: the subject has no no-side part"),
-        ("sides_not_attached_several_parts", "  not attached: several no-side parts"),
-        ("sides_not_attached_several_sides", "  not attached: several sides"),
-        ("parts_rekeyed", "parts RE-KEYED"),
-        ("parts_rekeyed_onto_existing_part", "  onto a sided part already in the batch"),
-        ("rekey_quarantined", "re-key QUARANTINED (not applied)"),
-        ("edges_renamed", "edges renamed onto a re-keyed part's ids"),
-        ("manipulations_retargeted", "side documents' manipulations moved onto the part"),
+        # [side said about its region] (Jess Haley, 2026-11-25): a side
+        # another document gives is never attached to a part; counted
+        ("sides_not_attached", "  sides NOT ATTACHED (each stays a site observation)"),
+        ("sides_not_attached_subject_has_one_unsided_part", "    of them: subject has exactly one unsided part (the old rule attached these)"),
         ("documents_removed", "documents removed"),
-        ("documents_added", "documents added"),
         ("migrated_before", "batch before"),
         ("migrated_after", "  after"),
     ]),
@@ -260,8 +255,12 @@ POST_PASSES = [
         # source_outputs, whose row count is their denominator.
         ("components_withheld_differing_from_form", "    of those: graph DIFFERS from its form, CARRIED AS v1 (carry-174)"),
         ("differing_form_carried_as_v1", "      of those: the form itself is carried as v1"),
-        ("differing_several_forms", "      of those: several forms state the dataset"),
         ("graph_documents_carried_differing", "      their openminds DOCUMENTS carried"),
+        # [several metadata forms are malformed] (Jess Haley, 2026-11-25): a
+        # dataset with more than one metadata_editor form: every form and its
+        # graph carried as v1, the dataset named in malformed_datasets.
+        ("components_withheld_several_forms_malformed", "    of those: the dataset has SEVERAL FORMS (malformed), CARRIED AS v1"),
+        ("graph_documents_carried_malformed", "      their openminds DOCUMENTS carried"),
         ("components_dropped_as_derived", "  DROPPED: graph matches its form (derived)"),
         ("graph_documents_dropped_as_derived", "    their openminds DOCUMENTS dropped (ids an accepted loss)"),
         ("source_outputs_read", "pass-1 source_outputs rows read  <- THE FORMS' DENOMINATOR"),
@@ -269,6 +268,8 @@ POST_PASSES = [
         ("forms_converted", "    converted"),
         ("forms_carried_as_v1", "    carried as v1"),
         ("forms_without_dataset_id", "    with no document in the batch (not keyed)"),
+        ("datasets_with_several_forms", "  datasets with SEVERAL forms (MALFORMED; must read 0 on the corpora)"),
+        ("forms_in_datasets_with_several_forms", "    their forms (all carried as v1)"),
         ("components_compared_with_form", "components compared with their dataset's form"),
         ("components_without_form", "components with no form (converted as before)"),
         ("form_graph_facts_compared", "  facts compared, form and graph together"),
@@ -760,17 +761,21 @@ POST_PASSES = [
         ("archive_kept_clock_not_carried", "  KEPT: a clock it states is on no emitted time reference"),
         # [stimulus log owned by its presentation] (Jess Haley 2026-11-19): a
         # stimulus system's archive (channel_list.bin + evmktx, no recording
-        # owner) -> bodies of the epoch's presentation, else a fallback
-        # observation of the rig's device; the archive then retires as above.
+        # owner) -> bodies of the epoch's presentation, else (2026-11-25,
+        # [stimulus log fallback is a manipulation]) of a manipulation of the
+        # epoch's subject, the stimulator its instrument; the archive then
+        # retires as above.
         ("stimulus_log_archives_seen", "stimulus-log archives (no recording owner)  <- STIMULUS LOG DENOMINATOR"),
         ("stimulus_log_to_presentation", "  owned by the epoch's stimulus presentation"),
-        ("stimulus_log_to_fallback", "  owned by a fallback observation (no presentation)"),
-        ("stimulus_log_fallback_entity_system", "    of them, entity the acquisition system (no rig device)"),
+        ("stimulus_log_to_fallback", "  owned by a fallback manipulation of the subject (no presentation)"),
+        ("stimulus_log_fallback_no_stimulator", "    of them, not exactly one stimulator (instrument omitted)"),
         ("stimulus_log_kept_several_presentations", "  KEPT: several presentations match"),
         ("stimulus_log_kept_no_epoch", "  KEPT: no epoch entity"),
         ("stimulus_log_kept_no_system", "  KEPT: not exactly one acquisition system for its reader"),
         ("stimulus_log_kept_clock", "  KEPT: a clock reference not built"),
-        ("stimulus_log_kept_no_anchor", "  KEPT: no epoch anchor for the fallback observation"),
+        ("stimulus_log_kept_no_anchor", "  KEPT: no epoch anchor for the fallback manipulation"),
+        ("stimulus_log_kept_no_subject", "  KEPT: no presentation and the epoch's subject not found"),
+        ("stimulus_log_kept_several_subjects", "  KEPT: no presentation and several subjects in the epoch's probe map"),
         ("stimulus_log_kept_not_built", "  KEPT: its bodies could not be built"),
         ("stimulus_log_quarantined", "  documents QUARANTINED"),
         ("stimulus_log_bodies", "  log bodies emitted"),
