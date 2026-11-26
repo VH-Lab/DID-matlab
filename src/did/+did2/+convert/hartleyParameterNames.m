@@ -17,7 +17,7 @@ function names = hartleyParameterNames()
 %   (`hartley_reverse_correlation.frameTimes`, a method parameter under
 %   `stimulus_sequence` until the stimulus model holds the sequence) are
 %   EMPTY:0000368 "onset time". +migrators_j/hartley_calc writes that node
-%   (its onsetTimeVariable); this row is how the round trip puts the entry back
+%   (its sequenceParameterName); this row is how the round trip puts the entry back
 %   under `stimulus_sequence`, as the two rows above put theirs back.
 
 names = { ...
