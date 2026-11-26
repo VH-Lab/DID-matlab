@@ -144,6 +144,10 @@ function [bodies, retireObserves, unresolvedLabel] = jRecordingObservation(preBo
 %   report -- labelling a current trace 'voltage' to keep the document count at
 %   one would be a silent unit error of the kind fitcurve's SSE/goodness-of-fit
 %   swap already cost us once.
+%   SINCE 2026-11-26 a bare `patch` / `sharp` is unresolved instead (code
+%   audit batch 1 (C13), Jess Haley, under [one correct reading]): which
+%   channel of a row is which quantity is not in the type, so neither is
+%   written (jRecordingModality, ONE READING).
 %
 %   ---------------------------------------------------------------------
 %   TIMING: A SESSION 'during' ANCHOR, NOT THE EPOCH -- AND WHY

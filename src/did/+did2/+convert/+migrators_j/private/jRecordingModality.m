@@ -53,9 +53,10 @@ function [entries, disposition] = jRecordingModality(elementType)
 %        'electrode-SPEC'.
 %
 %   DENOMINATOR: 24 registered types (A), of which
-%       17  -> 'recording'   (an observation is emitted)
-%        4  -> 'stimulator'  (intraoral-cannula, optogenetic-fiber, stimulator, event)
-%        3  -> 'unresolved'  (lick-spout, reward-well, ppg)
+%       15  -> 'recording'   (an observation is emitted)
+%        3  -> 'stimulator'  (intraoral-cannula, optogenetic-fiber, stimulator)
+%        6  -> 'unresolved'  (lick-spout, reward-well, ppg; and since 2026-11-26
+%                             patch, sharp, event: see ONE READING below)
 %   plus 4 documented-but-unregistered types from (B), all 'stimulator'
 %   (display, stim-n-trode, n-LED) or already covered ('sharp-I').
 %
@@ -84,6 +85,19 @@ function [entries, disposition] = jRecordingModality(elementType)
 %   migrator-vocabulary audit exists to stop, so they take Guard A and surface
 %   as a worklist instead.
 %
+%   ONE READING (code audit batch 1 (C13), Jess Haley, 2026-11-26, under [one
+%   correct reading], did-schema did_v2_go_forward_class_audit.md): three more
+%   types are 'unresolved', so a row of one is carried instead of guessed
+%   (resolveEpochProbemap keeps its epoch's v1 document):
+%     'patch', 'sharp'  PROBE-TYPES.md documents two channels (voltage and
+%                       current), and both were written; but a recording holds
+%                       one quantity per channel, and which channel of the row
+%                       is which is not in the type.
+%     'event'           was a stimulator; a lick or TTL "event" line records
+%                       an event, it does not act on the specimen.
+%   The exact types ('patch-Vm', 'patch-I', 'sharp-Vm', 'sharp-I', ...) keep
+%   their decided rows.
+%
 %   ---------------------------------------------------------------------
 %   PER-ROW EVIDENCE (all from NDI origin/main)
 %   ---------------------------------------------------------------------
@@ -104,12 +118,12 @@ function [entries, disposition] = jRecordingModality(elementType)
 %                       match here is a suffix-anchored prefix rule rather than
 %                       an exact key.
 %     'patch'           "two channels; first is Vm, second is I"
-%                                                          -> voltage AND current
+%                                    -> unresolved since 2026-11-26 (ONE READING)
 %     'patch-Vm'        "single channel, specifies voltage recording" -> voltage
 %     'patch-I'         "single channel, specifies current recording" -> current
 %     'patch-attached'  "single channel, specifies voltage recording" -> voltage
 %     'sharp'           "two channels; first is voltage, second is current"
-%                                                          -> voltage AND current
+%                                    -> unresolved since 2026-11-26 (ONE READING)
 %     'sharp-Vm'        "single channel, specifies voltage recording" -> voltage
 %     'sharp-I'         "single channel, specifies current recording" -> current
 %     'sharp-Im'        the SHIPPED spelling of the same thing: it is the key in
@@ -151,6 +165,7 @@ function [entries, disposition] = jRecordingModality(elementType)
 %   filter "Stimulator and image probes are siblings of mfdaq under
 %   ndi.probe.timeseries and are excluded by the isa() test":
 %     'stimulator', 'event', 'intraoral-cannula', 'optogenetic-fiber'
+%   ('event' unresolved since 2026-11-26, ONE READING above)
 %   plus PROBE-TYPES.md's _Stimulators_ block, which is registered nowhere:
 %     'display', 'stim-n-trode', 'n-LED'
 %
@@ -185,7 +200,8 @@ if isempty(key)
 end
 
 % ---- stimulators: the OTHER direction (T3). No observation, ever. -----------
-if any(strcmp(key, {'stimulator', 'event', 'intraoral-cannula', ...
+% ('event' left this list on 2026-11-26: ONE READING in the header)
+if any(strcmp(key, {'stimulator', 'intraoral-cannula', ...
         'optogenetic-fiber', 'display', 'stim-n-trode', 'n-led'}))
     disposition = 'stimulator';
     return;
@@ -211,12 +227,10 @@ switch key
 
     % --- pipettes: TWO channels of TWO DIFFERENT quantities ----------------
     % PROBE-TYPES.md: patch = "two channels; first is Vm, second is I";
-    % sharp = "two channels; first is voltage, second is current". Two
-    % quantities are two `variable`s, so they are two observations -- see the
-    % note in jRecordingObservation on why this is not the multi-channel case.
-    case {'patch', 'sharp'}
-        entries = [mk('voltage', 'voltage', false), ...
-                   mk('current', 'current', false)];
+    % sharp = "two channels; first is voltage, second is current". Both
+    % quantities were written for every such row until 2026-11-26; a bare
+    % `patch` / `sharp` is now Guard A (ONE READING in the header): it falls to
+    % `otherwise` below.
 
     % --- imaging ------------------------------------------------------------
     case {'wide-field-imaging', 'two-photon-imaging', ...
