@@ -646,9 +646,10 @@
 %         (`acquisition_system` until [acquisition configuration renamed], Jess Haley
 %         2026-11-19; written as the class the loaded schema holds) (configuration off
 %         `base`) + a `software` entity for its own implementation class + the rig's
-%         `device` entity. 1 -> 3 (1 -> 2 when there is no class name; no device when
-%         the rig has no name). base.id AND base.name PRESERVED on the
-%         acquisition_system.
+%         `device` entity. 1 -> 3 (1 -> 2 when there is no class name). base.id AND
+%         base.name PRESERVED on the acquisition_system. A rig with no name is
+%         malformed and is carried unchanged as v1 (see "A RIG WITH NO NAME" in the
+%         body).
 %     dataset_remote
 %         Brainstorm-J migrator: did_v1 dataset_remote -> the remote copy as a
 %         first-class relation. A dataset_remote records that a local dataset is

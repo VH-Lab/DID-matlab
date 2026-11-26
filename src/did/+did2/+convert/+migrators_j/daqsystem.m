@@ -4,8 +4,9 @@ function bodies = daqsystem(preBody)
 %   Haley 2026-11-19; written as the class the loaded schema holds)
 %   (configuration off `base`) + a `software` entity for its own
 %   implementation class + the rig's `device` entity. 1 -> 3 (1 -> 2 when
-%   there is no class name; no device when the rig has no name).
-%   base.id AND base.name PRESERVED on the acquisition_system.
+%   there is no class name). base.id AND base.name PRESERVED on the
+%   acquisition_system. A rig with no name is malformed and is carried
+%   unchanged as v1 (see "A RIG WITH NO NAME" in the body).
 %
 %   CURRENT SHAPE (did-schema #88; the signed 2026-08-08 text further down
 %   says `<- entity`; Jess Haley 2026-10-22 [audit mechanical
@@ -297,6 +298,37 @@ if jRawCarry('daqsystem', src, collision, unplaced, 'carry-100')
     return;
 end
 
+% A RIG WITH NO NAME. Decided by Jess Haley, 2026-11-26 [unnamed rig is
+% malformed] (did-schema docs/plans/did_v2_standing_wiring_plan.md): "a v1 rig
+% with no name is malformed source data: its documents are carried unchanged
+% as v1 and the migration report names it as malformed [...]; no device is
+% minted with a made-up name." `acquisition_configuration.device_id` is
+% required (did-schema #376) and the rig's device is named by the v1 rig name
+% only ([migration mints the device by name]), so a daqsystem whose base.name
+% is absent or empty has no device to point at. NDI's writer always writes
+% one (+ndi/+daq/system.m newdocument, 'base.name', ndi_daqsystem_obj.name).
+% The document is carried whole as v1 before anything is minted; a document
+% whose edge names it is carried too, by did2.convert.v1_to_v2's
+% carryDependents (carry-064). The note names the rig (its id) and the
+% reason, so the run's migration report lists it under `carried_as_v1`, and
+% v1_to_v2 counts it in `summary.unnamed_rigs`, whose denominator is every
+% daqsystem routed to this migrator.
+srcName = '';
+if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
+    srcName = jGetChar(preBody.base, 'name');
+end
+if isempty(srcName)
+    % carry-register: none (the decision names the case malformed; the
+    % carry register holds no row for it yet, and none is invented here)
+    did2.convert.reportNote('carried_as_v1', 'daqsystem', jCarryId(src), ...
+        sprintf(['malformed: rig %s has no name (base.name is absent or empty), ' ...
+        'so no device is minted for it and no acquisition_configuration can ' ...
+        'name one ([unnamed rig is malformed], Jess Haley, 2026-11-26)'], ...
+        jCarryId(src)));
+    bodies = {src};
+    return;
+end
+
 blk = struct();
 if isfield(preBody, 'daqsystem') && isstruct(preBody.daqsystem) ...
         && isscalar(preBody.daqsystem)
@@ -372,11 +404,7 @@ if ~isempty(readerId); edges.reader_id = readerId;            end
 if ~isempty(navId);    edges.epoch_file_pattern_id = navId;   end
 if ~isempty(mdIds);    edges.epoch_parameter_reader_id = mdIds; end
 f = struct();
-srcName = '';
-if isfield(preBody, 'base') && isstruct(preBody.base) && isscalar(preBody.base)
-    srcName = jGetChar(preBody.base, 'name');
-end
-if ~isempty(srcName); f.name = srcName; end
+f.name = srcName;   % never empty here: a rig with no name was carried above
 % THE RIG'S DEVICE. Decided by Jess Haley, 2026-11-19, did-schema
 % docs/plans/did_v2_standing_wiring_plan.md: [acquisition system is a device
 % entity] (the digitizer is an `entity` of type device; this document is the
@@ -398,16 +426,14 @@ if ~isempty(srcName); f.name = srcName; end
 % hold two devices of one name, as two sessions' probes of one name do. Its
 % id is derived from this v1
 % daqsystem (did2.convert.mintId role 'rig device', [migration reliability
-% practices] (b)). A rig with no name mints no device and the configuration
-% keeps no `device_id` edge (a name no NDI writer leaves empty:
-% +ndi/+daq/system.m newdocument writes base.name).
-device = {};
-if ~isempty(srcName)
-    device = {jEntity(preBody, 'device', ...
-        struct('name', srcName), ...
-        'Id', did2.convert.mintId('rig device'))};
-    edges.device_id = device{1}.base.id;
-end
+% practices] (b)). A rig with no name never reaches here: it is malformed and
+% was carried as v1 above ([unnamed rig is malformed], Jess Haley,
+% 2026-11-26), so every configuration this migrator writes has its
+% `device_id`.
+device = {jEntity(preBody, 'device', ...
+    struct('name', srcName), ...
+    'Id', did2.convert.mintId('rig device'))};
+edges.device_id = device{1}.base.id;
 o = jOpts(preBody, 'Edges', edges, 'Id', char(preBody.base.id));
 % THE CLASS. Decided by Jess Haley, 2026-11-19 [acquisition configuration
 % renamed] (did-schema docs/plans/did_v2_standing_wiring_plan.md):

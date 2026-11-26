@@ -2572,6 +2572,32 @@ def render_dimension_terms(r, out):
           % (cls, row.get("without_node", "?"), row.get("dimensions_written", "?")))
 
 
+def render_unnamed_rigs(r, out):
+    """[unnamed rig is malformed] (Jess Haley, 2026-11-26, did-schema
+    docs/plans/did_v2_standing_wiring_plan.md): a v1 daqsystem with no name
+    is malformed, carried unchanged as v1, and named. The denominator (the v1
+    daqsystems pass 1 routed to their migrator) first; an absent block is NOT
+    MEASURED, never a zero."""
+    p = out.append if isinstance(out, list) else out
+    u = r.get("unnamed_rigs")
+    if not isinstance(u, dict):
+        p("    rigs with no name (malformed): NOT MEASURED -- this report "
+          "carries no unnamed_rigs block")
+        return
+    p("    rigs (v1 daqsystem): %s inspected -> %s converted, %s carried as "
+      "v1, %s quarantined; %s MALFORMED (no name), carried as v1"
+      % (u.get("daqsystems_inspected", "?"), u.get("converted", "?"),
+         u.get("carried_as_v1", "?"), u.get("quarantined", "?"),
+         u.get("unnamed_carried_malformed", "?")))
+    if u.get("daqsystems_inspected") == 0:
+        p("      (no daqsystem inspected: the count is vacuous, not clean)")
+    rows = u.get("malformed") or []
+    if isinstance(rows, str):
+        rows = [rows]
+    for row in rows:
+        p("      MALFORMED: %s" % row)
+
+
 def render_stimulus_control_edges(r, out):
     """The v1 `stimulus_control_id` edges dropped by [control as covariate]
     (Jess Haley, 2026-10-22 [covariate rules named], answer "A" to 6.4), of
@@ -6114,6 +6140,7 @@ def render_report(r, out):
     render_entity_requires(r, out)
     render_dose_ingredients(r, out)
     render_dimension_terms(r, out)
+    render_unnamed_rigs(r, out)
     render_stimulus_control_edges(r, out)
     render_carry_register_rows(r, out)
     render_tuning_response_variable(r, out)
