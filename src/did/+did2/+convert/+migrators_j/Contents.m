@@ -300,25 +300,14 @@
 %                          the document is carried (private/jMembershipBodies;
 %                          [session opener inputs], [linked session reference
 %                          follows the ingested rule], Jess Haley, 2026-10-27).
-%     subjectmeasurement - 1 -> 2 (fold) / 1 -> 1 (guarded passthrough).
-%                          TEAM-SIGN-OFF [subject measurement], jess 2026-08-06.
-%                          Routes through the EXISTING `measurement` fold (shared
-%                          private/jMeasurementFold + jQuantityLeaf) with NO new
-%                          class: the v1 subject_id edge becomes the
-%                          `observation`'s entity_id, `measurement` becomes its
-%                          `variable`, `value` becomes the typed value, and
-%                          `datestamp` becomes the TIME ANCHOR -- an
-%                          `absolute_time_reference` document
-%                          (private/jAbsoluteReference), NOT a field; with no
-%                          readable datestamp, the session anchor. `measurement`
-%                          has no datestamp field at all, so a plain field mapping
-%                          would have dropped the measurement time. Signed WITH a
-%                          known gap: `value` carries no unit, so the value kind should
-%                          come from the D9 registry -- which ships no dimensional
-%                          rows yet, so jQuantityLeaf is the pass-1 stand-in and
-%                          anything it cannot type PASSES THROUGH.
-%                          THE FIRST EMITTER OF `absolute_reference` (now
-%                          `absolute_time_reference`).
+%     subjectmeasurement - 1 -> 1: carried whole as v1 (carry-144 for a
+%                          malformed source, else carry-145). Until 2026-11-26
+%                          it folded (TEAM-SIGN-OFF [subject measurement], jess
+%                          2026-08-06) through private/jMeasurementFold, which
+%                          typed the number from keywords of its name
+%                          (jQuantityLeaf, deleted: code audit batch 1 (C3),
+%                          Jess Haley, 2026-11-26, under [one correct
+%                          reading]); the dataset map names the quantity kind.
 %     pyraview           - (extended) the inherited `filter` superclass block now
 %                          splits off ONE `method` document
 %                          (private/jFrequencyFilter), referenced by every level
@@ -790,10 +779,9 @@
 %         `source_file_id` join a batch pass follows to make the source's
 %         fileReference (OME-Zarr store or TIFF folder) the observation's unheld body.
 %     measurement
-%         Brainstorm-J migrator: did_v1 measurement -> a typed `observation` (value
-%         kind: the measured quantity, or `term`) (+ the shared session anchor), for
-%         the rows that can be typed honestly; everything else is carried through for
-%         the second pass.
+%         Brainstorm-J migrator: did_v1 measurement -> an `observation` with value
+%         kind `term` (+ the shared session anchor) when its value is a term;
+%         everything else (a number, a date, text) is carried whole as v1.
 %     metadata_editor
 %         Brainstorm-J migrator: did_v1 metadata_editor -> a structured `dataset`
 %         entity + the person / organization / funding / publication / web_resource
@@ -1001,10 +989,9 @@
 %         Brainstorm-J migrator: did_v1 subject_group -> an `entity` of type `Group`,
 %         id preserved (+ one member_of directed_relation per member).
 %     subjectmeasurement
-%         Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed `observation`
-%         (value kind: the measured quantity, or `term`) + an
-%         `absolute_time_reference` carrying the measurement instant. Routed from
-%         did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
+%         Brainstorm-J migrator: did_v1 subjectmeasurement -> the v1 document, carried
+%         whole as v1 with a note naming why. Routed from did2.convert.v1_to_v2 only
+%         when TargetVersion == 'V_eta'.
 %     syncgraph
 %         Brainstorm-J migrator: did_v1 `syncgraph` -> `clock_alignment_policy`.
 %     syncrule
