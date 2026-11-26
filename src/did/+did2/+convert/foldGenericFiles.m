@@ -339,7 +339,10 @@ function [result, report] = foldGenericFiles(result, options)
 %                       writes for a file it does not take in, and the one
 %                       NDI's Haley v2 import writes for a recording
 %                       (sessionDocuments.m). DID-matlab has no other "not
-%                       held" marker (#73 item 34 asks for one; not built).
+%                       held" marker (item 34 of the spatial-transcriptomics
+%                       review, did-schema's
+%                       did_v2_spatial_transcriptomics_plan.md, asks for one;
+%                       not built).
 %       size_bytes      <- file_size, ONLY WHEN > 0: the fileReference schema
 %                       says 0 means "not recorded", and makeSourceFile writes
 %                       0 for every DIRECTORY -- which an OME-Zarr store is.
