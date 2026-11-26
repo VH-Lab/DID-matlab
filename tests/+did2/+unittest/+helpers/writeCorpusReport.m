@@ -174,6 +174,13 @@ if isfield(result, 'summary') && isfield(result.summary, 'v1_name')
             result.summary.migration_notes.v1_name_not_kept.distinct_details;
     end
 end
+% UNNAMED RIGS ([unnamed rig is malformed], Jess Haley, 2026-11-26): of the v1
+% daqsystems pass 1 routed to their migrator (the denominator), how many were
+% carried as v1 because the rig has no name, each named. Absent is "not
+% measured", not zero.
+if isfield(result, 'summary') && isfield(result.summary, 'unnamed_rigs')
+    report.unnamed_rigs = result.summary.unnamed_rigs;
+end
 % HANDED ON AS v1 ([handed-on are v1 as written], Jess Haley, 2026-11-03):
 % pass 1's count, by class, of the documents it handed on to a batch pass
 % exactly as v1 wrote them (did2.convert.v1_to_v2 HAND_ON_CLASSES). Absent is

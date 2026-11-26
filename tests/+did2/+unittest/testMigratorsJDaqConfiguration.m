@@ -556,6 +556,140 @@ verifyEqual(testCase, sort(cellfun(@(d) char(did2.schema.cache.sessionIdOf(d.toS
     devs, 'UniformOutput', false)), {'session_id_1', 'session_id_2'});
 end
 
+function testAnUnnamedRigIsCarriedAsV1AndReportedMalformed(testCase)
+% Decided by Jess Haley, 2026-11-26 [unnamed rig is malformed] (did-schema
+% docs/plans/did_v2_standing_wiring_plan.md): "a v1 rig with no name is
+% malformed source data: its documents are carried unchanged as v1 and the
+% migration report names it as malformed [...]; no device is minted with a
+% made-up name." Both shapes of "no name": base.name empty, and base.name
+% absent. Each is carried byte for byte, no configuration, software or device
+% is written, the note and the run's migration report name the rig and the
+% reason, and summary.unnamed_rigs counts it against its denominator.
+named = daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'});
+empty = named;
+empty.base.name = '';
+absent = named;
+absent.base = rmfield(absent.base, 'name');
+cases = {empty, absent};
+labels = {'empty base.name', 'absent base.name'};
+for c = 1:numel(cases)
+    out = runJ(cases{c});
+    label = labels{c};
+    verifyEqual(testCase, out.summary.quarantine_count, 0, label);
+    verifyEqual(testCase, numel(out.migrated), 1, [label ': only the v1 source']);
+    doc = out.migrated{1};
+    verifyEqual(testCase, char(doc.get('document_class.class_name')), 'daqsystem', label);
+    verifyEqual(testCase, char(doc.get('document_class.schema_version')), 'did_v1', ...
+        [label ': carried, not converted']);
+    verifyEqual(testCase, char(doc.get('base.id')), 'system_id_1', label);
+    % unchanged: the carried body is the v1 source (its depends_on included)
+    got = doc.toStruct();
+    want = cases{c};
+    verifyEqual(testCase, jsonencode(got.depends_on), jsonencode(want.depends_on), ...
+        [label ': edges unchanged']);
+    verifyEqual(testCase, jsonencode(got.daqsystem), jsonencode(want.daqsystem), ...
+        [label ': block unchanged']);
+    verifyEqual(testCase, jsonencode(got.base), jsonencode(want.base), ...
+        [label ': base unchanged']);
+    names = classNames(out);
+    verifyFalse(testCase, any(strcmp(names, 'device')), [label ': no device minted']);
+    verifyFalse(testCase, any(strcmp(names, 'software')), [label ': nothing minted']);
+    verifyFalse(testCase, any(strcmp(names, did2.convert.acquisitionConfigurationClass())), label);
+    % the note: malformed, naming the rig and the reason
+    notes = out.summary.migration_notes;
+    verifyTrue(testCase, isfield(notes, 'carried_as_v1'), [label ': the carry is noted']);
+    if isfield(notes, 'carried_as_v1')
+        d = notes.carried_as_v1.distinct_details{1};
+        verifyTrue(testCase, startsWith(d, 'malformed: rig system_id_1 has no name'), d);
+        verifyTrue(testCase, contains(d, '[unnamed rig is malformed]'), d);
+    end
+    % the run's migration report lists it under carried_as_v1 with that reason
+    rep = out.migration_report;
+    verifyTrue(testCase, isfield(rep, 'carried_as_v1') && ~isempty(rep.carried_as_v1), ...
+        [label ': the migration report lists the carry']);
+    if isfield(rep, 'carried_as_v1') && ~isempty(rep.carried_as_v1)
+        ca = rep.carried_as_v1;
+        hit = strcmp({ca.document_id}, 'system_id_1');
+        verifyEqual(testCase, nnz(hit), 1, [label ': one entry for the rig']);
+        if nnz(hit) == 1
+            verifyTrue(testCase, contains(ca(hit).reason, 'malformed: rig system_id_1 has no name'), ...
+                ca(hit).reason);
+        end
+    end
+    % the counter, with its denominator
+    R = out.summary.unnamed_rigs;
+    verifyEqual(testCase, R.daqsystems_inspected, 1, label);
+    verifyEqual(testCase, R.converted, 0, label);
+    verifyEqual(testCase, R.carried_as_v1, 1, label);
+    verifyEqual(testCase, R.quarantined, 0, label);
+    verifyEqual(testCase, R.unnamed_carried_malformed, 1, label);
+    verifyNumElements(testCase, R.malformed, 1, label);
+    if numel(R.malformed) == 1
+        verifyTrue(testCase, startsWith(R.malformed{1}, 'rig system_id_1: no name'), R.malformed{1});
+    end
+end
+end
+
+function testANamedRigStillConvertsBesideAnUnnamedOne(testCase)
+% The control for [unnamed rig is malformed]: in one batch, the named rig
+% converts as before (configuration, software, device, with `device_id`), the
+% unnamed one is carried, and the counter partitions its denominator.
+named = daqsystemV1('ndi.daq.system.mfdaq', {'md_id_1'});
+unnamed = named;
+unnamed.base.id = 'system_id_2';
+unnamed.base.name = '';
+out = runJ({named, unnamed});
+verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
+sys = firstOfClass(out, did2.convert.acquisitionConfigurationClass());
+dev = firstOfClass(out, 'device');
+verifyNotEmpty(testCase, sys, 'the named rig converts');
+verifyNotEmpty(testCase, dev, 'the named rig mints its device');
+if ~isempty(sys) && ~isempty(dev)
+    verifyEqual(testCase, char(sys.get('base.id')), 'system_id_1');
+    verifyEqual(testCase, depValue(sys, 'device_id'), dev.get('base.id'));
+    verifyEqual(testCase, dev.get('entity.name'), 'intan1');
+end
+verifyEqual(testCase, nnz(strcmp(classNames(out), 'device')), 1, 'one device: the named rig''s');
+carriedIds = {};
+for k = 1:numel(out.migrated)
+    if strcmp(char(out.migrated{k}.get('document_class.schema_version')), 'did_v1')
+        carriedIds{end+1} = char(out.migrated{k}.get('base.id')); %#ok<AGROW>
+    end
+end
+verifyEqual(testCase, carriedIds, {'system_id_2'}, 'only the unnamed rig is carried');
+R = out.summary.unnamed_rigs;
+verifyEqual(testCase, R.daqsystems_inspected, 2);
+verifyEqual(testCase, R.converted, 1);
+verifyEqual(testCase, R.carried_as_v1, 1);
+verifyEqual(testCase, R.quarantined, 0);
+verifyEqual(testCase, R.unnamed_carried_malformed, 1);
+verifyEqual(testCase, R.converted + R.carried_as_v1 + R.quarantined, R.daqsystems_inspected);
+
+% a batch of named rigs only: 0 malformed, out of a non-zero denominator
+out = runJ(named);
+R = out.summary.unnamed_rigs;
+verifyEqual(testCase, R.daqsystems_inspected, 1);
+verifyEqual(testCase, R.converted, 1);
+verifyEqual(testCase, R.unnamed_carried_malformed, 0);
+verifyEmpty(testCase, R.malformed);
+end
+
+function testAnUnnamedRigIsCarriedUnderValidation(testCase)
+% With validation on (#37 RequiredDependencies armed, `device_id` required by
+% did-schema #376), an unnamed rig quarantines nothing: it is carried as v1,
+% and the reader and file navigator it points at still convert, keeping their
+% ids, so the carried rig's edges still resolve.
+assumeVEtaSchemas(testCase);
+rig = daqsystemV1('ndi.daq.system.mfdaq', {});
+rig.base.name = '';
+out = runJValidated({daqreaderV1('ndi.daq.reader.mfdaq.intan'), rig});
+verifyEqual(testCase, out.summary.quarantine_count, 0, reasonsOf(out));
+verifyEqual(testCase, out.summary.unnamed_rigs.unnamed_carried_malformed, 1);
+ids = cellfun(@(d) char(d.get('base.id')), out.migrated, 'UniformOutput', false);
+verifyTrue(testCase, any(strcmp(ids, 'reader_id_1')), 'the reader converts, keeping its id');
+verifyTrue(testCase, any(strcmp(ids, 'system_id_1')), 'the rig is carried, keeping its id');
+end
+
 function testDaqsystemSoftwareIdIsDistinctFromReaderId(testCase)
 % THE WHOLE POINT OF THE SECOND EDGE. Both point at `software`, and they must
 % name DIFFERENT documents: `software_id` is the rig's OWN implementation class,
