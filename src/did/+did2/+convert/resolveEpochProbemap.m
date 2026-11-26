@@ -408,14 +408,14 @@ report = struct( ...
     'stimulus_log_archives_seen',     0, ...
     'stimulus_log_to_presentation',   0, ...
     'stimulus_log_to_fallback',       0, ...
-    'stimulus_log_fallback_no_stimulator', 0, ...
     'stimulus_log_kept_no_epoch',     0, ...
     'stimulus_log_kept_no_system',    0, ...
     'stimulus_log_kept_clock',        0, ...
     'stimulus_log_kept_several_presentations', 0, ...
     'stimulus_log_kept_no_anchor',    0, ...
+    'stimulus_log_kept_no_stimulator', 0, ...
     'stimulus_log_kept_no_subject',   0, ...
-    'stimulus_log_kept_several_subjects', 0, ...
+    'stimulus_log_kept_stimulator_several_subjects', 0, ...
     'stimulus_log_kept_not_built',    0, ...
     'stimulus_log_quarantined',       0, ...
     'stimulus_log_bodies',            0, ...
@@ -1552,7 +1552,7 @@ appended = [appended, fileBodies];
 % epoch's stimulus presentation, or, with none, of a manipulation of the
 % epoch's subject ([stimulus log fallback is a manipulation], 2026-11-25); the
 % archive then retires below like any other (stimulusLogOwners)
-[logDocs, logQuarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, kindOf, ...
+[logDocs, logQuarantine, archiveCarried, report, logCarryNotes] = stimulusLogOwners(bodies, classOf, kindOf, ...
     sessionIds, docIds, archiveIdxAll, archiveCarried, clockIdsByArchiveIdx, ...
     clockHasSurvivor, producedById, anchorByEpochId, anchorHasSurvivor, epochIdByKey, ...
     subjectIdByKey, readerIdByNavId, options, report);
@@ -2116,8 +2116,35 @@ for k = 1:n
     kept{end+1} = docs{k}; %#ok<AGROW>
 end
 result.migrated = [kept, appended];
+result = noteStimulusLogCarries(result, logCarryNotes);
 result.summary = recountSummary(result);
 result.epoch_probemap_fold = report;
+end
+
+function result = noteStimulusLogCarries(result, notes)
+%NOTESTIMULUSLOGCARRIES The `carried_as_v1` notes of the stimulus-log
+%   archives kept as malformed v1 ([stimulus log fallback names the
+%   stimulator's subject], Jess Haley, 2026-11-26), merged into
+%   RESULT.summary.migration_notes. They are recorded here, after this pass's
+%   last v1_to_v2 call, because each v1_to_v2 call resets the note buffer
+%   (resolveDeferredBaths's carryBaths does the same).
+if isempty(notes); return; end
+did2.convert.reportNote('reset');
+for k = 1:numel(notes)
+    % carry-register: carry-170 (its `[carry-170]` detail is written in
+    %   stimulusLogOwners, above)
+    did2.convert.reportNote('carried_as_v1', notes(k).class, notes(k).id, notes(k).detail);
+end
+fresh = did2.convert.reportNote('collect');
+did2.convert.reportNote('reset');
+if ~isfield(result, 'summary') || ~isstruct(result.summary)
+    result.summary = struct();
+end
+old = struct();
+if isfield(result.summary, 'migration_notes')
+    old = result.summary.migration_notes;
+end
+result.summary.migration_notes = did2.convert.reportNote('merge', old, fresh);
 end
 
 % ===================== builders ========================================
@@ -2892,7 +2919,7 @@ for i = 1:numel(out)
 end
 end
 
-function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, classOf, kindOf, ...
+function [out, quarantine, archiveCarried, report, carryNotes] = stimulusLogOwners(bodies, classOf, kindOf, ...
         sessionIds, docIds, archiveIdxAll, archiveCarried, clockIdsByArchiveIdx, ...
         clockHasSurvivor, producedById, anchorByEpochId, anchorHasSurvivor, epochIdByKey, ...
         subjectIdByKey, readerIdByNavId, options, report)
@@ -2952,14 +2979,30 @@ function [out, quarantine, archiveCarried, report] = stimulusLogOwners(bodies, c
 %   epoch's anchor and the archive's clock references (as the observation it
 %   replaces was; NDI-matlab reads the log by its key whatever owns it,
 %   ndi.vintage.ingestedStimulusLogBodies). Both are read from the probe map
-%   of that epoch on the archive's system (the epochfiles_ingested above):
-%   THE SUBJECT is the one subject its rows name (subjectstring); none found
-%   is `stimulus_log_kept_no_subject`, several `stimulus_log_kept_several_
-%   subjects` (the decision does not say which), each archive kept as v1.
-%   THE STIMULATOR is the probe of its stimulator rows (localModality
-%   'stimulator'); where there is not exactly one, `instrument_id` (optional)
-%   is omitted, counted `stimulus_log_fallback_no_stimulator`, as an
-%   unresolved instrument is everywhere in this pass.
+%   of that epoch on the archive's system (the epochfiles_ingested above),
+%   amended by Jess Haley, 2026-11-26 [stimulus log fallback names the
+%   stimulator's subject] (did-schema
+%   docs/plans/did_v2_go_forward_class_audit.md): "Its subject is the
+%   stimulator's own v1 subject (its rows of the epoch's probe map), not
+%   every subject the rig's rows name ... If the stimulator's own rows name
+%   more than one subject, the case is malformed, carried as v1 citing
+%   carry-170 ([element whose probe maps name another subject is
+%   malformed]). With no single stimulator, v1 does not say who received the
+%   stimuli, so the archive is carried as v1 and counted, instead of a
+%   manipulation with no `instrument_id`." In this order:
+%   THE STIMULATOR is the probe of the map's stimulator rows (localModality
+%   'stimulator', the probe an element of the batch); not exactly one (none,
+%   or two or more) is `stimulus_log_kept_no_stimulator`, the archive kept as
+%   v1.
+%   THE SUBJECT is the one subject that stimulator's own rows name
+%   (subjectstring; rows of other probes on the rig are not read for it).
+%   Two or more distinct subject strings on its rows is malformed v1:
+%   `stimulus_log_kept_stimulator_several_subjects`, the archive kept as v1
+%   with a `carried_as_v1` note citing carry-170 (recorded after the pass's
+%   last v1_to_v2 call and merged into result.summary.migration_notes, as
+%   resolveDeferredBaths does, because each v1_to_v2 call resets the note
+%   buffer). One string that names no subject of the batch, or none, is
+%   `stimulus_log_kept_no_subject`, the archive kept as v1 (as before).
 %
 %   THE BODIES. One opaque_body per attached series (archiveBodies, the bytes
 %   as attached), notes opening with the key NDI's readers find them by,
@@ -2982,8 +3025,9 @@ quarantine = [];
 presBy = containers.Map('KeyType', 'char', 'ValueType', 'any');    % sid|epoch -> {id, element}
 sysBy = containers.Map('KeyType', 'char', 'ValueType', 'any');     % sid|reader -> {system ids}
 probesBy = containers.Map('KeyType', 'char', 'ValueType', 'any');  % sid|reader|epoch -> {probe ids}
-subjectsBy = containers.Map('KeyType', 'char', 'ValueType', 'any'); % sid|reader|epoch -> {subject ids}
 stimsBy = containers.Map('KeyType', 'char', 'ValueType', 'any');    % sid|reader|epoch -> {stimulator ids}
+stimSubjBy = containers.Map('KeyType', 'char', 'ValueType', 'any'); % sid|reader|epoch|stimulator -> {subject strings of its rows}
+carryNotes = struct('class', {}, 'id', {}, 'detail', {});
 for k = 1:numel(bodies)
     b = bodies{k};
     if isempty(b) || isempty(docIds{k}); continue; end
@@ -3016,8 +3060,6 @@ for k = 1:numel(bodies)
             rows = parseProbemapRows(probemapCharOf(b));
             held = {};
             if isKey(probesBy, key); held = probesBy(key); end
-            subj = {};
-            if isKey(subjectsBy, key); subj = subjectsBy(key); end
             stims = {};
             if isKey(stimsBy, key); stims = stimsBy(key); end
             for r = 1:numel(rows)
@@ -3026,18 +3068,20 @@ for k = 1:numel(bodies)
                     held{end+1} = subjectIdByKey(pk); %#ok<AGROW>
                     [~, disposition] = localModality(rows(r).type);
                     if strcmp(disposition, 'stimulator')
-                        stims{end+1} = subjectIdByKey(pk); %#ok<AGROW>
-                    end
-                end
-                if ~isempty(rows(r).subjectstring)
-                    sk = epochKey(sid, rows(r).subjectstring);
-                    if isKey(subjectIdByKey, sk)
-                        subj{end+1} = subjectIdByKey(sk); %#ok<AGROW>
+                        % [stimulus log fallback names the stimulator's
+                        % subject]: the subjects of the stimulator's OWN rows
+                        stimId = subjectIdByKey(pk);
+                        stims{end+1} = stimId; %#ok<AGROW>
+                        ssKey = [key '|' stimId];
+                        ss = {};
+                        if isKey(stimSubjBy, ssKey); ss = stimSubjBy(ssKey); end
+                        subjStr = strtrim(char(rows(r).subjectstring));
+                        if ~isempty(subjStr); ss{end+1} = subjStr; end %#ok<AGROW>
+                        stimSubjBy(ssKey) = unique(ss);
                     end
                 end
             end
             probesBy(key) = unique(held);
-            subjectsBy(key) = unique(subj);
             stimsBy(key) = unique(stims);
     end
 end
@@ -3139,29 +3183,48 @@ for i = 1:numel(archiveIdxAll)
             end
             anchorId = anchorByEpochId(epochDocId);
             % [stimulus log fallback is a manipulation] (Jess Haley,
-            % 2026-11-25): a manipulation of the epoch's subject, the
-            % stimulator its instrument, variable NCIT:C41210 "Stimulus"
+            % 2026-11-25): a manipulation of the stimulator's subject, the
+            % stimulator its instrument, variable NCIT:C41210 "Stimulus";
+            % its subject the stimulator's own ([stimulus log fallback names
+            % the stimulator's subject], Jess Haley, 2026-11-26)
             pmKey = [sid '|' rdr '|' es];
-            subjects = {};
-            if isKey(subjectsBy, pmKey); subjects = subjectsBy(pmKey); end
-            if isempty(subjects)
-                report.stimulus_log_kept_no_subject = report.stimulus_log_kept_no_subject + 1;
-                continue;
-            elseif numel(subjects) > 1
-                report.stimulus_log_kept_several_subjects = ...
-                    report.stimulus_log_kept_several_subjects + 1;
-                continue;
-            end
             stims = {};
             if isKey(stimsBy, pmKey); stims = stimsBy(pmKey); end
-            stimId = '';
-            if isscalar(stims)
-                stimId = stims{1};
-                kind = 'fallback';
-            else
-                kind = 'fallback_no_stimulator';
+            if ~isscalar(stims)
+                % v1 does not say who received the stimuli: kept as v1
+                report.stimulus_log_kept_no_stimulator = ...
+                    report.stimulus_log_kept_no_stimulator + 1;
+                continue;
             end
-            man = did2.build.statement('manipulation', char(subjects{1}), ...
+            stimId = stims{1};
+            named = {};
+            if isKey(stimSubjBy, [pmKey '|' stimId]); named = stimSubjBy([pmKey '|' stimId]); end
+            if numel(named) > 1
+                % malformed v1: the stimulator's own rows name several
+                % subjects ([element whose probe maps name another subject
+                % is malformed], carry-170); noted after the last v1_to_v2
+                report.stimulus_log_kept_stimulator_several_subjects = ...
+                    report.stimulus_log_kept_stimulator_several_subjects + 1;
+                carryNotes(end+1) = struct('class', classOf{k}, ...
+                    'id', char(baseField(b, 'id')), 'detail', sprintf(['[carry-170] ' ...
+                    'malformed: the stimulus log of epoch %s has no presentation, and ' ...
+                    'its stimulator %s''s own probe-map rows name %d subjects (%s), so ' ...
+                    'which animal received the stimuli is not known ([stimulus log ' ...
+                    'fallback names the stimulator''s subject], Jess Haley, ' ...
+                    '2026-11-26; [element whose probe maps name another subject is ' ...
+                    'malformed])'], es, stimId, numel(named), strjoin(named, ', '))); %#ok<AGROW>
+                continue;
+            end
+            subjectId = '';
+            if isscalar(named) && isKey(subjectIdByKey, epochKey(sid, named{1}))
+                subjectId = subjectIdByKey(epochKey(sid, named{1}));
+            end
+            if isempty(subjectId)
+                report.stimulus_log_kept_no_subject = report.stimulus_log_kept_no_subject + 1;
+                continue;
+            end
+            kind = 'fallback';
+            man = did2.build.statement('manipulation', char(subjectId), ...
                 did2.convert.registeredTerm('NCIT:C41210', 'Stimulus'), [], ...
                 'ValueKind', 'time', 'DataBody', true, ...
                 'TimeReferenceIds', [{anchorId}, reshape(cids, 1, [])], ...
@@ -3229,10 +3292,6 @@ for p = 1:numel(plans)
         otherwise
             nBodies = nBodies - 1;   % the first is the manipulation
             report.stimulus_log_to_fallback = report.stimulus_log_to_fallback + 1;
-            if strcmp(pl.kind, 'fallback_no_stimulator')
-                report.stimulus_log_fallback_no_stimulator = ...
-                    report.stimulus_log_fallback_no_stimulator + 1;
-            end
             if ~(isKey(anchorHasSurvivor, pl.anchor) && anchorHasSurvivor(pl.anchor))
                 anchorHasSurvivor(pl.anchor) = true;
                 out{end+1} = producedById(pl.anchor); %#ok<AGROW>
