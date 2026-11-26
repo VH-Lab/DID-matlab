@@ -31,18 +31,35 @@ function subjects = probemapSubjects(action, arg)
 %       ELEMENTID ({} when none). A row names its probe as
 %       resolveEpochProbemap joins it: session, name and reference (the
 %       reference compared as text, an integer as int2str writes it).
+%   OTHERS = did2.convert.probemapSubjects('others', ELEMENTID): those of
+%       SUBJECTS that are not the element's own subject, the
+%       `subject.local_identifier` of the v1 `subject` its `depends_on
+%       subject_id` names (the column holds a local identifier, as
+%       resolveEpochProbemap joins it). {} when the element names no subject
+%       or its subject is not in the batch (nothing to compare with).
+%       Decided by Jess Haley, 2026-11-26 (on VH-Lab/NDI-matlab#1309: "This
+%       is malformed v1", then "Yes"): such an element is malformed v1 and is
+%       carried whole, citing carry-170 (migrators_j.element). In the corpora
+%       (2026-11-26): Dab 6 elements, the 4 two-subject probes carry-170
+%       already carried and 2 stimulators; B, 20211116, JH, Soph and PRED 0.
 %
 %   See also did2.convert.migrators_j.element, did2.convert.nTrodeElectrodeCounts,
 %            did2.convert.resolveEpochProbemap.
 
 arguments
-    action (1,:) char {mustBeMember(action, {'reset', 'load', 'get'})}
+    action (1,:) char {mustBeMember(action, {'reset', 'load', 'get', 'others'})}
     arg = []
 end
 
-persistent elements rowSubjects
+persistent elements rowSubjects elementSubject subjectNames
 if isempty(elements) || ~isa(elements, 'containers.Map')
     elements = containers.Map('KeyType', 'char', 'ValueType', 'char');
+end
+if isempty(elementSubject) || ~isa(elementSubject, 'containers.Map')
+    elementSubject = containers.Map('KeyType', 'char', 'ValueType', 'char');
+end
+if isempty(subjectNames) || ~isa(subjectNames, 'containers.Map')
+    subjectNames = containers.Map('KeyType', 'char', 'ValueType', 'char');
 end
 if isempty(rowSubjects) || ~isa(rowSubjects, 'containers.Map')
     rowSubjects = containers.Map('KeyType', 'char', 'ValueType', 'any');
@@ -52,13 +69,16 @@ switch action
     case 'reset'
         elements = containers.Map('KeyType', 'char', 'ValueType', 'char');
         rowSubjects = containers.Map('KeyType', 'char', 'ValueType', 'any');
+        elementSubject = containers.Map('KeyType', 'char', 'ValueType', 'char');
+        subjectNames = containers.Map('KeyType', 'char', 'ValueType', 'char');
     case 'load'
         bodies = arg;
         if isstruct(bodies); bodies = num2cell(bodies); end
         for k = 1:numel(bodies)
             b = bodies{k};
             if ischar(b) || (isstring(b) && isscalar(b))
-                if ~contains(b, '"element"') && ~contains(b, 'epochprobemap')
+                if ~contains(b, '"element"') && ~contains(b, 'epochprobemap') ...
+                        && ~contains(b, '"subject"')
                     continue;
                 end
                 try
@@ -74,6 +94,14 @@ switch action
                     if isempty(id); continue; end
                     elements(id) = rowKey(baseText(b, 'session_id'), ...
                         textOf(fieldOf(el, 'name')), refText(fieldOf(el, 'reference')));
+                    sj = subjectIdOf(b);
+                    if ~isempty(sj)
+                        elementSubject(id) = sj;
+                    end
+                case 'subject'
+                    id = baseText(b, 'id');
+                    if isempty(id); continue; end
+                    subjectNames(id) = strtrim(textOf(fieldOf(blockOf(b, 'subject'), 'local_identifier')));
                 case 'epochfiles_ingested'
                     pm = textOf(fieldOf(blockOf(b, 'epochfiles_ingested'), 'epochprobemap'));
                     if isempty(pm); continue; end
@@ -100,6 +128,37 @@ switch action
         if isKey(rowSubjects, key)
             subjects = rowSubjects(key);
         end
+    case 'others'
+        id = char(arg);
+        if isempty(id) || ~isKey(elements, id) || ~isKey(elementSubject, id)
+            return;
+        end
+        sj = elementSubject(id);
+        if ~isKey(subjectNames, sj) || isempty(subjectNames(sj))
+            return;   % its subject is not in the batch: nothing to compare
+        end
+        key = elements(id);
+        if isKey(rowSubjects, key)
+            named = rowSubjects(key);
+            subjects = named(~strcmp(named, subjectNames(sj)) & ~strcmp(named, sj));
+        end
+end
+end
+
+function v = subjectIdOf(b)
+% the element's `depends_on subject_id` value, '' when none
+v = '';
+if ~isstruct(b) || ~isfield(b, 'depends_on'); return; end
+d = b.depends_on;
+if isstruct(d); d = num2cell(d); end
+if ~iscell(d); return; end
+for k = 1:numel(d)
+    e = d{k};
+    if isstruct(e) && isfield(e, 'name') && strcmp(char(e.name), 'subject_id') ...
+            && isfield(e, 'value') && (ischar(e.value) || (isstring(e.value) && isscalar(e.value)))
+        v = strtrim(char(e.value));
+        return;
+    end
 end
 end
 

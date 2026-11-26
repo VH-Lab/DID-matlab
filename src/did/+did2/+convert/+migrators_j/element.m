@@ -398,6 +398,23 @@ if ~strcmp(strtrim(type), 'stimulator')
         return;
     end
 end
+% --- a probe-map row naming another subject ---------------------------------
+% Decided by Jess Haley, 2026-11-26 (on VH-Lab/NDI-matlab#1309: "This is
+% malformed v1", then "Yes"): an element whose v1 epoch probe maps name a
+% subject other than its own `subject_id` is malformed v1; it is carried
+% whole, citing carry-170, and counted (its carried_as_v1 note). This covers
+% a stimulator too (two Dab bath stimulators whose rows name a second rat
+% in 6 of 12 and 6 of 13 epochs); the guard above keeps carrying the
+% non-stimulator probes whose rows name two subjects.
+otherSubjects = did2.convert.probemapSubjects('others', elementId);
+if ~isempty(otherSubjects)
+    % carry-register: carry-170
+    did2.convert.reportNote('carried_as_v1', 'element', elementId, ...
+        sprintf(['[carry-170] malformed: its epochprobemap rows name a subject ' ...
+        'other than its own (%s)'], strjoin(otherSubjects, ', ')));
+    v2Body = {preBody};
+    return;
+end
 
 % --- the element as an entity (id preserved) -------------------------------
 % did-schema #88: one `entity` class with a bound `type`
