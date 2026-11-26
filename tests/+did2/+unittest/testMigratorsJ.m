@@ -2642,6 +2642,39 @@ verifyTrue(testCase, ismember('observation+intensity', names));
 verifyFalse(testCase, ismember('calculation+label', names));
 end
 
+function testADerivedRasterIsCarriedNeedingAMapping(testCase)
+% Code audit batch 1 (C16) (Jess Haley, 2026-11-26, under [one correct
+% reading]): a non-mask raster stays an observation of "Imaging Signal
+% Intensity", but one whose label says it was computed from other images (a
+% projection, an average, a ratio, ...) is carried whole as v1 with a
+% `needs_mapping` note (no register row yet): what it computes is not in the
+% document.
+labels = {'A maximum intensity projection of the plate', ...
+    'Average of 30 frames', 'A dF/F ratio image', 'background-subtracted frames', ...
+    'Derived image'};
+for k = 1:numel(labels)
+    v1 = foldableBehaviourImageStack();
+    v1.imageStack.label = labels{k};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, 'needs_mapping: its label says the raster is derived'), ...
+        sprintf('%s: %s', labels{k}, d));
+    verifyFalse(testCase, contains(d, '[carry-'), d);
+end
+end
+
+function testADerivedWordInsideAnotherWordIsNotRead(testCase)
+% Control for C16: the words are whole words. A label with 'min' inside
+% 'minnow', 'sum' inside 'summit' or 'mean' inside 'meantime' is not derived,
+% and the raster stays an observation of intensity.
+v1 = foldableBehaviourImageStack();
+v1.imageStack.label = 'A minnow tank video, meantime at the summit';
+out = did2.convert.migrators_j.image_stack(v1);
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
+verifyTrue(testCase, ismember('observation+intensity', names), strjoin(names, ', '));
+end
+
 function v1 = behaviourImageStack()
 %BEHAVIOURIMAGESTACK The JH C. elegans behaviour-plate imageStack, as NDI's own
 %   writer builds it: +setup/+conv/+haley/doImport.m:421-441.

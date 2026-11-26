@@ -1,8 +1,8 @@
 function bodies = image_stack(preBody)
 %IMAGE_STACK Brainstorm-J migrator: did_v1 image_stack -> a body-backed
-%   `observation` with value kind `intensity` (a mask or label map is carried
-%   as v1) + a sampled_body (+ the shared session
-%   anchor).
+%   `observation` with value kind `intensity` (a mask, a label map, or a
+%   raster whose label says it is derived is carried as v1) + a sampled_body
+%   (+ the shared session anchor).
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   image_stack / image_stack_parameters are a pre-Brainstorm-I standalone image
@@ -396,6 +396,32 @@ if isMaskOrMap(label)
     return;
 end
 
+% ---- a raster whose label says it is DERIVED (code audit batch 1 (C16),
+% Jess Haley, 2026-11-26, under [one correct reading], did-schema
+% did_v2_go_forward_class_audit.md): a non-mask raster is read as an
+% observation of "Imaging Signal Intensity" (kept: its pixels are what the
+% instrument measured), but a raster whose label says it was computed from
+% others -- a projection, an average, a ratio, a filtered or normalised image
+% -- is not a measurement of intensity, and what it computes is not in the
+% document. It is carried whole as v1 for its dataset to say. The label is an
+% imageStack's `label`, or a v1 image's own `image.label`.
+derivedLabel = label;
+if strcmp(srcClass, 'image')
+    derivedLabel = getCharField(getBlock(preBody, 'image'), 'label');
+end
+derivedWord = derivedWordOf(derivedLabel);
+if ~isempty(derivedWord)
+    % carry-register: none (needs_mapping; the register has no row for a
+    %   raster whose label says it is derived)
+    did2.convert.reportNote('carried_as_v1', noteClass, ...
+        baseField(preBody, 'id', ''), sprintf(['needs_mapping: its label says ' ...
+        'the raster is derived ("%s"): calculation (of what it computes) or ' ...
+        'observation (intensity); decided by what the image''s pixels are, in ' ...
+        'its dataset'], derivedWord));
+    bodies = {preBody};
+    return;
+end
+
 % the identity a raw body states, a legacy-only `ndi_document` read into `base`
 % (jRawBody; universalRenames' wholesale move did this on the renamed path)
 src = preBody;
@@ -694,6 +720,25 @@ nm = 'image_stack';
 if isfield(b, 'document_class') && isstruct(b.document_class) ...
         && isfield(b.document_class, 'class_name') && ~isempty(b.document_class.class_name)
     nm = char(b.document_class.class_name);
+end
+end
+
+function w = derivedWordOf(label)
+%DERIVEDWORDOF The first word of LABEL that says the raster was computed from
+%   other images ('' when none), matched as a whole word, case ignored (code
+%   audit batch 1 (C16)). The list only ever carries a raster, never types one.
+w = '';
+words = {'derived', 'projection', 'projected', 'computed', 'calculated', ...
+    'processed', 'average', 'averaged', 'mean', 'median', 'maximum', ...
+    'minimum', 'max', 'min', 'sum', 'summed', 'difference', 'subtracted', ...
+    'ratio', 'normalized', 'normalised', 'filtered'};
+l = lower(char(label));
+if isempty(strtrim(l)); return; end
+for k = 1:numel(words)
+    if ~isempty(regexp(l, ['(?<![a-z0-9])' words{k} '(?![a-z0-9])'], 'once'))
+        w = words{k};
+        return;
+    end
 end
 end
 

@@ -753,8 +753,9 @@
 %         anchor). 1 -> 3.
 %     image_stack
 %         Brainstorm-J migrator: did_v1 image_stack -> a body-backed `observation`
-%         with value kind `intensity` (a mask or label map is carried as v1) + a
-%         sampled_body (+ the shared session anchor).
+%         with value kind `intensity` (a mask, a label map, or a raster whose label
+%         says it is derived is carried as v1) + a sampled_body (+ the shared session
+%         anchor).
 %     jrclust_clusters
 %         Brainstorm-J migrator: did_v1 jrclust_clusters -> a body-backed
 %         `calculation` with value kind `label` (the per-spike cluster assignments) +
@@ -1013,10 +1014,8 @@
 %         + minted `software` and `runtime_environment` entities.
 %     treatment
 %         Brainstorm-J migrator: did_v1 treatment -> a `manipulation` whose value kind
-%         is the one the treatment's term states for its number, or a dose / immersion
-%         for a ChEBI substance (+ the region part of its body site, or a site
-%         `observation` for a side + the shared session anchor); otherwise the v1
-%         document carried whole.
+%         is the one the treatment's term states for its number (+ the shared session
+%         anchor); otherwise the v1 document carried whole.
 %     treatment_drug
 %         Brainstorm-J migrator: did_v1 treatment_drug -> an immersion (`manipulation`
 %         valued by its formulation) or a `manipulation` with value kind `dose`,

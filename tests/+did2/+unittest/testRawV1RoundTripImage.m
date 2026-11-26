@@ -193,6 +193,18 @@ verifyTrue(testCase, any(strcmp('image.format', r.matched)), ...
 verifyTrue(testCase, any(strcmp('image.label', r.matched)), 'the label comes back');
 end
 
+function testAnImageWhoseLabelSaysItIsDerivedIsCarried(testCase)
+% Code audit batch 1 (C16) (Jess Haley, 2026-11-26): a v1 image whose own
+% `image.label` says it is derived is carried whole as v1, untouched; the
+% writer-shaped brightfield image above still converts.
+v1 = imageDoc('im_derived', 'tiff');
+v1.image.label = 'A maximum projection of the plate stack.';
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+verifyEmpty(testCase, out.quarantine);
+verifyTrue(testCase, carried, 'carried as the untouched v1 source');
+verifyTrue(testCase, contains(notes, 'needs_mapping: its label says the raster is derived ("projection")'), notes);
+end
+
 function testAnImageFormatGivenAsItsNodeRoundTrips(testCase)
 % the format stated as the CURIE, or as the registry label in another case: the
 % body holds the node, and the round trip compares the v1 text with the node
