@@ -533,11 +533,13 @@ POST_PASSES = [
         ("epoch_extent_refused_no_system",
          "  not tied to exactly one acquisition system (sources)"),
         # [a rig's clock belongs to its device] (Jess Haley 2026-11-19): a tied
-        # extent's referent is the rig's device entity (clocks, not references)
+        # extent's referent is the rig's device entity (clocks, not references);
+        # no fallback to the acquisition_system ([unnamed rig is malformed],
+        # Jess Haley 2026-11-26): a system naming no device is refused, carried
         ("epoch_extent_referent_device",
          "  tied clocks whose referent is the rig's DEVICE entity"),
-        ("epoch_extent_referent_acquisition_system",
-         "  tied clocks whose referent is the acquisition_system (no device)"),
+        ("epoch_extent_refused_no_device",
+         "  tied to a system that names no device (sources, carried)"),
         # [untied epochs keep the session anchor] (Jess Haley, 2026-10-26): an
         # epoch whose extents all come from ONE untied source and agree keeps
         # a session-anchored reference; several sources or disagreeing ones
@@ -667,11 +669,12 @@ POST_PASSES = [
         ("wiring_relations_minted", "probe wiring relations minted (connected to, RO:0002170)"),
         # [acquisition system is a device entity] (Jess Haley 2026-11-19,
         # did-schema did_v2_standing_wiring_plan.md): the wiring's parent is
-        # the rig's device entity; the two rows below sum to the one above.
+        # the rig's device entity, the only parent ([unnamed rig is malformed],
+        # Jess Haley 2026-11-26: no fallback to the acquisition_system).
         ("wiring_parent_device", "  of which wired to the rig's DEVICE entity"),
-        ("wiring_parent_acquisition_system", "  of which wired to the acquisition_system (the rig has no device)"),
         ("rig_devices_indexed", "rig device entities indexed (acquisition_system.device_id)"),
         ("rows_unwirable", "  rows with channels but no probe or no rig to wire (v1 document kept)"),
+        ("rows_unwirable_rig_no_device", "    of which the rig's system names no device"),
         ("wiring_types_interleaved", "  rows whose channel types interleave (v1 document kept)"),
         # [probe in several rows is one wiring] (Jess Haley 2026-11-03): a
         # probe listed in several rows is one statement and one relation per
@@ -1109,13 +1112,15 @@ POST_PASSES = [
         ("syncrule_refused_name_ambiguous", "device-pair refused: a name matches SEVERAL systems"),
         ("syncrule_names_missing", "  names matching no system"),
         ("syncrule_names_ambiguous", "  names matching several systems"),
+        ("syncrule_refused_no_device", "device-pair refused: a system names no device"),
+        ("syncrule_names_no_device", "  names matching a system that names no device"),
         ("syncrule_refused_migrator_declined", "device-pair refused: migrator declined after the stamp"),
         ("syncrule_refused_total", "  device-pair refused TOTAL"),
         ("syncrule_configurations_folded", "clock_alignment_configuration FOLDED (device pair)"),
         # [a rig's clock belongs to its device] (Jess Haley 2026-11-19): each
-        # resolved end names the rig's device entity, else the system
+        # resolved end names the rig's device entity (no fallback to the
+        # system, [unnamed rig is malformed], Jess Haley 2026-11-26)
         ("syncrule_ends_named_device", "  resolved ends naming the rig's DEVICE entity"),
-        ("syncrule_ends_named_acquisition_system", "  resolved ends naming the acquisition_system (no device)"),
         ("syncrule_software_emitted", "  software entities appended"),
         ("syncrule_fold_quarantined", "QUARANTINED device-pair folds (rule kept)"),
     ]),
