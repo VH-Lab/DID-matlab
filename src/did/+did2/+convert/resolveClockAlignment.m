@@ -56,7 +56,15 @@ function [result, report] = resolveClockAlignment(result, options)
 %   REFUSAL, NOT INVENTION, FOR THE RULE TOO. A name that resolves to ZERO
 %   systems in the session, or to MORE THAN ONE, leaves the rule a passthrough
 %   and is counted (syncrule_refused_name_missing / _name_ambiguous, per rule;
-%   syncrule_names_missing / _names_ambiguous, per name). No system is minted
+%   syncrule_names_missing / _names_ambiguous, per name). A name that resolves
+%   to one system whose configuration names no device leaves the rule a
+%   passthrough too (syncrule_refused_no_device, per rule;
+%   syncrule_names_no_device, per name): each end is the rig's device
+%   ([a rig's clock belongs to its device], Jess Haley, 2026-11-19), with no
+%   fallback to the configuration ([unnamed rig is malformed], Jess Haley,
+%   2026-11-26: a rig with no name is carried as v1 and mints no
+%   configuration, and +migrators_j/daqsystem.m gives every other rig its
+%   device). No system is minted
 %   for a missing name and no first match is taken for an ambiguous one. A rule
 %   on the empty-session sentinel ("applies in any session") has no session to
 %   resolve within and is refused as syncrule_refused_no_session_id. A fold is
@@ -148,7 +156,6 @@ report = struct( ...
     ... % beside it.
     'acquisition_systems_indexed',          0, ...
     'syncrule_ends_named_device',           0, ...
-    'syncrule_ends_named_acquisition_system', 0, ...
     'syncrules_seen',                       0, ...
     'syncrule_filefind_seen',               0, ...
     'syncrule_channel_rule_seen',           0, ...
@@ -159,6 +166,8 @@ report = struct( ...
     'syncrule_refused_name_ambiguous',      0, ...
     'syncrule_names_missing',               0, ...
     'syncrule_names_ambiguous',             0, ...
+    'syncrule_refused_no_device',           0, ...
+    'syncrule_names_no_device',             0, ...
     'syncrule_refused_migrator_declined',   0, ...
     'syncrule_refused_total',               0, ...
     'syncrule_configurations_folded',       0, ...
@@ -360,7 +369,8 @@ systemIds = containers.Map('KeyType', 'char', 'ValueType', 'any');
 % configuration's input_id / output_id name (Decided by Jess Haley,
 % 2026-11-19 [a rig's clock belongs to its device], did-schema
 % docs/plans/did_v2_standing_wiring_plan.md; the device is minted by
-% +migrators_j/daqsystem.m). A system with no device is named itself, as before.
+% +migrators_j/daqsystem.m). A system with no device is not named itself: the
+% rule is refused (syncrule_refused_no_device), [unnamed rig is malformed].
 deviceOf = containers.Map('KeyType', 'char', 'ValueType', 'char');
 for k = 1:n
     % either class name ([acquisition configuration renamed]); the block is
@@ -426,6 +436,7 @@ for k = 1:n
     resolved = cell(1, 2);
     nMissing = 0;
     nAmbiguous = 0;
+    nNoDevice = 0;
     for j = 1:2
         key = systemKey(sid, names{j});
         if ~isKey(systemIds, key)
@@ -437,13 +448,15 @@ for k = 1:n
             nAmbiguous = nAmbiguous + 1;
             continue;
         end
-        resolved{j} = ids{1};
-        if isKey(deviceOf, ids{1})
-            resolved{j} = deviceOf(ids{1});
+        if ~isKey(deviceOf, ids{1})
+            nNoDevice = nNoDevice + 1;
+            continue;
         end
+        resolved{j} = deviceOf(ids{1});
     end
     report.syncrule_names_missing = report.syncrule_names_missing + nMissing;
     report.syncrule_names_ambiguous = report.syncrule_names_ambiguous + nAmbiguous;
+    report.syncrule_names_no_device = report.syncrule_names_no_device + nNoDevice;
     if nMissing > 0
         report.syncrule_refused_name_missing = report.syncrule_refused_name_missing + 1;
         continue;
@@ -452,17 +465,14 @@ for k = 1:n
         report.syncrule_refused_name_ambiguous = report.syncrule_refused_name_ambiguous + 1;
         continue;
     end
-
-    % the two ends: each rig's device (or the system, when it names none),
-    % stamped under the pass's own edge name for +migrators_j/syncrule.m
-    for j = 1:2
-        if any(strcmp(resolved{j}, deviceOf.values))
-            report.syncrule_ends_named_device = report.syncrule_ends_named_device + 1;
-        else
-            report.syncrule_ends_named_acquisition_system = ...
-                report.syncrule_ends_named_acquisition_system + 1;
-        end
+    if nNoDevice > 0
+        report.syncrule_refused_no_device = report.syncrule_refused_no_device + 1;
+        continue;
     end
+
+    % the two ends: each rig's device, stamped under the pass's own edge
+    % name for +migrators_j/syncrule.m
+    report.syncrule_ends_named_device = report.syncrule_ends_named_device + 2;
     stamped = b;
     for j = 1:2
         stamped = stampEdge(stamped, 'resolved_acquisition_system_id', resolved{j});
@@ -489,6 +499,7 @@ report.syncrule_refused_total = report.syncrule_refused_no_session_id ...
     + report.syncrule_refused_no_system_name ...
     + report.syncrule_refused_name_missing ...
     + report.syncrule_refused_name_ambiguous ...
+    + report.syncrule_refused_no_device ...
     + report.syncrule_refused_migrator_declined;
 
 if isempty(slotOf)

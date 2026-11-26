@@ -520,7 +520,7 @@ report = struct( ...
     'epoch_extent_conflicting_clock',      0, ...
     'epoch_extent_refused_no_system',      0, ...
     'epoch_extent_referent_device',        0, ...
-    'epoch_extent_referent_acquisition_system', 0, ...
+    'epoch_extent_refused_no_device',      0, ...
     ... % [agreeing untied sources count as one] (Jess Haley, 2026-11-12):
     ... % `..._untied_epochs` is the DENOMINATOR of the untied decision (distinct
     ... % (session, epoch) pairs holding at least one untied source); every one
@@ -984,16 +984,20 @@ for k = 1:n
     % [a rig's clock belongs to its device] (Jess Haley, 2026-11-19, did-schema
     % docs/plans/did_v2_standing_wiring_plan.md): the reference's referent is
     % the rig's device entity (the acquisition_system's `device_id`, minted by
-    % +migrators_j/daqsystem.m), not the configuration; a system with no
-    % device (a batch migrated before) keeps the system, as before.
+    % +migrators_j/daqsystem.m), not the configuration. There is no fallback
+    % to the configuration ([unnamed rig is malformed], Jess Haley,
+    % 2026-11-26: a rig with no name is carried as v1 and has no
+    % configuration; every other rig has its device): a system that names no
+    % device places no reference, and the source is carried, counted.
     owner = clockOwnerOf(sysIdx, sysId);
-    if strcmp(owner, sysId)
-        report.epoch_extent_referent_acquisition_system = ...
-            report.epoch_extent_referent_acquisition_system + numel(entries);
-    else
-        report.epoch_extent_referent_device = ...
-            report.epoch_extent_referent_device + numel(entries);
+    if isempty(owner)
+        report.epoch_extent_refused_no_device = ...
+            report.epoch_extent_refused_no_device + 1;
+        carriedSources{end+1} = rows(k).doc_id; %#ok<AGROW>
+        continue;
     end
+    report.epoch_extent_referent_device = ...
+        report.epoch_extent_referent_device + numel(entries);
     for i = 1:numel(entries)
         entries{i}.system = owner;
         entries{i}.source = rows(k).doc_id;
@@ -3032,8 +3036,10 @@ if isempty(clk) || strcmp(clk, 'no_time') || strncmp(clk, 'approx_', 7)
 end
 if numel(t) < 2 || ~all(isfinite(t(1:2))); why = 'no finite t0_t1'; return; end
 % the clock is the rig's device's ([a rig's clock belongs to its device]):
-% the reference is keyed on, and refers to, the device when the system has one
+% the reference is keyed on, and refers to, the device; a system that names
+% no device is not placed ([unnamed rig is malformed], no fallback)
 owner = clockOwnerOf(sysIdx, sysId);
+if isempty(owner); why = 'the acquisition system names no device'; return; end
 ek = extentKey(epochId, owner, clk);
 if isKey(extentByKey, ek)
     prior = extentByKey(ek);
@@ -3915,9 +3921,10 @@ function owner = clockOwnerOf(idx, sysId)
 %CLOCKOWNEROF What a rig's clock is the clock of: the rig's device entity, the
 %   `device_id` of the acquisition_system SYSID (Decided by Jess Haley,
 %   2026-11-19 [a rig's clock belongs to its device], did-schema
-%   docs/plans/did_v2_standing_wiring_plan.md), or SYSID itself when the
-%   system names no device (a batch migrated before the device was minted).
-owner = sysId;
+%   docs/plans/did_v2_standing_wiring_plan.md), or '' when the system names
+%   no device: no fallback to SYSID ([unnamed rig is malformed], Jess Haley,
+%   2026-11-26; the callers refuse).
+owner = '';
 if ~isempty(sysId) && isKey(idx.deviceOf, sysId)
     owner = idx.deviceOf(sysId);
 end

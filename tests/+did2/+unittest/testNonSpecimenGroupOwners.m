@@ -26,7 +26,9 @@ function tests = testNonSpecimenGroupOwners
 %   for it with channel_list.bin, two ai segments and one di, ax and ao
 %   segment each. The controls: the same batch with the rig's device edge
 %   removed before the pass (no entity to fall back to: the recording
-%   observations keep every group, as before the decision), and the round
+%   observations keep every group, as before the decision; and, with no
+%   fallback to the acquisition_configuration since [unnamed rig is
+%   malformed] (Jess Haley, 2026-11-26), no row is wired), and the round
 %   trip with a group owner's variable changed to a recording's (it is then
 %   read as a probe-map row, and the manifest fails).
 tests = functiontests(localfunctions);
@@ -94,6 +96,11 @@ function testWithoutTheRigsDeviceTheRecordingKeepsEveryGroup(testCase)
 % the control: no device entity to stand for the acquisition system, so no
 % owner is minted and the recording observation owns every group, counted
 [~, result, rep] = groupBatch(testCase, 'ns_b', 'c2', false);
+% and no row is wired: the wiring's parent is the rig's device, with no
+% fallback to the configuration ([unnamed rig is malformed], Jess Haley,
+% 2026-11-26)
+verifyEqual(testCase, rep.wiring_relations_minted, 0);
+verifyEqual(testCase, rep.rows_unwirable_rig_no_device, 2, 'p and vis');
 verifyEqual(testCase, rep.channel_groups_non_specimen, 3);
 verifyEqual(testCase, rep.group_owner_kept_recording_no_device, 3);
 verifyEqual(testCase, rep.group_owners_digital + rep.group_owners_auxiliary ...
@@ -136,6 +143,94 @@ d.statement.variable = struct('node', 'AFO:AFR_0001916', 'name', 'voltage');
 result.migrated{k} = did2.document(d);
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyNotEmpty(testCase, failureOf(r, 'ns_d_efi'), describe(r));
+end
+
+function testOnlyTheWiredChannelsAreRecorded(testCase)
+% Decided by Jess Haley, 2026-11-19 [only wired channels recorded] (did-schema
+% docs/plans/did_v2_standing_wiring_plan.md): "migration records only the
+% channels a probe is wired to; a rig's full channel list stays in the file
+% headers". The batch of this file's header: the probe map wires p to ai1-2
+% and vis to ao1 and di1 on intan1, and the rig's archive also holds an
+% auxiliary group nobody is wired to, and its channel_list.bin. Every channel
+% number written anywhere in the migrated documents (a channel-type variable
+% beside numbers, at any depth) is one of the wired ones, and it is written
+% only on a `connected to` wiring relation. The control: the same batch with
+% an unwired auxiliary channel added to the auxiliary group's owner is caught.
+[~, result, rep] = groupBatch(testCase, 'ns_e', 'c5', true);
+% denominators first
+assertGreaterThan(testCase, numel(result.migrated), 0, 'the batch migrated nothing');
+assertEqual(testCase, rep.channel_groups_non_specimen, 3, 'premise: di, ax and ao groups');
+assertEqual(testCase, rep.group_owner_entity_acquisition_system_unwired, 1, ...
+    'premise: the ax group is wired to nobody');
+recorded = recordedChannels(result);
+assertNotEmpty(testCase, recorded, 'the instrument read no channel at all');
+pairs = sort(arrayfun(@(r) sprintf('%s %g', r.node, r.number), recorded, ...
+    'UniformOutput', false));
+wired = sort({'EMPTY:0000370 1', 'EMPTY:0000370 2', ...   % p: ai1-2
+    'EMPTY:0000371 1', 'EMPTY:0000372 1'});               % vis: ao1, di1
+verifyEqual(testCase, unique(pairs), wired, 'the channels recorded are the wired ones');
+for r = reshape(recorded, 1, [])
+    verifyEqual(testCase, r.class, 'directed_relation', ...
+        sprintf('channel %s %g is written on a %s (%s)', r.node, r.number, r.class, r.id));
+end
+for w = reshape(recorded, 1, [])
+    d = docById(result, w.id);
+    verifyEqual(testCase, char(d.directed_relation.relation.node), 'RO:0002170', ...
+        'the channels are on a connected to relation');
+end
+
+% the control: a channel nobody is wired to, written on the auxiliary
+% group's owner, is found and is not a wired one
+k = ownerIndex(testCase, result, 'ax_group1_seg.nbf_#');
+d = result.migrated{k}.toStruct();
+ax = did2.convert.channelType('ax');
+d.statement.conditions = struct('variable', struct('node', ax.node, 'name', ax.name), ...
+    'numeric', 3);
+result.migrated{k} = did2.document(d);
+again = recordedChannels(result);
+extra = again(strcmp({again.node}, char(ax.node)));
+verifyNumElements(testCase, extra, 1, 'the instrument misses an unwired channel');
+verifyFalse(testCase, any(strcmp(sprintf('%s %g', ax.node, 3), wired)));
+end
+
+function out = recordedChannels(result)
+% every channel number in the migrated documents: a struct, at any depth,
+% whose `variable.node` is a channel-type term (did2.convert.channelType)
+% beside a `numeric` (one row per number: id, class, node, number)
+nodes = {};
+for p = {'ai', 'ao', 'di', 'do', 't', 'ax', 'e', 'mk', 'md', 'tx'}
+    t = did2.convert.channelType(p{1});
+    nodes{end+1} = char(t.node); %#ok<AGROW>
+end
+out = struct('id', {}, 'class', {}, 'node', {}, 'number', {});
+for k = 1:numel(result.migrated)
+    d = result.migrated{k}.toStruct();
+    out = [out, walk(d, char(d.base.id), char(d.document_class.class_name), nodes)]; %#ok<AGROW>
+end
+end
+
+function out = walk(x, id, cls, nodes)
+out = struct('id', {}, 'class', {}, 'node', {}, 'number', {});
+if iscell(x)
+    for i = 1:numel(x); out = [out, walk(x{i}, id, cls, nodes)]; end %#ok<AGROW>
+    return;
+end
+if ~isstruct(x); return; end
+for i = 1:numel(x)
+    e = x(i);
+    if isfield(e, 'variable') && isstruct(e.variable) && isscalar(e.variable) ...
+            && isfield(e.variable, 'node') && any(strcmp(char(e.variable.node), nodes)) ...
+            && isfield(e, 'numeric') && isnumeric(e.numeric)
+        for n = reshape(double(e.numeric), 1, [])
+            out(end+1) = struct('id', id, 'class', cls, ...
+                'node', char(e.variable.node), 'number', n); %#ok<AGROW>
+        end
+    end
+    f = fieldnames(e);
+    for j = 1:numel(f)
+        out = [out, walk(e.(f{j}), id, cls, nodes)]; %#ok<AGROW>
+    end
+end
 end
 
 % ===================== the batch ========================================

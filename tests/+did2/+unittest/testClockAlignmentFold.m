@@ -169,7 +169,8 @@ verifyEqual(testCase, depValue(cfg, outEdge), rigDevice(out, 'sys_2'));
 verifyNotEmpty(testCase, rigDevice(out, 'sys_1'));
 verifyNotEqual(testCase, rigDevice(out, 'sys_1'), rigDevice(out, 'sys_2'));
 verifyEqual(testCase, rep.syncrule_ends_named_device, 2);
-verifyEqual(testCase, rep.syncrule_ends_named_acquisition_system, 0);
+verifyEqual(testCase, rep.syncrule_refused_no_device, 0);
+verifyEqual(testCase, rep.syncrule_names_no_device, 0);
 % number_fullpath_matches and syncfilename are DECLARED method.parameters.
 m = cfg.get('clock_alignment_configuration.method');
 entries = asEntries(m.parameters);
@@ -295,6 +296,52 @@ verifyEqual(testCase, rep.syncrule_configurations_folded, 0);
 verifyEqual(testCase, countOf(out, 'syncrule'), 1);
 verifyEqual(testCase, countOf(out, 'clock_alignment_configuration'), 0);
 verifyEqual(testCase, countOf(out, 'acquisition_channels'), 0);
+verifyEqual(testCase, firstOf(out, 'syncrule').get('base.id'), 'rule_ff');
+end
+
+
+function testARigWhoseSystemNamesNoDeviceIsRefusedNotNamedItself(testCase)
+% Decided by Jess Haley, 2026-11-26 [unnamed rig is malformed] (did-schema
+% docs/plans/did_v2_standing_wiring_plan.md), unblocking [a rig's clock
+% belongs to its device] (2026-11-19): each end of a configuration is the
+% rig's device, with no fallback to the acquisition_configuration. The batch
+% of testFilefindRuleFoldsWhenBothSystemsResolve (the control: it folds
+% there, both ends the devices), with sys_1's `device_id` removed before the
+% pass, a configuration no migration writes (+migrators_j/daqsystem.m gives
+% every rig its device, and carries a rig with no name as v1). The rule is
+% refused, counted, and stays the v1 rule; no configuration names sys_1.
+bodies = { ...
+    daqsystemFixture('sys_1', 'sess_A', 'mydaq1'), ...
+    daqsystemFixture('sys_2', 'sess_A', 'mydaq2'), ...
+    filefindFixture('rule_ff', 'sess_A', 'mydaq1', 'mydaq2')};
+control = did2.convert.resolveClockAlignment(migrate(bodies), 'Validate', false);
+assertEqual(testCase, control.clock_alignment_fold.syncrule_configurations_folded, 1, ...
+    'premise: the control folds');
+assertEqual(testCase, control.clock_alignment_fold.syncrule_refused_no_device, 0);
+
+result = migrate(bodies);
+removed = false;
+for k = 1:numel(result.migrated)
+    d = result.migrated{k}.toStruct();
+    if strcmp(char(d.base.id), 'sys_1')
+        keep = ~strcmp({d.depends_on.name}, 'device_id');
+        removed = any(~keep);
+        d.depends_on = d.depends_on(keep);
+        result.migrated{k} = did2.document(d);
+    end
+end
+assertTrue(testCase, removed, 'premise: sys_1 names its device');
+out = did2.convert.resolveClockAlignment(result, 'Validate', false);
+rep = out.clock_alignment_fold;
+verifyEqual(testCase, rep.syncrules_seen, 1, 'denominator');
+verifyEqual(testCase, rep.syncrule_refused_no_device, 1);
+verifyEqual(testCase, rep.syncrule_names_no_device, 1);
+verifyEqual(testCase, rep.syncrule_refused_name_missing, 0);
+verifyEqual(testCase, rep.syncrule_refused_total, 1);
+verifyEqual(testCase, rep.syncrule_ends_named_device, 0);
+verifyEqual(testCase, rep.syncrule_configurations_folded, 0);
+verifyEqual(testCase, countOf(out, 'clock_alignment_configuration'), 0);
+verifyEqual(testCase, countOf(out, 'syncrule'), 1);
 verifyEqual(testCase, firstOf(out, 'syncrule').get('base.id'), 'rule_ff');
 end
 
