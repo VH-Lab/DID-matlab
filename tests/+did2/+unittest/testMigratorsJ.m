@@ -874,7 +874,7 @@ for k = 1:numel(cases)
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, startsWith(d, ['[carry-176] needs_mapping: its string_value ' ...
         v1.treatment.string_value ' is a term']), d);
-    verifyFalse(testCase, contains(d, '[carry-'), d);
+    verifyEqual(testCase, count(d, '[carry-'), 1, d);  % cites carry-176 and no other row
     verifyFalse(testCase, isfield(out.summary.migration_notes, 'treatment_number_unlabelled'));
 end
 end
@@ -2660,7 +2660,7 @@ for k = 1:numel(labels)
     d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
     verifyTrue(testCase, startsWith(d, '[carry-177] needs_mapping: its label says the raster is derived'), ...
         sprintf('%s: %s', labels{k}, d));
-    verifyFalse(testCase, contains(d, '[carry-'), d);
+    verifyEqual(testCase, count(d, '[carry-'), 1, d);  % cites carry-177 and no other row
 end
 end
 
