@@ -327,34 +327,52 @@ end
 
 % ===================== two quantities on one instrument ====================
 
-function testPatchProducesAVoltageAndACurrentObservation(testCase)
-% PROBE-TYPES.md: patch = "two channels; first is Vm, second is I". Two
-% quantities are two `variable`s, so two statements -- NOT one observation with a
-% 2-long channel axis, which would label a current trace 'voltage'. Both are in
-% the same epoch file, so that file is ONE opaque_body SHARED by both: its
-% owner_id repeats (did-schema data_body, 2026-10-21).
-out = runEpoch(elementDoc('patch_a', 'patch', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+function testABarePatchSharpOrEventRowIsCarried(testCase)
+% INVERTS testPatchProducesAVoltageAndACurrentObservation. Code audit batch 1
+% (C13) (Jess Haley, 2026-11-26, under [one correct reading]): a bare `patch`
+% or `sharp` row wrote BOTH a voltage and a current observation, though a
+% recording holds one quantity per channel and the type does not say which
+% channel is which; an `event` row was read as a stimulator. Each is now
+% unresolved: the row writes no observation and no manipulation, the epoch's
+% v1 epochfiles_ingested is carried whole (rows_unresolved_modality), the
+% element is flagged `modality_unresolved`, and its `observes` is kept.
+cases = {'patch', 'ndi.probe.timeseries.mfdaq'; ...
+         'sharp', 'ndi.probe.timeseries.mfdaq'; ...
+         'event', 'ndi.probe.timeseries.stimulator'};
+for k = 1:size(cases, 1)
+    ty = cases{k, 1};
+    [out, rep] = runEpoch(elementDoc('pa', ty, cases{k, 2}, 1, 'specimen_1', ''), ...
+        {'/data/t00001/t00001.abf'});
+    verifyEmpty(testCase, out.quarantine, ty);
+    verifyFalse(testCase, anyObservationEmitted(out), [ty ': an observation was written']);
+    verifyEqual(testCase, countOfClass(out, 'manipulation+term'), 0, ...
+        [ty ': read as a stimulator']);
+    verifyEqual(testCase, countOfClass(out, 'opaque_body'), 0, ty);
+    verifyEqual(testCase, countOfClass(out, 'epochfiles_ingested'), 1, ...
+        [ty ': the epoch''s v1 document is not carried']);
+    verifyEqual(testCase, rep.rows_unresolved_modality, 1, ty);
+    verifyEqual(testCase, rep.observations_emitted, 0, ty);
+    verifyEqual(testCase, rep.rows_stimulator, 0, ty);
+end
+end
+
+function testAnExactPipetteTypeStillRecordsOneQuantity(testCase)
+% Control for C13: the decided exact types keep their rows -- patch-Vm one
+% voltage observation, patch-I one current observation, by node ([voltage
+% AFO, current NCIT], Jess Haley, 2026-11-03).
+out = runEpoch(elementDoc('pv', 'patch-Vm', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
     {'/data/t00001/t00001.abf'});
 verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 1);
-verifyEqual(testCase, countOfClass(out, 'observation+current'), 1);
-verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
+verifyEqual(testCase, countOfClass(out, 'observation+current'), 0);
 volt = firstOfClass(out, 'observation+voltage');
-curr = firstOfClass(out, 'observation+current');
-verifyEqual(testCase, depValue(volt, 'entity_id'), 'specimen_1');
-verifyEqual(testCase, depValue(curr, 'entity_id'), 'specimen_1');
-verifyEqual(testCase, depValue(volt, 'instrument_id'), 'el_1');
-verifyEqual(testCase, depValue(curr, 'instrument_id'), 'el_1');
-verifyEqual(testCase, depValue(volt, 'time_reference_id'), depValue(curr, 'time_reference_id'));
-% [voltage AFO, current NCIT] (Jess Haley, 2026-11-03): by node
-verifyEqual(testCase, volt.get('statement.variable').name, 'voltage');
 verifyEqual(testCase, volt.get('statement.variable').node, 'AFO:AFR_0001916');
-verifyEqual(testCase, curr.get('statement.variable').name, 'Electrical Current');
+verifyEqual(testCase, depValue(volt, 'entity_id'), 'specimen_1');
+out = runEpoch(elementDoc('pi', 'patch-I', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', ''), ...
+    {'/data/t00001/t00001.abf'});
+verifyEqual(testCase, countOfClass(out, 'observation+current'), 1);
+verifyEqual(testCase, countOfClass(out, 'observation+voltage'), 0);
+curr = firstOfClass(out, 'observation+current');
 verifyEqual(testCase, curr.get('statement.variable').node, 'NCIT:C48434');
-bodies = allOfClass(out, 'opaque_body');
-verifyEqual(testCase, numel(bodies), 1, 'one file, one body');
-verifyEqual(testCase, sort(ownersOf(bodies{1}.toStruct())), ...
-    sort({char(volt.get('base.id')), char(curr.get('base.id'))}), ...
-    'the one file must be shared by both observations');
 end
 
 function testCurrentPipetteIsNotLabelledVoltage(testCase)
@@ -400,8 +418,7 @@ function testTheDecidedModeIsTheObservationsMethodTerm(testCase)
 % "current clamp assay", -I / -Im OBI:0002182 "voltage clamp assay";
 % [imaging mode terms] (2026-11-01): wide-field OBI:0002437, two-photon
 % FBbi:00000254, one-photon NCIT:C16856 "Fluorescence Microscopy" ([one-photon
-% is NCIT fluorescence microscopy], 2026-11-03). A bare patch or sharp names no
-% mode, so its observation has no method.
+% is NCIT fluorescence microscopy], 2026-11-03).
 abf = '/data/t00001/t00001.abf';
 tif = '/data/t00001/frames.tif';
 ts = 'ndi.probe.timeseries.mfdaq';
@@ -414,8 +431,9 @@ cases = { ...
     'sharp-Im', ts, abf, 'observation+current', 'OBI:0002182'; ...
     'wide-field-imaging', 'ndi.probe.image', tif, 'observation+intensity', 'OBI:0002437'; ...
     'two-photon-imaging', 'ndi.probe.image', tif, 'observation+intensity', 'FBbi:00000254'; ...
-    'one-photon-imaging', 'ndi.probe.image', tif, 'observation+intensity', 'NCIT:C16856'; ...
-    'patch', ts, abf, 'observation+voltage', ''};
+    'one-photon-imaging', 'ndi.probe.image', tif, 'observation+intensity', 'NCIT:C16856'};
+% (a bare 'patch' row is no longer recorded at all since 2026-11-26:
+% testABarePatchSharpOrEventRowIsCarried)
 for k = 1:size(cases, 1)
     [ty, cls, file, key, node] = cases{k, :};
     out = runEpoch(elementDoc('p', ty, cls, 1, 'specimen_1', ''), {file});
@@ -709,7 +727,7 @@ end
 end
 
 
-function out = runEpoch(el, files, validate)
+function [out, rep] = runEpoch(el, files, validate)
 %RUNEPOCH The DID chain over ELEMENT plus one epoch's v1 cache: a session, the
 %   specimen subject (local_identifier 'L'), and an epochfiles_ingested naming
 %   epoch t00001, FILES, and one probe-map row for this element (its name,
@@ -756,7 +774,7 @@ daq.depends_on = struct('name', {'filenavigator_id', 'daqreader_id'}, ...
     'id', {'nav_acqsys_09', 'rdr_acqsys_09'});
 out = did2.convert.v1_to_v2({sess, subj, el, daq, ing}, 'Validate', false, 'TargetVersion', 'did_v2');
 out = did2.convert.epochMint(out, 'Validate', false, 'TargetVersion', 'did_v2');
-out = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'did_v2');
+[out, rep] = did2.convert.resolveEpochProbemap(out, 'Validate', validate, 'TargetVersion', 'did_v2');
 end
 
 function c = allOfClass(out, className)

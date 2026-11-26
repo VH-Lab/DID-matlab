@@ -1,8 +1,7 @@
 function bodies = measurement(preBody)
-%MEASUREMENT Brainstorm-J migrator: did_v1 measurement -> a typed
-%   `observation` (value kind: the measured quantity, or `term`) (+ the shared
-%   session anchor), for the rows that can
-%   be typed honestly; everything else is carried through for the second pass.
+%MEASUREMENT Brainstorm-J migrator: did_v1 measurement -> an `observation`
+%   with value kind `term` (+ the shared session anchor) when its value is a
+%   term; everything else (a number, a date, text) is carried whole as v1.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %
@@ -32,32 +31,29 @@ function bodies = measurement(preBody)
 %   ---------------------------------------------------------------------
 %   WHAT IS FOLDED, AND WHAT IS DELIBERATELY NOT
 %   ---------------------------------------------------------------------
-%   A numeric value is folded ONLY when the ontology term says which physical
-%   quantity it is. V_eta's observation leaves are quantity-typed (T3: leaf =
-%   direction x data_type), so a number with no known dimension has no honest
-%   leaf -- and inventing one is exactly the class of error this whole repair
-%   track exists to undo. So:
+%   Only the reading the v1 document states by itself is written ([one
+%   correct reading], Jess Haley, 2026-10-26; code audit batch 1 (C3), Jess
+%   Haley, 2026-11-26, did-schema did_v2_go_forward_class_audit.md):
 %
-%     mass / weight        -> an `observation` with value kind `mass`
-%     temperature          -> an `observation` with value kind `temperature`
-%     length / height      -> an `observation` with value kind `length`
-%     age / duration       -> an `observation` with value kind `time` (was duration_observation  (pre-#88)
-%                             until TEAM-SIGN-OFF [time dtype], 2026-08-17)
-%     a CURIE string_value -> an `observation` with value kind `term` (the value IS an ontology term)
-%     anything else        -> CARRIED THROUGH UNCHANGED
+%     a CURIE string_value -> an `observation` with value kind `term` (the
+%                             value IS an ontology term)
+%     a number             -> CARRIED WHOLE AS V1 (needs_mapping): the
+%                             measurement states no unit and its term states no
+%                             quantity kind, so the kind would be chosen from
+%                             words in the node or label
+%     anything else        -> CARRIED WHOLE AS V1 (a date, text)
 %
-%   DATE OF BIRTH is the important member of that last group, and it is not an
-%   oversight. There is no `observation` with value kind `date` here, and a birth date is
-%   arguably a property of the subject ENTITY rather than an observation of it --
-%   a modelling decision a single-document migrator has no business making.
-%   `treatment.m` already routes date-of-birth OUT of its tier for the same
-%   reason. Carrying it through keeps the document intact and visible in
-%   `summary.unconverted_by_class`, which is the honest state until the model
-%   question is answered.
+%   A NUMBER IS NOT TYPED FROM LABEL WORDS. Until 2026-11-26 a number was
+%   typed mass / temperature / length / time when its node or label CONTAINED
+%   a keyword ('weight', 'mass', 'temperature', 'length', 'age', 'duration',
+%   ...; private/jQuantityLeaf, deleted), with no unit. 'age' matched inside
+%   'voltage', 'average' and 'dosage'; and a word names a quantity, not the
+%   scale of the number. The dataset's map names the kind and the unit.
 %
-%   The unit is NOT asserted. The class carries no units field, and the ontology
-%   term names the quantity, not its scale -- so `source_unit` is left blank for
-%   discovery-mode fill-in rather than guessed from the term.
+%   DATE OF BIRTH is carried too, and it is not an oversight. There is no
+%   `observation` with value kind `date` here, and a birth date is arguably a
+%   property of the subject ENTITY rather than an observation of it -- a
+%   modelling decision a single-document migrator has no business making.
 %
 %   `manipulation_id` and `protocol_id` are dropped: no writer on origin/main
 %   ever sets either.
@@ -80,9 +76,8 @@ function bodies = measurement(preBody)
 %     base.name                          -> not written (the writer leaves '')
 %     depends_on subject_id              -> the observation's entity_id
 %     measurement.ontologyName, name     -> the observation's variable
-%     measurement.numeric_value          -> the quantity's source value (a
-%                                           mass / temperature / length / time
-%                                           named by the variable)
+%     measurement.numeric_value          -> none: a number carries the
+%                                           document (see above)
 %     measurement.string_value           -> a term value, when it is a CURIE
 %
 %   A manipulation_id or protocol_id that names a document (no writer sets one,
@@ -132,28 +127,34 @@ numValue = [];
 if isfield(blk, 'numeric_value'); numValue = blk.numeric_value; end
 
 variable = jOntologyTerm(node, label);
-hay = lower([node ' ' label]);
 
-% The decision itself now lives in `jMeasurementFold` / `jQuantityLeaf`, moved
-% there UNCHANGED (substring matching, same keyword table, same branch order) so
-% the `subjectmeasurement` sibling routes through this fold rather than growing a
-% second copy of it. `wordBoundary` is false here, which is bit-for-bit the
-% behaviour this file had before the extraction: `measurement.ontology_name` is
-% always a resolved CURIE, so its haystack is not free text and narrowing the
-% match is a separate decision from this one.
 anchor = jSessionAnchor(preBody, 'during');
-bodies = jMeasurementFold(preBody, variable, hay, numValue, strValue, anchor, false);
+bodies = jMeasurementFold(preBody, variable, numValue, strValue, anchor);
 if isempty(bodies)
-    % No honest leaf -- date of birth, an untyped number, or free prose. The
-    % anchor built above is discarded with it, so nothing is stranded. Carried
-    % as v1 (see READS RAW v1 above), unless jMeasurementFold already carried
-    % it (carry-058) and said so.
+    % No v2 statement -- a number, a date, or free prose. The anchor built
+    % above is discarded with it, so nothing is stranded. Carried as v1 (see
+    % READS RAW v1 above), unless jMeasurementFold already carried it
+    % (carry-058) and said so.
     if did2.convert.reportNote('pending', 'carried_as_v1') == 0
-        % "a measurement with no statement" is a carry of the kind
-        % [values no writer produces are malformed] covers (Jess Haley,
-        % 2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-120
-        jRawCarry('measurement', src, {}, {}, 'carry-100', ...
-            {'[carry-120] measurement (no v2 statement: a date, an untyped number or text)'});
+        if isnumeric(numValue) && isscalar(numValue) && isfinite(double(numValue))
+            % code audit batch 1 (C3) (Jess Haley, 2026-11-26, under [one
+            % correct reading]): a number whose kind would be chosen from the
+            % words of its node or label is carried, not typed. The register
+            % has no row for a measurement (carry-145 is subjectmeasurement's
+            % twin); none is invented here.
+            % carry-register: none (needs_mapping; the register has no
+            %   measurement row for a number of no stated kind)
+            did2.convert.reportNote('carried_as_v1', 'measurement', jCarryId(src), ...
+                ['needs_mapping: the measurement states no quantity kind or unit ' ...
+                 'for its number; the dataset map names them (a quantity is not ' ...
+                 'read from label words)']);
+        else
+            % "a measurement with no statement" is a carry of the kind
+            % [values no writer produces are malformed] covers (Jess Haley,
+            % 2026-10-27, did-schema V_eta_go_forward_class_audit.md), carry-120
+            jRawCarry('measurement', src, {}, {}, 'carry-100', ...
+                {'[carry-120] measurement (no v2 statement: a date, an untyped number or text)'});
+        end
     end
     bodies = {src};
 elseif isscalar(bodies) && isequaln(bodies{1}, preBody)

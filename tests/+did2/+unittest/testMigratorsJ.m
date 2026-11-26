@@ -855,51 +855,53 @@ for k = 1:numel(cases)
 end
 end
 
-function testTreatmentSubstanceIsDoseManipulation(testCase)
-% (Located at a body site since 2026-10-26: with no location a treatment is
-% carried as v1, [one-reading quick answers] (Q1),
-% testATreatmentWithNoLocationIsCarried.)
-out = runJ(treatmentDoc('CHEBI:5613', 'haloperidol', 2.5, 'uberon:0002436'));
-m = out.migrated{1};
-verifyEqual(testCase, did2.unittest.helpers.classKey(m), 'manipulation+dose');
-% did-schema #88: the dose names a `formulation` document (formulation_id),
-% whose ingredient_id edges name `chemical` documents; the amount rides on the
-% formulation's ingredient entry.
-fId = depVal(m, 'formulation_id');
-verifyNotEmpty(testCase, fId, 'the dose must name its formulation');
-f = []; c = [];
-for k = 1:numel(out.migrated)
-    d = out.migrated{k};
-    if strcmp(d.get('base.id'), fId); f = d; end
-    if strcmp(d.get('document_class.class_name'), 'chemical'); c = d; end
+function testATreatmentWhoseStringValueIsATermIsCarried(testCase)
+% INVERTS testTreatmentSubstanceIsDoseManipulation, which drove a dose at a
+% body site through a CURIE-shaped string_value. Code audit batch 1 (C4)
+% (Jess Haley, 2026-11-26, under [one correct reading]): a CURIE-shaped
+% `string_value` is not read as the treatment's location -- the term may be
+% the site, what was given or a value -- so the treatment is carried whole as
+% v1 with a `needs_mapping` note (no register row yet), and nothing is built:
+% no dose, no formulation, no region part, no site observation.
+cases = {treatmentDoc('CHEBI:5613', 'haloperidol', 2.5, 'uberon:0002436'), ...
+    treatmentDoc('CHEBI:7035', 'muscimol', [], 'UBERON:0002436'), ...
+    treatmentDoc('CHEBI:15377', 'water', [], 'NCBITaxon:562')};
+for k = 1:numel(cases)
+    v1 = cases{k};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), 'treatment');
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, ['needs_mapping: its string_value ' ...
+        v1.treatment.string_value ' is a term']), d);
+    verifyFalse(testCase, contains(d, '[carry-'), d);
+    verifyFalse(testCase, isfield(out.summary.migration_notes, 'treatment_number_unlabelled'));
 end
-verifyNotEmpty(testCase, c, 'no chemical document was emitted');
-if ~isempty(c)
-    verifyEqual(testCase, c.get('chemical.value').substance.name, 'haloperidol');
 end
-verifyNotEmpty(testCase, f, 'the formulation the dose names is not in the batch');
-verifyEqual(testCase, m.get('statement.variable').node, 'CHEBI:5613');
-% No amount recorded: the dose states none, and the run's migration report
-% lists it as a gap ([canonical absent only as needs info]; NaN in the dose's
-% volume until then).
-% numeric_value is NEVER an amount -- not the dose's, not the ingredient's
-% (Jess Haley, 2026-10-21, "yes"): the term (haloperidol) does not say what
-% kind of number 2.5 is, so it is an unlabelled condition, and noted.
-verifyDoseNoAmountJ(testCase, m);
-if ~isempty(f)
-    % numeric_value is not the ingredient's amount: the ingredient states none
-    % ([formulation amount needs info], Jess Haley, 2026-10-31; NaN until then)
-    verifyIngredientNoAmountJ(testCase, f, 1);
+
+function testATermStatedNumberWithATermStringValueIsCarried(testCase)
+% Code audit batch 1 (C4): a term that states its number's kind converts
+% (testVhlabGratingTrainingHoursIsADurationOfTheTerm), but beside a
+% CURIE-shaped string_value it is carried whole as v1 -- the branch used to
+% drop that term, read as a site, from the manipulation it wrote.
+v1 = treatmentDoc('EMPTY:0000199', ...
+    'treatment: grating direction-of-motion visual stimulation', 6.5, 'UBERON:0002436');
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, 'needs_mapping: its string_value UBERON:0002436 is a term'), d);
 end
-p = m.toStruct();
-cnd = p.statement.conditions;
-verifyEqual(testCase, cnd.variable.name, regName('numeric value'));
-verifyEqual(testCase, cnd.numeric, 2.5, 'AbsTol', 1e-12);   % the new numeric shape
-verifyFalse(testCase, isfield(cnd, 'unit'), 'an unlabelled number has no unit');
-n = out.summary.migration_notes.treatment_number_unlabelled;
-verifyEqual(testCase, n.ids, {'tr_01'});
-verifyEqual(testCase, n.details, {'haloperidol: 2.5'});
-verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
+
+function testANonSubstanceTermStringValueKeepsItsRow(testCase)
+% Control for C4: a treatment whose node is neither a ChEBI substance nor a
+% term-stated kind (the Dab "Target Location" rows, node EMPTY:0000074) was
+% already carried under carry-022; its note is unchanged.
+v1 = treatmentDoc('EMPTY:0000074', ...
+    'Optogenetic Tetanus Stimulation Target Location', [], 'UBERON:0001930');
+out = runJ(v1);
+verifyCarriedWholeAsV1(testCase, v1, out);
+d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+verifyTrue(testCase, startsWith(d, '[carry-022] needs_mapping: manipulation'), d);
 end
 
 function testATreatmentWithNoLocationIsCarried(testCase)
@@ -989,48 +991,22 @@ verifyEqual(testCase, depVal(d, 'time_reference_id'), a.get('base.id'));
 verifyEmpty(testCase, firstOfClassJ(out.migrated, 'absolute_time_reference'));
 end
 
-function testTreatmentTargetLocationLabelIsKeptAsTheVariableName(testCase)
-% INVERTS testTreatmentTargetLocationLabelIsCarriedWholeAsV1. [one-reading
-% quick answers] (Q4) (Jess Haley, 2026-10-26): the name is kept unchanged as
-% the variable's name -- the "Target Location" suffix is not stripped -- so the
-% row is no longer carried for it.
-v1 = treatmentDoc('CHEBI:7035', 'muscimol Target Location', [], 'uberon:0002436');
-out = runJ(v1);
-verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
-verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol Target Location');
-site = regionKindJ(testCase, out.migrated, 'subj_007');
-verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
+function testTreatmentTargetLocationIsCarried(testCase)
+% INVERTS testTreatmentTargetLocationLabelIsKeptAsTheVariableName and
+% testTreatmentTargetLocationIsAboutItsRegionPart. Code audit batch 1 (C4)
+% (Jess Haley, 2026-11-26): the Dab "Target Location" idiom (a ChEBI
+% substance whose string_value is the site CURIE) made a dose about the
+% site's region part; the string_value is no longer read as the location, so
+% the row is carried whole as v1, untouched, with or without the suffix.
+for name = {'muscimol Target Location', 'muscimol'}
+    v1 = treatmentDoc('CHEBI:7035', name{1}, [], 'uberon:0002436');
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 0, name{1});
+    verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 0, name{1});
+    verifyEqual(testCase, out.migrated{1}.get('treatment.name'), name{1});
+    verifyEqual(testCase, out.migrated{1}.get('treatment.string_value'), 'uberon:0002436');
 end
-
-function testTreatmentTargetLocationIsAboutItsRegionPart(testCase)
-% Dab "Target Location" idiom: the site rides in string_value. UPDATED
-% 2026-10-25: driven by a label with no " Target Location" suffix (a suffixed
-% label is carried as v1, the test above); the CURIE string_value alone still
-% routes the site. UPDATED 2026-11-19 ([site scaffolding not a loss] (2),
-% [region part ids computed], VH-Lab/DID-matlab #488): pass 1 writes the
-% site's region part in its final shape -- the dose is about the part, a
-% tissue entity `part_of` the subject named by its anatomical-structure
-% assertion -- instead of a site observation for NDI's second pass to promote.
-out = runJ(treatmentDoc('CHEBI:7035', 'muscimol', [], 'uberon:0002436'));
-% #88: dose manip + its chemical + formulation + anchor + the region part
-% (entity + kind assertion + part_of)
-verifyEqual(testCase, numel(out.migrated), 7);
-verifyEqual(testCase, nLeafJ(out.migrated, 'manipulation+dose'), 1);
-verifyEqual(testCase, nLeafJ(out.migrated, 'observation+term'), 0, ...
-    'the site is the part, not an observation');
-verifyEqual(testCase, out.migrated{1}.get('statement.variable').name, 'muscimol');
-site = regionKindJ(testCase, out.migrated, 'subj_007');
-verifyEqual(testCase, site.get('term.value').node, regNode('uberon:0002436'));
-% a body site makes it a dose; no amount recorded -> no value, listed as a gap
-% (NaN until [canonical absent only as needs info]); the route is known
-verifyDoseNoAmountJ(testCase, out.migrated{1});
-% the formulation still lists its ingredient, with no amount, named in
-% as a gap ([formulation amount needs info], Jess Haley, 2026-10-31; a NaN
-% concentration until then)
-fT = doseChainJ(out.migrated, out.migrated{1});
-verifyIngredientNoAmountJ(testCase, fT, 1);
-verifyEqual(testCase, routeUnknownCount(out, 'treatment'), 0);
 end
 
 % ===================== treatment_drug / virus_injection ================
@@ -2664,6 +2640,39 @@ out = did2.convert.migrators_j.image_stack(foldableBehaviourImageStack());
 names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
 verifyTrue(testCase, ismember('observation+intensity', names));
 verifyFalse(testCase, ismember('calculation+label', names));
+end
+
+function testADerivedRasterIsCarriedNeedingAMapping(testCase)
+% Code audit batch 1 (C16) (Jess Haley, 2026-11-26, under [one correct
+% reading]): a non-mask raster stays an observation of "Imaging Signal
+% Intensity", but one whose label says it was computed from other images (a
+% projection, an average, a ratio, ...) is carried whole as v1 with a
+% `needs_mapping` note (no register row yet): what it computes is not in the
+% document.
+labels = {'A maximum intensity projection of the plate', ...
+    'Average of 30 frames', 'A dF/F ratio image', 'background-subtracted frames', ...
+    'Derived image'};
+for k = 1:numel(labels)
+    v1 = foldableBehaviourImageStack();
+    v1.imageStack.label = labels{k};
+    out = runJ(v1);
+    verifyCarriedWholeAsV1(testCase, v1, out);
+    d = out.summary.migration_notes.carried_as_v1.distinct_details{1};
+    verifyTrue(testCase, startsWith(d, 'needs_mapping: its label says the raster is derived'), ...
+        sprintf('%s: %s', labels{k}, d));
+    verifyFalse(testCase, contains(d, '[carry-'), d);
+end
+end
+
+function testADerivedWordInsideAnotherWordIsNotRead(testCase)
+% Control for C16: the words are whole words. A label with 'min' inside
+% 'minnow', 'sum' inside 'summit' or 'mean' inside 'meantime' is not derived,
+% and the raster stays an observation of intensity.
+v1 = foldableBehaviourImageStack();
+v1.imageStack.label = 'A minnow tank video, meantime at the summit';
+out = did2.convert.migrators_j.image_stack(v1);
+names = cellfun(@did2.unittest.helpers.classKey, out, 'UniformOutput', false);
+verifyTrue(testCase, ismember('observation+intensity', names), strjoin(names, ', '));
 end
 
 function v1 = behaviourImageStack()

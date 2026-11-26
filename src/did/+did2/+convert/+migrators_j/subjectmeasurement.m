@@ -1,8 +1,19 @@
 function bodies = subjectmeasurement(preBody)
-%SUBJECTMEASUREMENT Brainstorm-J migrator: did_v1 subjectmeasurement -> a typed
-%   `observation` (value kind: the measured quantity, or `term`) + an
-%   `absolute_time_reference` carrying the measurement
-%   instant. Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
+%SUBJECTMEASUREMENT Brainstorm-J migrator: did_v1 subjectmeasurement -> the v1
+%   document, carried whole as v1 with a note naming why. Routed from
+%   did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
+%
+%   SINCE 2026-11-26 NOTHING IS FOLDED (code audit batch 1 (C3), Jess Haley,
+%   under [one correct reading], did-schema did_v2_go_forward_class_audit.md):
+%   the generic migration carries the document instead of typing its number
+%   from words of its free-text name. The fold below (TEAM-SIGN-OFF [subject
+%   measurement]) typed the number through a keyword table (mass /
+%   temperature / length / time from 'weight', 'age', ...), with no unit; the
+%   table is deleted, and `value` is a number (never a term), so no reading
+%   remains. A carry cites carry-144 (guards 1-3) or carry-145 (guard 4: the
+%   dataset map names the quantity kind). The sign-off's routing (subject_id ->
+%   entity_id, `measurement` -> variable, `datestamp` -> the time anchor, NOT a
+%   field) is what a dataset's import writes once its map names the kind.
 %
 %   TEAM-SIGN-OFF (jess, 2026-08-06, V_eta_go_forward_class_audit.md §4):
 %
@@ -67,14 +78,12 @@ function bodies = subjectmeasurement(preBody)
 %   THE SIGNED GAP: NO UNIT, SO THE LEAF IS GUARDED
 %   ---------------------------------------------------------------------
 %   `value: 30` for `measurement: 'age'` is 30 of something the document does
-%   not say. The leaf is meant to come from the D9 binding registry, and the
-%   registry cannot answer today -- `binding_registry_meta.json` ships five
-%   `subject_statement_bindings`, all of them binding to an `assertion` + `term`, none
-%   dimensional. `jQuantityLeaf` is the pass-1 stand-in and is the single place
-%   that changes when the registry gains dimensional rows.
+%   not say. The leaf was meant to come from the D9 binding registry, which
+%   cannot answer it; the keyword stand-in (`jQuantityLeaf`) is deleted
+%   (2026-11-26, above), so the number is carried, never typed.
 %
-%   WHEN NOTHING RESOLVES, THE DOCUMENT PASSES THROUGH. Four guards, each of
-%   which would otherwise produce a husk that validates clean:
+%   THE DOCUMENT IS CARRIED. Four guards, in order; the first three name a
+%   malformed source (carry-144), the fourth every other document (carry-145):
 %
 %     1. no subject_id      -> an observation about nobody. This is the
 %                              `image_stack` / `fitcurve` failure exactly:
@@ -86,14 +95,15 @@ function bodies = subjectmeasurement(preBody)
 %     3. value not a finite scalar -> the quantity composites carry ONE number.
 %                              A vector `value` (the template's [NaN,NaN]
 %                              parameters permit one) has no scalar cell.
-%     4. no quantity leaf   -> guessing one is the error this whole track exists
-%                              to undo.
+%     4. always since 2026-11-26 -> no quantity kind is read from the name
+%                              (code audit batch 1 (C3)); the dataset map
+%                              names it.
 %
-%   The passthrough is safe: `subjectmeasurement` has a V_eta tombstone in
-%   stable/, so the carried document validates under its own class, and it shows
-%   up in `summary.unconverted_by_class` instead of disappearing.
+%   The carried document is the untouched v1 source, noted `carried_as_v1`
+%   with its register row, so it shows up in the migration report instead of
+%   disappearing.
 %
-%   1 -> 2 on the fold path (observation + absolute_reference), 1 -> 1 otherwise.
+%   1 -> 1 (the untouched v1 source).
 %
 %   READS RAW v1 (did2.convert.rawV1Classes, 2026-10-27; Decided by Jess Haley,
 %   2026-10-26 [migrators read raw v1], did-schema
@@ -103,17 +113,11 @@ function bodies = subjectmeasurement(preBody)
 %   ONE OUTSIDE ITS TESTS (+ndi/+test/+daq/build_intan_flat_exp.m, tests/
 %   buildSession.m: measurement 'age', value 30, a datestamp) AND NO CORPUS
 %   HOLDS ONE; the template fixes its shape. Its block is snake_case already and
-%   it has no `app` block, so a passthrough is the renamed one but for v1's
-%   `value` edge key. Every v1 field and where it goes;
-%   did2.convert.roundtrip.subjectmeasurement rebuilds the v1 document and
-%   testRawV1RoundTripMeasurement compares the two:
-%
-%     base.id, session_id, datestamp     -> the observation's
-%     depends_on subject_id              -> the observation's entity_id
-%     subjectmeasurement.measurement     -> the observation's variable (name)
-%     subjectmeasurement.value           -> the quantity's source value
-%     subjectmeasurement.datestamp       -> the absolute time reference (else
-%                                           the session anchor, when empty)
+%   it has no `app` block. Since 2026-11-26 every document is carried
+%   (above), so no v1 field is placed;
+%   did2.convert.roundtrip.subjectmeasurement still reads the observation the
+%   fold wrote (statement.variable, the quantity, the absolute time reference),
+%   and testRawV1RoundTripMeasurement checks that a carry round trips.
 %
 %   What the renamed path would have discarded is carried, carry-100; a field,
 %   block or edge outside the template carries the document, carry-100
@@ -191,47 +195,27 @@ if ~(isnumeric(value) && isscalar(value) && isfinite(value))
     return;
 end
 
-% ---- the time anchor -------------------------------------------------------
-% The measurement instant is the anchor when the source gives one. When it does
-% not, fall back to the ordinal session anchor every other J fold uses --
-% `subject_interaction` requires at least one time_reference, so "no anchor at
-% all" is not an option, and "during the session" is the honest weaker claim.
-% `datestamp` is read WITHOUT numeric stringification: a bare number is not an
-% instant this migration can read, so it takes the session-anchor path.
-anchor = jAbsoluteReference(preBody, getCharField(blk, 'datestamp'));
-if isempty(anchor)
-    anchor = jSessionAnchor(preBody, 'during');
-end
-
-% ---- route through the EXISTING measurement fold ---------------------------
-% Same helper `measurement.m` uses. `variable` has an empty `node` because the
-% source has no ontology field to fill it from; `strValue` is '' because `value`
-% is typed `matrix`, so the fold's CURIE branch cannot fire here. wordBoundary
-% is TRUE -- see jQuantityLeaf: this field is free text, and 'voltage' contains
-% the letters 'age'.
-variable = jOntologyTerm('', name);
-folded = jMeasurementFold(preBody, variable, lower(name), value, '', anchor, true);
-
-% ---- guard 4: no honest leaf => carry the document through ------------------
-if isempty(folded)
-    if did2.convert.reportNote('pending', 'carried_as_v1') == 0
-        % jMeasurementFold left no note of its own (it writes one, carry-059,
-        % for a second value): it found no quantity leaf for the name
-        % [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
-        % V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
-        % v1 document passes through under it, so this document, left as v1 on purpose,
-        % is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
-        % 2026-10-24) instead of passing through silently. Register row carry-145 covers it,
-        % of kind needs_mapping (Jess Haley, 2026-11-10 [unnamed measurement kind
-        % needs a map]): the dataset map names the quantity kind.
-        % carry-register: carry-145
-        did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
-            ['[carry-145] needs_mapping: the dataset map names the quantity kind for ' ...
-             'this measurement name ([unnamed measurement kind needs a map])']);
-    end
-    return;
-end
-bodies = folded;
+% ---- guard 4: no quantity kind is read from the name -------------------------
+% code audit batch 1 (C3) (Jess Haley, 2026-11-26, under [one correct reading],
+% did-schema did_v2_go_forward_class_audit.md): the generic migration does not
+% type the number from words of the free-text name. Until then the fold
+% (private/jMeasurementFold with the keyword table of private/jQuantityLeaf,
+% deleted) typed it mass / temperature / length / time when the name held one
+% of a few words ('weight', 'age', ...), with no unit. `value` states no unit
+% and `measurement` is free text, so no rule that holds for every dataset
+% says what quantity the number is: the document is carried whole as v1 and
+% the dataset map names the kind ([unnamed measurement kind needs a map]).
+% [one folder, final classes only] (Jess Haley, 2026-10-29, did-schema
+% V_eta_go_forward_class_audit.md): a retire class's v2 file is deleted once no
+% v1 document passes through under it, so this document, left as v1 on purpose,
+% is carried whole as v1 with a note ([passthrough stays v1], Jess Haley,
+% 2026-10-24) instead of passing through silently. Register row carry-145 covers it,
+% of kind needs_mapping (Jess Haley, 2026-11-10 [unnamed measurement kind
+% needs a map]): the dataset map names the quantity kind.
+% carry-register: carry-145
+did2.convert.reportNote('carried_as_v1', 'subjectmeasurement', jCarryId(preBody), ...
+    ['[carry-145] needs_mapping: the dataset map names the quantity kind for ' ...
+     'this measurement name ([unnamed measurement kind needs a map])']);
 end
 
 % ===================== small helpers =======================================

@@ -1,9 +1,7 @@
 function v2Body = treatment(preBody)
 %TREATMENT Brainstorm-J migrator: did_v1 treatment -> a `manipulation` whose
-%   value kind is the one the treatment's term states for its number, or a
-%   dose / immersion for a ChEBI substance (+ the region part of its body
-%   site, or a site `observation` for a side + the shared session anchor);
-%   otherwise the v1 document carried whole.
+%   value kind is the one the treatment's term states for its number (+ the
+%   shared session anchor); otherwise the v1 document carried whole.
 %
 %   Routed from did2.convert.v1_to_v2 only when TargetVersion == 'V_eta'.
 %   ONE CORRECT READING (Decided by Jess Haley, 2026-10-26 [one correct
@@ -15,10 +13,15 @@ function v2Body = treatment(preBody)
 %           EMPTY:0000199, a duration in hours) -> a manipulation of that
 %           value kind, valued by the number;
 %       a ChEBI substance node -> routed by its recorded location
-%           (jTreatmentRoute, [treatment routes by location]): the bath -> an
-%           immersion valued by its formulation; a body site -> a dose; no
-%           location -> carried (needs_mapping, [one-reading quick answers]); an
-%           environmental medium -> carried (needs_mapping).
+%           (jTreatmentRoute, [treatment routes by location]); a v1 treatment
+%           records none, so it is carried (needs_mapping, carry-023,
+%           [one-reading quick answers]).
+%
+%   A CURIE-shaped string_value is not read as the location (code audit batch
+%   1 (C4), Jess Haley, 2026-11-26): a ChEBI substance or a term-stated
+%   number with one is carried whole as v1, needs_mapping (the register has no
+%   row for it yet). Until then it was the site (the Dab "Target Location"
+%   idiom): a dose about the site's region part, or a site observation.
 %
 %   Everything else -- a treatment whose temperature, substance or procedure
 %   reading would be chosen from words in its label -- is returned UNCHANGED,
@@ -29,13 +32,7 @@ function v2Body = treatment(preBody)
 %   term that states its kind, the number is an unlabelled condition ('numeric
 %   value') and a `treatment_number_unlabelled` report note. The anchor is the
 %   recorded administration onset when there is one, else the session
-%   (jTreatmentAnchor; Jess Haley, 2026-10-21, "a"). A dose at a body site is
-%   about that site's REGION PART, written here in its final shape (a tissue
-%   entity, its anatomical-structure assertion, its `part_of` relation), the
-%   ids computed from (subject, region) (jRegionSite, did2.convert.regionPart;
-%   [site scaffolding not a loss] (2), [region part ids computed], Jess
-%   Haley, 2026-10-26 / 2026-11-19); a site that is a side stays a site
-%   `observation` with value kind `term` for did2.convert.resolveRegionParts.
+%   (jTreatmentAnchor; Jess Haley, 2026-10-21, "a").
 %
 %   Substance rows whose dose amounts cannot all be placed are also
 %   carried whole as v1 ([generic stage is lossless], [partly placed is
@@ -64,8 +61,7 @@ function v2Body = treatment(preBody)
 %     treatment.ontologyName, name -> statement.variable (registry term)
 %     treatment.numeric_value  -> the value (termNumberKind) or the `numeric
 %                                 value` condition
-%     treatment.string_value   -> notes, or the site observation / the
-%                                 immersion when it is a CURIE
+%     treatment.string_value   -> notes; a CURIE carries the document
 
 arguments
     preBody (1,1) struct
@@ -114,7 +110,6 @@ if isfield(block, 'numeric_value'); numValue = block.numeric_value; end
 
 variable = jOntologyTerm(node, label);
 
-% --- Dab "Target Location" idiom: string_value is an ontology site, not prose.
 % [generic stage is lossless] and [partly placed is carried as v1] (Jess Haley,
 % 2026-10-25, did-schema V_eta_go_forward_class_audit.md): each refusal below
 % returns the v1 document UNCHANGED (carried whole as v1, noted
@@ -122,11 +117,19 @@ variable = jOntologyTerm(node, label);
 % [one-reading quick answers] (Q4) (Decided by Jess Haley, 2026-10-26): the
 % name is kept unchanged as the variable's name -- the "Target Location" suffix
 % is no longer stripped (it was, and then such a row was carried).
-siteTerm = struct('node', {}, 'name', {});   % empty ontology_term array
-if looksLikeCURIE(strValue)
-    siteTerm = jOntologyTerm(strValue, '');
-    strValue = '';
-end
+%
+% --- a CURIE-shaped string_value is NOT read as the treatment's location
+% (code audit batch 1 (C4), Jess Haley, 2026-11-26, under [one correct
+% reading], did-schema did_v2_go_forward_class_audit.md): the generic
+% migration stops guessing meaning from loose types. Until then any
+% CURIE-shaped `string_value` was taken as the site the treatment was given
+% at (the Dab "Target Location" idiom), and the substance was routed by it
+% (a dose at a body site, an immersion in the bath); but a term in
+% `string_value` may as well be what was given or a value of the treatment
+% (a food restriction's food, NCBITaxon:562). A treatment with one is carried
+% whole as v1 wherever it would have been read (below): a ChEBI substance,
+% and a term that states its number's kind (whose branch dropped the term).
+curieValue = looksLikeCURIE(strValue);
 notesText = strValue;
 
 % --- no label-word list (Decided by Jess Haley, 2026-11-03 [treatment word
@@ -145,6 +148,12 @@ anchor = jTreatmentAnchor(preBody, block);   % the recorded onset, else the sess
 % and the migration report notes it (`treatment_number_unlabelled`).
 hasNumber = ~isempty(numValue) && isnumeric(numValue);
 [kind, unit] = termNumberKind(node, label);
+if ~isempty(kind) && curieValue
+    % carry-register: none (needs_mapping; the register has no row for a
+    %   treatment whose string_value is a term)
+    v2Body = carryAsV1(preBody, curieCarryWhy(strValue));
+    return;
+end
 if ~isempty(kind)
     v = [];
     gaps = struct('field', {}, 'reason', {});
@@ -180,17 +189,19 @@ end
 % stays is what the document states by itself: a term that states its number's
 % kind (termNumberKind, above), and a ChEBI substance node, routed by its
 % recorded location ([treatment routes by location], jTreatmentRoute).
-if startsWith(lower(node), 'chebi:')
-    [manip, route, unplaced, partBodies] = makeSubstanceManipulation(preBody, variable, notesText, ...
-        numberCondition, siteTerm, anchor.base.id);
+if startsWith(lower(node), 'chebi:') && curieValue
+    % carry-register: none (needs_mapping; the register has no row for a
+    %   treatment whose string_value is a term)
+    v2Body = carryAsV1(preBody, curieCarryWhy(strValue));
+    return;
+elseif startsWith(lower(node), 'chebi:')
+    [manip, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, ...
+        numberCondition, anchor.base.id);
     if ~isempty(unplaced)
         % carry-register: carry-023 carry-024 carry-070 carry-071 via
         % private/jTreatmentBodies.m
         v2Body = carryAsV1(preBody, jCarryWhy(unplaced));
         return;
-    end
-    if strcmp(route, 'immersion')
-        siteTerm = struct('node', {}, 'name', {});   % a bath is no site on the subject
     end
 else
     % carry-register: carry-022
@@ -208,20 +219,6 @@ end
 
 % --- shared anchor; wire onto the manipulation -------------------------
 v2Body = [manip, {anchor}];
-if ~isempty(partBodies)
-    % a body site: the dose is about its region part, written in its final
-    % shape with ids computed from (subject, region) ([site scaffolding not a
-    % loss] (2), [region part ids computed]; jRegionSite)
-    v2Body = [v2Body, partBodies];
-elseif ~isempty(siteTerm)
-    % a side (jRegionSite): the site observation about the subject, which
-    % stays there; did2.convert.resolveRegionParts counts it and attaches it
-    % to no part ([side said about its region], Jess Haley, 2026-11-25)
-    obs = jStatement(preBody, 'observation', jSubjectOf(preBody), ...
-        did2.convert.registeredTerm('NCIT:C13717', 'Anatomic Site'), siteTerm, ...
-        'TimeReferenceIds', {anchor.base.id}, 'ValueKind', 'term');
-    v2Body = [v2Body, {obs}];
-end
 end
 
 % ===================== leaf builders =======================================
@@ -229,29 +226,30 @@ end
 % anchor's id: did-schema #88 builds the whole statement at once (did2.build),
 % so the time reference is made before it.
 
-function [docs, route, unplaced, partBodies] = makeSubstanceManipulation(preBody, variable, notesText, numberCondition, siteTerm, anchorId)
+function [docs, unplaced] = makeSubstanceManipulation(preBody, variable, notesText, numberCondition, anchorId)
 % A delivered substance, routed by its recorded location (jTreatmentRoute,
 % Jess Haley, 2026-10-21): the bath -> an immersion (a `manipulation` valued
 % by its formulation through `value_id`); any other site -> a dose; no site
-% -> a dose listed as `route_unknown` in the migration report. A v1
-% `treatment` records a location only through the Dab "Target Location"
-% idiom (string_value), so most substance rows are route unknown. A dose's
-% amount is NaN in `volume.liters` (jDoseValue). `numeric_value` is NEVER
-% read as an amount -- neither the dose's nor the ingredient's (Jess Haley,
-% 2026-10-21, "yes"); an unlabelled number rides as NUMBERCONDITION.
+% -> carried (carry-023, [one-reading quick answers] (Q1)). A v1 `treatment`
+% has no location field, and since 2026-11-26 a CURIE-shaped string_value is
+% not read as one (code audit batch 1 (C4); the caller carries such a
+% treatment), so a substance row here has no recorded location and
+% jTreatmentBodies carries it. `numeric_value` is NEVER read as an amount
+% (Jess Haley, 2026-10-21, "yes"); an unlabelled number rides as
+% NUMBERCONDITION.
 chem = struct('substance', variable, 'source_value', [], 'source_unit', '');
-loc = [];
-if ~isempty(siteTerm)
-    loc = siteTerm(1);
+[docs, ~, unplaced] = jTreatmentBodies(preBody, variable, chem, [], anchorId, ...
+    'Notes', notesText, 'Conditions', numberCondition);
 end
-% a body site (a UBERON area): the dose is about the site's region part
-% (jRegionSite; empty for no site, the bath or a side)
-[partBodies, partId] = jRegionSite(preBody, loc);
-[docs, route, unplaced] = jTreatmentBodies(preBody, variable, chem, loc, anchorId, ...
-    'Notes', notesText, 'Conditions', numberCondition, 'EntityId', partId);
-if ~strcmp(route, 'dose')
-    partBodies = {};
-end
+
+function why = curieCarryWhy(strValue)
+% the note of a treatment carried because its string_value is a term (code
+% audit batch 1 (C4)): what the term is -- the site, the substance or food
+% given, a value -- is the dataset's to say
+why = sprintf(['needs_mapping: its string_value %s is a term, which may be ' ...
+    'where the treatment was given, what was given or a value of it; decided ' ...
+    'by the dataset (a CURIE-shaped string_value is not read as a location)'], ...
+    char(strValue));
 end
 
 function [kind, unit] = termNumberKind(node, label)

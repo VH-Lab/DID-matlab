@@ -22,11 +22,13 @@ function tests = testRawV1RoundTripMeasurement
 %                          stimulus_element_id
 %   No corpus of the four zips holds any of them.
 %
-%   WHAT THE WRITERS' DOCUMENTS DO TODAY. A numeric measurement and a term
-%   measurement convert; a date has no v2 statement and is carried as v1 (on
-%   the renamed path it passed through as a v2 `measurement`, a `retire` class,
-%   which NDI's last step stored as v1: the same end state). subjectmeasurement
-%   converts with its datestamp as an absolute time reference.
+%   WHAT THE WRITERS' DOCUMENTS DO TODAY. A term measurement converts; a date
+%   has no v2 statement and is carried as v1 (on the renamed path it passed
+%   through as a v2 `measurement`, a `retire` class, which NDI's last step
+%   stored as v1: the same end state). INVERTED 2026-11-26 (code audit batch 1
+%   (C3), Jess Haley, under [one correct reading]): a numeric measurement and
+%   a subjectmeasurement were typed from keywords of their name ('Age' /
+%   'age' -> a time) and converted; both are now carried whole as v1.
 %   stimulus_parameter is carried whole as v1 (its decided target is built by
 %   no migrator yet; INVERTED 2026-10-29 from "kept as it is", a silent
 %   pass-1 passthrough: [one folder, final classes only], Jess Haley,
@@ -115,20 +117,29 @@ verifyCarried(testCase, v1, 'stimulus_parameter.unit');
 end
 
 function testADifferentSourceIsReportedLost(testCase)
-v1 = measurementAge();
+% UPDATED 2026-11-26: driven by the term measurement, the one shape that still
+% converts (a numeric measurement and a subjectmeasurement are carried, C3)
+v1 = measurementTerm();
 out = runRaw(v1);
-v1.measurement.numeric_value = 13;
+v1.measurement.string_value = 'NCBITaxon:9606';
 r = did2.convert.roundtrip.check(v1, out.migrated);
-verifyEqual(testCase, {r.lost.path}, {'measurement.numeric_value'});
-v1 = subjectAge();
-out = runRaw(v1);
-v1.subjectmeasurement.datestamp = '2018-01-01T00:00:00.000Z';
-r = did2.convert.roundtrip.check(v1, out.migrated);
-verifyEqual(testCase, {r.lost.path}, {'subjectmeasurement.datestamp'});
+verifyEqual(testCase, {r.lost.path}, {'measurement.string_value'});
+end
+
+function testANumberIsCarriedNotTypedFromItsName(testCase)
+% code audit batch 1 (C3) (Jess Haley, 2026-11-26, under [one correct
+% reading]): the writers' numeric rows are carried whole as v1, untouched, not
+% typed from the words 'Age' / 'age'
+[carried, notes] = did2.unittest.helpers.carryNote({measurementAge()});
+verifyTrue(testCase, carried, 'measurement, an age');
+verifyTrue(testCase, contains(notes, 'needs_mapping: the measurement states no quantity kind'), notes);
+[carried, notes] = did2.unittest.helpers.carryNote({subjectAge()});
+verifyTrue(testCase, carried, 'subjectmeasurement, an age');
+verifyTrue(testCase, contains(notes, '[carry-145] needs_mapping'), notes);
 end
 
 function testAnUnplacedDocumentFailsTheRoundTrip(testCase)
-v1 = measurementAge();
+v1 = measurementTerm();
 out = runRaw(v1);
 r = did2.convert.roundtrip.check(v1, out.migrated(1));
 verifyFalse(testCase, r.ok, 'the session anchor is missing');
@@ -139,10 +150,10 @@ end
 
 function f = fixtures()
 f = { ...
-    'measurement, an age', measurementAge(), 'converted'; ...
+    'measurement, an age', measurementAge(), 'carried'; ...   % INVERTED 2026-11-26 (C3)
     'measurement, a term', measurementTerm(), 'converted'; ...
     'measurement, a date', measurementDate(), 'carried'; ...
-    'subjectmeasurement, age with a datestamp', subjectAge(), 'converted'; ...
+    'subjectmeasurement, age with a datestamp', subjectAge(), 'carried'; ...   % INVERTED 2026-11-26 (C3)
     'stimulus_parameter, temptable2stimulusparameters', stimulusParameter(), 'carried'};   % INVERTED 2026-10-29 from 'kept'
 end
 

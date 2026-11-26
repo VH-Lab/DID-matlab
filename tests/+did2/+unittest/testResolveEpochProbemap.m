@@ -156,42 +156,62 @@ end
 
 % ===================== the triple key resolves patch/sharp ===============
 
-function testAPatchRowShareOneFileBodyAndRetireObserves(testCase)
-% RENAMED 2026-10-21 from testAPatchElementRetiresBOTHClassesViaTheTripleKey.
-% The two #30 observations it retired are no longer emitted by pass 1. The
-% patch row still yields TWO observations (voltage + current); both were
-% recorded in the epoch's one file, so that file is ONE opaque_body owned by
-% BOTH (owner_id repeats, did-schema data_body 2026-10-21), recorded by
-% location, and the element's `observes` relation is retired.
-subj = subjectBody('specimen_2', 'sess_2', 'L');
-el   = elementBody('el_2', 'sess_2', 'pat', '1', 'patch', 1, 'specimen_2');
-ing  = ingestedWithRows('ing_2', 'sess_2', 't00002', { ...
-    {'pat', '1', 'patch', 'L'}}, {'/data/t00002/cell.abf'});
-[out, rep] = decompose({sessionBody('sd_2', 'sess_2', 'ref'), subj, el, ing});
-verifyEqual(testCase, rep.observations_emitted, 2);
-verifyEqual(testCase, rep.session30_observations_retired, 0);
-verifyEqual(testCase, rep.observes_retired, 1);
-verifyEqual(testCase, rep.bodies_by_location, 1);
-verifyEqual(testCase, rep.body_owner_links, 2);
-verifyEqual(testCase, rep.bodies_quarantined, 0);
-obs = bodiesNamed(out, 'migrated_probemap_observation');
-ids = sort(cellfun(@(b) char(b.base.id), obs, 'UniformOutput', false));
-bodies = bodiesOfClass(out, 'opaque_body');
-verifyEqual(testCase, numel(bodies), 1);
-verifyEqual(testCase, sort(depVals(bodies{1}, 'owner_id')), ids);
-verifyEqual(testCase, char(bodies{1}.files.file_info(1).locations.location), '/data/t00002/cell.abf');
-verifyEqual(testCase, double(bodies{1}.files.file_info(1).locations.ingest), 0);
-verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_recording_observation')), 0);
+function testABarePatchOrSharpRowIsCarriedNotGuessed(testCase)
+% INVERTS testAPatchRowShareOneFileBodyAndRetireObserves (renamed 2026-10-21
+% from testAPatchElementRetiresBOTHClassesViaTheTripleKey), which pinned TWO
+% observations (voltage + current) for one bare `patch` row. Code audit batch
+% 1 (C13) (Jess Haley, 2026-11-26, under [one correct reading]): a recording
+% holds one quantity per channel and the type does not say which is which,
+% so a bare `patch` or `sharp` row is unresolved: it writes nothing, its
+% epoch's v1 epochfiles_ingested is carried whole, untouched, and the
+% element keeps its `observes`.
+for ty = {'patch', 'sharp'}
+    subj = subjectBody('specimen_2', 'sess_2', 'L');
+    el   = elementBody('el_2', 'sess_2', 'pat', '1', ty{1}, 1, 'specimen_2');
+    ing  = ingestedWithRows('ing_2', 'sess_2', 't00002', { ...
+        {'pat', '1', ty{1}, 'L'}}, {'/data/t00002/cell.abf'});
+    [out, rep] = decompose({sessionBody('sd_2', 'sess_2', 'ref'), subj, el, ing});
+    verifyEqual(testCase, rep.probe_rows_total, 1, ty{1});
+    verifyEqual(testCase, rep.rows_unresolved_modality, 1, ty{1});
+    verifyEqual(testCase, rep.observations_emitted, 0, ty{1});
+    verifyEqual(testCase, rep.observes_retired, 0, ty{1});
+    verifyEqual(testCase, rep.rename_skipped_rows_without_home, 1, ty{1});
+    verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_probemap_observation')), 0, ty{1});
+    verifyEqual(testCase, numel(bodiesOfClass(out, 'opaque_body')), 0, ty{1});
+    src = bodiesOfClass(out, 'epochfiles_ingested');
+    verifyEqual(testCase, numel(src), 1, ty{1});
+    verifyEqual(testCase, src{1}.epochfiles_ingested.epochprobemap, ...
+        ing.epochfiles_ingested.epochprobemap, ty{1});
+end
+end
+
+function testAnEventRowIsNotAStimulator(testCase)
+% Code audit batch 1 (C13): an `event` row (a lick or TTL line) was read as a
+% stimulator and wrote a Stimulator manipulation or a stimulator wiring; it is
+% now unresolved, and its epoch's v1 document is carried whole.
+subj = subjectBody('specimen_ev', 'sess_ev', 'L');
+el   = elementBody('el_ev', 'sess_ev', 'lick', '1', 'event', 1, 'specimen_ev');
+ing  = ingestedWithRows('ing_ev', 'sess_ev', 't000ev', {{'lick', '1', 'event', 'L'}});
+[out, rep] = decompose({sessionBody('sd_ev', 'sess_ev', 'ref'), subj, el, ing});
+verifyEqual(testCase, rep.rows_unresolved_modality, 1);
+verifyEqual(testCase, rep.rows_stimulator, 0);
+verifyEqual(testCase, rep.manipulations_emitted, 0);
+verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_probemap_manipulation')), 0);
+verifyEqual(testCase, numel(bodiesOfClass(out, 'epochfiles_ingested')), 1);
 end
 
 function testAVoltageIsAFOAndACurrentIsNCIT(testCase)
 % [voltage AFO, current NCIT] (Jess Haley, 2026-11-03): the recording
 % observation's variable for a voltage is AFO:AFR_0001916 "voltage" and for a
-% current NCIT:C48434 "Electrical Current", written by node
+% current NCIT:C48434 "Electrical Current", written by node. UPDATED
+% 2026-11-26: driven by a patch-Vm and a patch-I row (a bare `patch` row is
+% no longer recorded, C13).
 subj = subjectBody('specimen_v', 'sess_v', 'L');
-el   = elementBody('el_v', 'sess_v', 'pat', '1', 'patch', 1, 'specimen_v');
-ing  = ingestedWithRows('ing_v', 'sess_v', 't0000v', {{'pat', '1', 'patch', 'L'}});
-[out, ~] = decompose({sessionBody('sd_v', 'sess_v', 'ref'), subj, el, ing});
+elV  = elementBody('el_vv', 'sess_v', 'patv', '1', 'patch-Vm', 1, 'specimen_v');
+elI  = elementBody('el_vi', 'sess_v', 'pati', '1', 'patch-I', 1, 'specimen_v');
+ing  = ingestedWithRows('ing_v', 'sess_v', 't0000v', { ...
+    {'patv', '1', 'patch-Vm', 'L'}, {'pati', '1', 'patch-I', 'L'}});
+[out, ~] = decompose({sessionBody('sd_v', 'sess_v', 'ref'), subj, elV, elI, ing});
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, numel(obs), 2);
 got = sort(cellfun(@(b) [char(b.statement.variable.node) '|' char(b.statement.variable.name)], ...
@@ -241,9 +261,9 @@ function testAGzippedFileBodyStatesItsCompression(testCase)
 % Jess Haley, 2026-10-21 ("a"): a data body's `compression` is 'gzip' when the
 % file name ends in .tgz or .gz, and is left empty otherwise.
 subj = subjectBody('specimen_z', 'sess_z', 'L');
-el   = elementBody('el_z', 'sess_z', 'pat', '1', 'patch', 1, 'specimen_z');
+el   = elementBody('el_z', 'sess_z', 'pat', '1', 'patch-Vm', 1, 'specimen_z');
 ing  = ingestedWithRows('ing_z', 'sess_z', 't00009', { ...
-    {'pat', '1', 'patch', 'L'}}, {'/data/t00009/seg.nbf.tgz', '/data/t00009/cell.abf'});
+    {'pat', '1', 'patch-Vm', 'L'}}, {'/data/t00009/seg.nbf.tgz', '/data/t00009/cell.abf'});
 [out, rep] = decompose({sessionBody('sd_z', 'sess_z', 'ref'), subj, el, ing});
 verifyEqual(testCase, rep.bodies_quarantined, 0);
 bodies = bodiesOfClass(out, 'opaque_body');
@@ -1900,8 +1920,9 @@ function testTheModeIsKeptWhereTheRecordingsDoNotRebuildTheWord(testCase)
 % where its kind and its observations' modes rebuild its word. A patch-I
 % element whose one row says patch-Vm (current clamp) would read back as
 % patch-Vm, so its statement is kept (mode_statements_kept_named_in_probemap);
-% a bare `patch` element recorded by a `patch` row (no mode) reads back as
-% its general type, `patch`, so its statement is dropped.
+% a bare `patch` element whose row is a bare `patch` is not recorded at all
+% since 2026-11-26 (code audit batch 1 (C13): the row is unresolved), so no
+% observation rebuilds its word and its statement is kept too.
 subj = subjectBody('spec_k', 'sess_k', 'L');
 odd  = elementBody('el_kodd', 'sess_k', 'pk', '1', 'patch-I', 1, 'spec_k');
 bare = elementBody('el_kbare', 'sess_k', 'pb', '1', 'patch', 1, 'spec_k');
@@ -1911,10 +1932,11 @@ ing  = ingestedWithDeviceRows('ing_k', 'sess_k', 't0k', { ...
     {'pb', '1', 'patch', 'intan1:ai2', 'L'}});
 [out, rep] = decompose({sessionBody('sd_k', 'sess_k', 'ref'), subj, odd, bare, daq, ing});
 verifyEqual(testCase, rep.mode_statements_seen, 2, 'denominator');
-verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 1);
-verifyEqual(testCase, rep.mode_statements_dropped_recorded, 1);
+verifyEqual(testCase, rep.mode_statements_kept_named_in_probemap, 2);
+verifyEqual(testCase, rep.mode_statements_dropped_recorded, 0);
+verifyEqual(testCase, rep.rows_unresolved_modality, 1, 'the bare patch row');
 verifyEqual(testCase, numel(assertionsAbout(out, 'el_kodd', 'element type')), 1);
-verifyEqual(testCase, assertionsAbout(out, 'el_kbare', 'element type'), {});
+verifyEqual(testCase, numel(assertionsAbout(out, 'el_kbare', 'element type')), 1);
 verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000411', {'OBI:0002185'}), 'patch-Vm');
 verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000412', {'OBI:0002182'}), 'sharp-Im');
 verifyEqual(testCase, did2.convert.elementTypeOfKindAndMode('EMPTY:0000411', {'OBI:0002185', 'OBI:0002182'}), '');

@@ -10,7 +10,10 @@ function tests = testMigratorsJMeasurementFilter
 %     the EXISTING `measurement` fold with NO new class -- subject_id carries
 %     over, `measurement` becomes the statement's `variable`, `value` becomes the
 %     value, and `datestamp` becomes the TIME ANCHOR (time_reference_1 ->
-%     absolute_reference), NOT a field.
+%     absolute_reference), NOT a field. SINCE 2026-11-26 (code audit batch 1
+%     (C3), Jess Haley) nothing folds: the number was typed from keywords of
+%     the name, so every document is carried whole as v1 (carry-144 /
+%     carry-145), and a `measurement` folds only a term value.
 %
 %   FAMILY 2 -- the pyraview filter
 %     TEAM-SIGN-OFF [frequency_filter], jess 2026-07-30
@@ -42,7 +45,7 @@ function tests = testMigratorsJMeasurementFilter
 %
 %   Most tests run with Validate=false so they assert the TRANSFORM without
 %   needing a V_eta schema cache at the runner working directory; two
-%   (testSubjectMeasurementFoldValidates, testPyraviewFilterFoldValidates) turn
+%   (testSubjectMeasurementCarryValidates, testPyraviewFilterFoldValidates) turn
 %   validation ON, because a fold and a schema agreeing is not something the
 %   transform assertions can show.
 %
@@ -269,129 +272,40 @@ end
 
 % ===================== FAMILY 1: subjectmeasurement ========================
 
-function testSubjectMeasurementFoldsToObservationPlusAbsoluteReference(testCase)
-% THE SIGNED FOLD, end to end. 1 -> 2: a typed observation plus the wall-clock
-% instant as its own document.
-out = runJ(subjectMeasurementBody());
+function testSubjectMeasurementIsCarriedNotTyped(testCase)
+% INVERTED 2026-11-26 from testSubjectMeasurementFoldsToObservationPlusAbsoluteReference.
+% Code audit batch 1 (C3) (Jess Haley, 2026-11-26, under [one correct
+% reading]): the generic migration no longer types the number from words of
+% the free-text name ('age' -> a time, with no unit). The writer's row is
+% carried whole as v1, citing carry-145 (the dataset map names the quantity
+% kind), and nothing else is emitted: no observation, no time reference.
+v1 = subjectMeasurementBody();
+[carried, notes, out] = did2.unittest.helpers.carryNote({v1});
 verifyEmpty(testCase, out.quarantine);
-verifyEqual(testCase, numel(out.migrated), 2);
-
-obs = docOfClass(testCase, out, 'observation+time');
-ref = docOfClass(testCase, out, 'absolute_time_reference');
-
-% subject_id CARRIES OVER, and the source id is PRESERVED (dissolving a
-% referenced document without keeping its id is the 11,448-orphan mistake).
-verifyEqual(testCase, depValue(obs.toStruct(), 'entity_id'), 'sub_42');
-verifyEqual(testCase, obs.get('base.id'), 'sm_1');
-
-% `measurement` becomes the statement's variable. 'age' is found as the
-% registered NCIT:C25150 'Age' (did-schema [age is NCIT Age], 2026-10-30;
-% found by did2.schema.termNameKey), so it carries that node and label; a
-% name the registry does not hold would stay a bare label (no CURIE invented).
-v = obs.get('statement.variable');
-verifyEqual(testCase, v.name, 'Age');
-verifyEqual(testCase, v.node, 'NCIT:C25150');
-
-% `value` becomes the value. NO UNIT is asserted -- the class carries none.
-% THE BLOCK NAME IS THE LEAF STEM, so [time dtype] moved it too: the class is
-% `time_observation` and the block it carries is `time`. These two lines read
-% `duration.` and were the ONE thing the class-name sweep missed -- `get` on a
-% block that does not exist THROWS, so the test errored rather than failing an
-% assertion, and the runner reported it as Failed AND Incomplete.
-verifyEqual(testCase, obs.get('time.value.source_numeric'), 30);
-verifyFalse(testCase, isfield(obs.get('time.value'), 'source_unit') ...
-    && ~isempty(obs.get('time.value').source_unit), 'no unit is stated, so none is written');
-% ... so its canonical `seconds` is not computed, and the run's migration
-% report lists it ([canonical absent only as needs info], Decided by Jess
-% Haley, 2026-10-30: a quantity's canonical "may be absent only when" named)
-verifyFalse(testCase, isfield(obs.get('time.value'), 'seconds') ...
-    && ~isempty(obs.get('time.value').seconds), 'no unit: no canonical');
-g = did2.convert.migrationReport('gaps', 'sm_1');
-verifyEqual(testCase, reshape({g.field}, 1, []), {'time.value.seconds'}, ...
-    'the missing canonical is one gap in the migration report');
-
-% the observation points at the instant document, not at a session anchor
-verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_id'), ...
-    ref.get('base.id'));
-end
-
-function testDatestampBecomesTheInstantNotAField(testCase)
-% The correction the team caught: "Why does it say datestamp? Shouldn't that be
-% a time reference?" `measurement` has NO datestamp field, so a plain field
-% mapping would have DROPPED the measurement time. Assert it survives, in the
-% right place, and that it did not leak onto the observation.
-out = runJ(subjectMeasurementBody());
-ref = docOfClass(testCase, out, 'absolute_time_reference');
-
-% INVERTED for #65 increment 2 (V_eta_time_reference_model_plan.md:468,
-% TEAM-SIGN-OFF [time_reference] 2026-08-08). The flat `start_utc` /
-% `source_start` / `end_utc` fields this block used to assert NO LONGER EXIST:
-% CHANGE 1 makes the ANCHOR a nested cell and the EXTENT a separate `duration`,
-% so an approximate anchor and an exact span stop contaminating each other. The
-% assertions are re-pointed at the same FACTS in their new homes -- this is not
-% a rename, the old paths are gone.
-%
-% canonical UTC instant + the string exactly as the source wrote it
-verifyEqual(testCase, ref.get('absolute_time_reference.value.start.utc'), ...
-    '2017-03-17T19:53:57.066Z');
-verifyEqual(testCase, ref.get('absolute_time_reference.value.start.source_value'), ...
-    '2017-03-17T19:53:57.066Z');
-% a measurement is a POINT: an absent `duration` IS the point-in-time case
-verifyFalse(testCase, isfield(ref.get('absolute_time_reference.value'), 'duration'));
-% a millisecond stamp is not an approximation. CHANGE 2 deleted the value-level
-% flag and deprecated the root `is_approximate`, so the one precision fact that
-% remains real lives on the ANCHOR cell.
-verifyEqual(testCase, ref.get('absolute_time_reference.value.start.approximate'), false);
-
-% base.datestamp is the RECORD-CREATION stamp and is a DIFFERENT FACT -- the
-% tombstone says so ("SHADOWS base.datestamp"). It must not be confused with the
-% measurement instant on either document.
-obs = docOfClass(testCase, out, 'observation+time');
-% base.datestamp -> base.creation_timestamp (did-schema 72fa57f). The FIXTURE
-% above still writes did_v1 `datestamp`, deliberately: these assertions are
-% about the MIGRATED output, and the rename happens on the way out.
-verifyEqual(testCase, obs.get('base.creation_timestamp'), ...
-    '2024-06-01T12:00:00.000Z');
-verifyEqual(testCase, ref.get('base.creation_timestamp'), ...
-    '2024-06-01T12:00:00.000Z');
-
-% and the v1 block is gone -- no `datestamp` field survives anywhere
-s = obs.toStruct();
-verifyFalse(testCase, isfield(s, 'subjectmeasurement'));
-end
-
-function testMissingDatestampFallsBackToSessionAnchor(testCase)
-% NO TIMES => NO absolute_reference. But `subject_interaction` requires at least
-% one time_reference (min_count 1), so the fold falls back to the ordinal
-% session anchor every other J migrator uses -- the honest weaker claim, not a
-% fabricated instant and not a missing edge.
-b = subjectMeasurementBody();
-b.subjectmeasurement.datestamp = '';
-out = runJ(b);
-verifyEmpty(testCase, out.quarantine);
-
+verifyTrue(testCase, carried, 'carried as the untouched v1 source');
+verifyEqual(testCase, numel(out.migrated), 1);
+verifyTrue(testCase, contains(notes, '[carry-145] needs_mapping'), notes);
 names = classNames(out);
+verifyFalse(testCase, any(startsWith(names, 'observation')), strjoin(names, ', '));
 verifyFalse(testCase, any(strcmp(names, 'absolute_time_reference')));
-anchor = docOfClass(testCase, out, 'relative_time_reference');
-obs = docOfClass(testCase, out, 'observation+time');
-verifyEqual(testCase, depValue(obs.toStruct(), 'time_reference_id'), ...
-    anchor.get('base.id'));
+verifyFalse(testCase, any(strcmp(names, 'relative_time_reference')));
 end
 
-function testUnparseableDatestampKeepsTheSourceString(testCase)
-% A stamp this migration cannot normalise to UTC is still a time. The source
-% string is kept verbatim and the canonical slot is LEFT ABSENT rather than
-% filled with a guess -- converting an unlabelled local time is a guess, and
-% `start.utc` is mustBeNonEmpty:false so an absent one validates.
-% INVERTED for #65 increment 2: the paths are `value.start.source_value` and
-% `value.start.utc`; `value.source_start` / `value.start_utc` no longer exist.
-b = subjectMeasurementBody();
-b.subjectmeasurement.datestamp = '17-Mar-2017 19:53:57';
-out = runJ(b);
-ref = docOfClass(testCase, out, 'absolute_time_reference');
-verifyEqual(testCase, ref.get('absolute_time_reference.value.start.source_value'), ...
-    '17-Mar-2017 19:53:57');
-verifyFalse(testCase, isfield(ref.get('absolute_time_reference.value.start'), 'utc'));
+function testTheCarriedMeasurementKeepsItsInstant(testCase)
+% INVERTED 2026-11-26 from testDatestampBecomesTheInstantNotAField: the
+% measurement instant is not lost when nothing is folded. The carried v1
+% document holds `subjectmeasurement.datestamp` and `base.datestamp` exactly
+% as written, with or without a readable stamp.
+for stamp = {'2017-03-17T19:53:57.066Z', '', '17-Mar-2017 19:53:57'}
+    b = subjectMeasurementBody();
+    b.subjectmeasurement.datestamp = stamp{1};
+    out = runJ(b);
+    verifyEmpty(testCase, out.quarantine);
+    verifyEqual(testCase, numel(out.migrated), 1, stamp{1});
+    doc = docOfClass(testCase, out, 'subjectmeasurement');
+    verifyEqual(testCase, doc.get('subjectmeasurement.datestamp'), stamp{1});
+    verifyEqual(testCase, doc.get('base.datestamp'), '2024-06-01T12:00:00.000Z');
+end
 end
 
 function testNoSubjectPassesThrough(testCase)
@@ -440,21 +354,22 @@ verifyEqual(testCase, did2.unittest.helpers.classKey(out.migrated{1}), ...
     'subjectmeasurement');
 end
 
-function testWholeWordQuantitiesStillFold(testCase)
-% The other side of the same rule: narrowing must not break the real cases.
-cases = { 'weight', 'observation+mass'; ...
-          'body mass', 'observation+mass'; ...
-          'temperature', 'observation+temperature'; ...
-          'body length', 'observation+length'; ...
-          'age', 'observation+time' };
-for k = 1:size(cases, 1)
+function testNoQuantityIsReadFromTheName(testCase)
+% INVERTED 2026-11-26 from testWholeWordQuantitiesStillFold. Code audit batch
+% 1 (C3) (Jess Haley, 2026-11-26): the keyword table (private/jQuantityLeaf,
+% deleted) typed these names as mass, temperature, length and time. Each is
+% now carried whole as v1, citing carry-145, and no observation is written.
+for name = {'weight', 'body mass', 'temperature', 'body length', 'age', ...
+        'duration', 'average speed'}
     b = subjectMeasurementBody();
-    b.subjectmeasurement.measurement = cases{k, 1};
-    out = runJ(b);
+    b.subjectmeasurement.measurement = name{1};
+    [carried, notes, out] = did2.unittest.helpers.carryNote({b});
+    verifyEmpty(testCase, out.quarantine, name{1});
+    verifyTrue(testCase, carried, sprintf('"%s" is carried as the untouched v1 source', name{1}));
+    verifyTrue(testCase, contains(notes, '[carry-145]'), sprintf('%s: %s', name{1}, notes));
     names = classNames(out);
-    verifyTrue(testCase, any(strcmp(names, cases{k, 2})), ...
-        sprintf('"%s" should fold to %s, got {%s}', cases{k, 1}, ...
-            cases{k, 2}, strjoin(names, ', ')));
+    verifyFalse(testCase, any(startsWith(names, 'observation')), ...
+        sprintf('"%s" is not typed: {%s}', name{1}, strjoin(names, ', ')));
 end
 end
 
@@ -483,48 +398,68 @@ verifyEqual(testCase, numel(out.quarantine), 1);
 verifyTrue(testCase, contains(out.quarantine(1).reason, 'measurement'));
 end
 
-function testSubjectMeasurementFoldValidates(testCase)
-% THE POINT OF THE FAMILY, asserted with validation ON rather than inferred from
-% the transform tests above: the fold and the V_eta schemas have to agree. Both
-% emitted classes are checked -- and `absolute_reference` has never had an
-% emitter before, so this is the first time anything has validated one.
-% runJ deliberately passes Validate=false, so this calls v1_to_v2 directly.
+function testSubjectMeasurementCarryValidates(testCase)
+% INVERTED 2026-11-26 from testSubjectMeasurementFoldValidates: with
+% validation ON, the carried document is not quarantined and is the only
+% output. runJ deliberately passes Validate=false, so this calls v1_to_v2
+% directly.
 out = did2.convert.v1_to_v2(subjectMeasurementBody(), ...
     'Validate', true, 'TargetVersion', 'did_v2');
 if ~isempty(out.quarantine)
     verifyFail(testCase, sprintf('subjectmeasurement quarantined under validation: %s', ...
         out.quarantine(1).reason));
 end
-names = sort(classNames(out));
-verifyEqual(testCase, names, {'absolute_time_reference', 'observation+time'});
+verifyEqual(testCase, classNames(out), {'subjectmeasurement'});
 end
 
-function testMeasurementSiblingIsUnchangedByTheExtraction(testCase)
-% REGRESSION. The fold body moved into private/jMeasurementFold so this class and
-% its `subjectmeasurement` sibling share ONE implementation. `measurement` must
-% behave exactly as before: same leaf, same session anchor, same unit-free value.
+function v1 = measurementBody(node, label, numeric, str)
+% NDI origin/main measurement.json: {ontologyName, name, numeric_value,
+% string_value}, spelled as v1 spells it: the class reads raw v1
+% (did2.convert.rawV1Classes), so a renamed `ontology_name` is outside the
+% template and carries the document (carry-100).
 v1 = struct();
 v1.document_class = struct('class_name', 'measurement', 'class_version', '1.0.0', ...
     'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
 v1.depends_on = struct('name', {'subject_id'}, 'value', {'sub_42'});
 v1.base = struct('id', 'me_1', 'session_id', 'sess_09', ...
     'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
-% NDI origin/main measurement.json: {ontologyName, name, numeric_value,
-% string_value}, spelled as v1 spells it: the class reads raw v1
-% (did2.convert.rawV1Classes), so a renamed `ontology_name` is outside the
-% template and carries the document (carry-100).
-v1.measurement = struct('ontologyName', 'PATO:0000128', 'name', 'body weight', ...
-    'numeric_value', 22.5, 'string_value', '');
+v1.measurement = struct('ontologyName', node, 'name', label, ...
+    'numeric_value', numeric, 'string_value', str);
+end
+
+function testAMeasuredNumberIsCarriedNotTyped(testCase)
+% INVERTED 2026-11-26 from testMeasurementSiblingIsUnchangedByTheExtraction,
+% which pinned 'body weight' 22.5 as an observation of mass. Code audit batch
+% 1 (C3) (Jess Haley, 2026-11-26): a number is typed from no keyword of the
+% node or label, so it is carried whole as v1, noted needs_mapping (no
+% register row yet), and no observation or anchor is written. 'Age' and a
+% label with no keyword are carried the same way.
+cases = {'PATO:0000128', 'body weight', 22.5; ...
+         'NCIT:C25150', 'Age', 12; ...
+         'NCIT:C25206', 'Temperature', 37; ...
+         'EMPTY:0000999', 'pellet count', 4};
+for k = 1:size(cases, 1)
+    v1 = measurementBody(cases{k, 1}, cases{k, 2}, cases{k, 3}, '');
+    [carried, notes, out] = did2.unittest.helpers.carryNote({v1});
+    verifyEmpty(testCase, out.quarantine, cases{k, 2});
+    verifyTrue(testCase, carried, [cases{k, 2} ': carried as the untouched v1 source']);
+    verifyTrue(testCase, contains(notes, ['needs_mapping: the measurement states ' ...
+        'no quantity kind or unit for its number']), sprintf('%s: %s', cases{k, 2}, notes));
+    names = classNames(out);
+    verifyEqual(testCase, names, {'measurement'}, cases{k, 2});
+end
+end
+
+function testATermMeasurementStillFolds(testCase)
+% The one reading the document states by itself stays: a CURIE-shaped
+% string value is a term observation of the subject, on the session anchor.
+v1 = measurementBody('NCIT:C14250', 'Organism', [], 'NCBITaxon:10090');
 out = runJ(v1);
-obs = docOfClass(testCase, out, 'observation+mass');
-verifyEqual(testCase, obs.get('mass.value.source_numeric'), 22.5);
-verifyFalse(testCase, isfield(obs.get('mass.value'), 'source_unit') ...
-    && ~isempty(obs.get('mass.value').source_unit));
-verifyEqual(testCase, obs.get('statement.variable.node'), 'PATO:0000128');
-% `measurement` keeps the ORDINAL session anchor -- only subjectmeasurement has
-% an instant to anchor to.
+verifyEmpty(testCase, out.quarantine);
+obs = docOfClass(testCase, out, 'observation+term');
+verifyEqual(testCase, obs.get('term.value.node'), 'NCBITaxon:10090');
+verifyEqual(testCase, obs.get('statement.variable.node'), 'NCIT:C14250');
 verifyTrue(testCase, any(strcmp(classNames(out), 'relative_time_reference')));
-verifyFalse(testCase, any(strcmp(classNames(out), 'absolute_time_reference')));
 end
 
 % ===================== FAMILY 2: the pyraview filter ========================

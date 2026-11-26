@@ -231,7 +231,8 @@ function [result, report] = resolveEpochProbemap(result, options)
 %   `patch-attached` OBI:0002179, `brightfield-imaging` EMPTY:0000300, and
 %   ([recording mode terms], [imaging mode terms], 2026-11-01) the current
 %   clamp, voltage clamp, wide-field, two-photon and one-photon terms. A bare
-%   `patch` or `sharp` has no decided mode and writes none.
+%   `patch` or `sharp` row writes no observation at all since 2026-11-26: its
+%   modality is unresolved (code audit batch 1 (C13); localModality).
 %   `mode_methods_written` counts the observations built with one. The
 %   element's `element type` statement (+migrators_j/element.m) is then
 %   dropped where its device kind and those modes rebuild the word
@@ -2585,7 +2586,12 @@ entries = emptyEntries();
 disposition = 'unresolved';
 if isempty(key); return; end
 
-if any(strcmp(key, {'stimulator', 'event', 'intraoral-cannula', ...
+% ONE READING (code audit batch 1 (C13), Jess Haley, 2026-11-26, under [one
+% correct reading]; jRecordingModality's header): 'event' is no longer read as
+% a stimulator, and a bare 'patch' / 'sharp' no longer as both voltage and
+% current. All three are 'unresolved', so the row writes nothing and its
+% epoch's v1 epochfiles_ingested is carried whole (rows_unresolved_modality).
+if any(strcmp(key, {'stimulator', 'intraoral-cannula', ...
         'optogenetic-fiber', 'display', 'stim-n-trode', 'n-led'}))
     disposition = 'stimulator';
     return;
@@ -2629,9 +2635,6 @@ switch key
         entries = mkEntry('voltage', 'voltage');
     case {'patch-i', 'sharp-i', 'sharp-im'}
         entries = mkEntry('current', 'current');
-    case {'patch', 'sharp'}
-        entries = [mkEntry('voltage', 'voltage'), ...
-                   mkEntry('current', 'current')];
     case 'spikes'
         entries = mkEntry('time', 'spike');
     case {'ecg', 'eeg'}
@@ -2641,7 +2644,7 @@ switch key
     case 'thermometer'
         entries = mkEntry('temperature', 'temperature');
     otherwise
-        return;   % 'lick-spout', 'reward-well', 'ppg', anything new -> unresolved
+        return;   % 'lick-spout', 'reward-well', 'ppg', 'patch', 'sharp', 'event', anything new -> unresolved
 end
 disposition = 'recording';
 end
