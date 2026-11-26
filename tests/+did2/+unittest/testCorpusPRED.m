@@ -78,6 +78,17 @@ for k = 1:numel(files)
     bodies{k} = fileread(fullfile(files(k).folder, files(k).name));
 end
 
+% T19 COLLECTION, exactly as runCorpusDiscovery does it: v1_to_v2 disarms the
+% TermRegistry check for a migration, so a term the registry does not hold
+% would pass unseen. Collect them instead, and print them after the passes
+% (did2.unittest.helpers.printUnregisteredTerms, below). PRED runs v1_to_v2
+% and the passes itself rather than through runCorpusDiscovery, so until this
+% it never printed the census did-schema #89 / [variable terms registered
+% before required] reads. The previous collect setting is restored on exit.
+did2.build.unregisteredTerms('-reset');
+prevCollect = did2.build.unregisteredTerms('-collect', true);
+restoreCollect = onCleanup(@() did2.build.unregisteredTerms('-collect', prevCollect)); %#ok<NASGU>
+
 % Migrate to V_eta (the branch's target and the schema DID_SCHEMA_PATH points
 % at), then run the same DID-side post-passes as the other corpus tests
 % (runCorpusDiscovery): resolve deferred stimulus_baths and finalize the dataset
@@ -233,6 +244,20 @@ result = did2.unittest.helpers.runBatchPass(result, ...
     'did2.convert.resolveClockAlignment', 'clock_alignment_fold', ...
     @(r) did2.convert.resolveClockAlignment(r, 'Validate', true, ...
         'TargetVersion', 'did_v2'));
+
+% THE T19 TERM CENSUS, the same lines runCorpusDiscovery prints for the other
+% corpora, over PRED's FINAL documents (after every batch pass above):
+%   --- UNREGISTERED TERMS (PRED): ... ---
+%   --- UNREGISTERED TERMS IN FINAL DOCUMENTS (PRED): ... ---
+%   --- VARIABLE TERMS IN FINAL DOCUMENTS (PRED): ... ---
+% REPORT ONLY: nothing here gates PRED, and the variable census never throws
+% (it prints NOT MEASURED when it read nothing).
+try
+    did2.unittest.helpers.printUnregisteredTerms('PRED', result.migrated);
+catch termErr
+    fprintf('--- UNREGISTERED TERMS (PRED): NOT MEASURED (%s) ---\n', termErr.message);
+end
+did2.unittest.helpers.printVariableTerms('PRED', result.migrated);
 
 % WRITE THE CENSUS REPORT, before the assertions so a red gate still reports.
 %
