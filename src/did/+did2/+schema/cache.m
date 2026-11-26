@@ -1499,6 +1499,27 @@ classdef cache < handle
     end
 
     methods (Static)
+        function tf = declaresLogicalBlock(fieldDef)
+            % declaresLogicalBlock - true when FIELDDEF (a `value` field
+            %   definition) declares the block {logical: boolean} and nothing
+            %   else: logical's value in the numeric shape ([one shape for
+            %   measured numbers], Jess Haley, 2026-11-17, did-schema
+            %   did_v2_numeric_shape_plan.md section 3, logical.value.logical),
+            %   as did-schema declares it once the bare boolean (the old
+            %   shape) is removed (section 9 step 4, did-schema#346).
+            tf = false;
+            if ~isstruct(fieldDef) || ~isfield(fieldDef, 'fields') || isempty(fieldDef.fields)
+                return;
+            end
+            subs = fieldDef.fields;
+            if isstruct(subs)
+                subs = num2cell(reshape(subs, 1, []));
+            end
+            tf = numel(subs) == 1 && isstruct(subs{1}) && isfield(subs{1}, 'name') ...
+                && strcmp(char(subs{1}.name), 'logical') && isfield(subs{1}, 'type') ...
+                && strcmp(char(subs{1}.type), 'boolean');
+        end
+
         function obj = shared(varargin)
             % shared - return the process-wide cache singleton.
             persistent instance
@@ -2849,7 +2870,14 @@ classdef cache < handle
             % JSON (which still describes the old shape until step 3).
             parentName = '';
             if isfield(fieldDef, 'name'); parentName = char(fieldDef.name); end
-            [subs, shapeKind] = did2.schema.numericShapeFields(subs, parentName);
+            % once did-schema removes the old source_value from the value
+            % cells (section 9 step 4, did-schema#346), a cell is recognised
+            % by its source_numeric or by its class's `canonical` list
+            canonNames = {};
+            if obj.namesValueClass(typeName)
+                canonNames = did2.schema.classCanonical(typeName, obj);
+            end
+            [subs, shapeKind] = did2.schema.numericShapeFields(subs, parentName, canonNames);
             if isstruct(value)
                 elems = num2cell(reshape(value, 1, []));
             elseif iscell(value)
@@ -3296,18 +3324,25 @@ classdef cache < handle
             value = block.(fieldName);
             fieldType = char(fieldDef.type);
             qualifiedName = sprintf('%s.%s', blockClass, fieldName);
-            if strcmp(fieldType, 'boolean') && strcmp(fieldName, 'value') && isstruct(value)
-                % logical's `value`: the old bare true/false, or the new
-                % block {logical: true/false} ([one shape for measured
-                % numbers], Jess Haley, 2026-11-17, plan section 3), whose
-                % one field is checked as the bare value was
+            logicalBlock = strcmp(fieldName, 'value') ...
+                && did2.schema.cache.declaresLogicalBlock(fieldDef);
+            if strcmp(fieldName, 'value') && isstruct(value) ...
+                    && (strcmp(fieldType, 'boolean') || logicalBlock)
+                % logical's `value`: the block {logical: true/false} ([one
+                % shape for measured numbers], Jess Haley, 2026-11-17, plan
+                % section 3), whose one field is checked as the bare value
+                % was. Where the schema declares `value` a bare `boolean`
+                % (did-schema before #346's value-cell step) the old bare
+                % true/false is read too; where it declares the block, the
+                % bare value is not a struct and is refused below as one.
                 if ~isscalar(value) || ~isequal(fieldnames(value), {'logical'})
                     error('did2:validation:typeMismatch', ...
-                        'Field "%s" must be boolean, or the block {logical: boolean}.', ...
+                        'Field "%s" must be the block {logical: boolean}.', ...
                         qualifiedName);
                 end
                 value = value.logical;
                 qualifiedName = [qualifiedName '.logical'];
+                fieldType = 'boolean';
             end
             obj.validateTypeShape(value, fieldType, qualifiedName);
 

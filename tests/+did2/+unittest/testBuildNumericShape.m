@@ -112,9 +112,16 @@ else
     verifyError(testCase, conditionOld, 'did2:build:unknownField');
     verifyError(testCase, fitOld, 'did2:build:unknownField');
 end
-v = did2.build.valueCell('voltage', [0.012 0.013], 'SourceValue', [12 13], 'Shape', 'old');
-verifyEqual(testCase, size(v), [1 2]);
-verifyFalse(testCase, isfield(v, 'source_numeric'));
+% a value cell's old shape likewise, once did-schema removes it from the
+% value cells (Waltham-Data-Science/did-schema #346)
+valueOld = @() did2.build.valueCell('voltage', [0.012 0.013], 'SourceValue', [12 13], 'Shape', 'old');
+if did2.unittest.helpers.oldValueCellShapeDeclared()
+    v = valueOld();
+    verifyEqual(testCase, size(v), [1 2]);
+    verifyFalse(testCase, isfield(v, 'source_numeric'));
+else
+    verifyError(testCase, valueOld, 'did2:build:unknownField');
+end
 end
 
 % ===================== covariates ===========================================
@@ -280,7 +287,8 @@ end
 
 function testAValueCellInBothShapes(testCase)
 mV = did2.build.term('om:millivolt', 'millivolt');
-old = did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, 'SourceUnit', mV, 'Shape', 'old');
+old = oldCellBuilt(testCase, @() did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, ...
+    'SourceUnit', mV, 'Shape', 'old'), struct('volts', 0.012, 'source_unit', mV, 'source_value', 12));
 new = did2.build.valueCell('voltage', 0.012, 'SourceValue', 12, 'SourceUnit', mV, 'Shape', 'new');
 verifyEqual(testCase, new.volts, 0.012);
 verifyEqual(testCase, new.source_numeric, 12);
@@ -295,8 +303,10 @@ end
 function testASeriesInBothShapes(testCase)
 % plan section 8, answer 4: one value block whose canonical field is an array
 mV = did2.build.term('om:millivolt', 'millivolt');
-old = did2.build.valueCell('voltage', [0.012 0.013 0.014], 'SourceValue', [12 13 14], ...
-    'SourceUnit', mV, 'Approximate', false, 'Shape', 'old');
+old = oldCellBuilt(testCase, @() did2.build.valueCell('voltage', [0.012 0.013 0.014], ...
+    'SourceValue', [12 13 14], 'SourceUnit', mV, 'Approximate', false, 'Shape', 'old'), ...
+    struct('volts', {0.012, 0.013, 0.014}, 'source_unit', mV, 'source_value', {12, 13, 14}, ...
+    'approximate', false));
 new = did2.build.valueCell('voltage', [0.012 0.013 0.014], 'SourceValue', [12 13 14], ...
     'SourceUnit', mV, 'Approximate', false, 'Shape', 'new');
 verifyEqual(testCase, size(old), [1 3]);
@@ -310,27 +320,38 @@ verifyEqual(testCase, rn.source_numbers, [12 13 14]);
 verifyEqual(testCase, rn.n, 3);
 verifyEqual(testCase, rn.source_unit, mV);
 verifyEqual(testCase, rn.approximate, false);
-% both as statements: both validate; the new one reads, the old one is refused
-for v = {old, new}
-    doc = did2.build.statement('observation', did.ido.unique_id(), 'voltage', v{1}, ...
-        'Dimensions', did2.build.dimension('time', 3), ...
-        'Covariates', did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 1, 'Unit', 'second'), ...
-        'TimeReferenceIds', {did.ido.unique_id()}, 'SessionId', testCase.TestData.sid, ...
-        'ValueKind', 'voltage');
-    did2.schema.cache.shared().validateDocument(doc);
-    if numel(v{1}) > 1
-        verifyError(testCase, @() did2.read.canonical(doc), OLD, 'the old statement is refused');
-    else
-        verifyEqual(testCase, did2.read.canonical(doc).numbers, [0.012 0.013 0.014]);
-    end
+% both as statements: the new one validates and reads; the old one validates
+% while the schema declares it, and is refused by the reader on either schema
+statementOf = @(v) did2.build.statement('observation', did.ido.unique_id(), 'voltage', v, ...
+    'Dimensions', did2.build.dimension('time', 3), ...
+    'Covariates', did2.build.covariate('time', 0, 'Origin', 0, 'Spacing', 1, 'Unit', 'second'), ...
+    'TimeReferenceIds', {did.ido.unique_id()}, 'SessionId', testCase.TestData.sid, ...
+    'ValueKind', 'voltage');
+doc = statementOf(new);
+did2.schema.cache.shared().validateDocument(doc);
+verifyEqual(testCase, did2.read.canonical(doc).numbers, [0.012 0.013 0.014]);
+if did2.unittest.helpers.oldValueCellShapeDeclared()
+    oldDoc = statementOf(old);
+    did2.schema.cache.shared().validateDocument(oldDoc);
+else
+    % once did-schema removes it (#346): the builder and the validator
+    % refuse the old cells (source_value is not declared); the old
+    % statement is written by hand for the reader
+    verifyError(testCase, @() statementOf(old), 'did2:build:unknownField');
+    oldDoc = doc;
+    oldDoc.voltage.value = old;
+    verifyError(testCase, @() did2.schema.cache.shared().validateDocument(oldDoc), ...
+        'did2:validation:quantityShape');
 end
+verifyError(testCase, @() did2.read.canonical(oldDoc), OLD, 'the old statement is refused');
 % one series has one source unit
 verifyError(testCase, @() did2.build.valueCell('voltage', [1 2], 'SourceUnit', {mV, ...
     did2.build.term('om:volt', 'volt')}, 'Shape', 'new'), 'did2:build:sizeMismatch');
 end
 
 function testAConcentrationSeriesInBothShapes(testCase)
-old = did2.build.valueCell('concentration', [0.1 0.2], 'Canonical', 'molar', 'Shape', 'old');
+old = oldCellBuilt(testCase, @() did2.build.valueCell('concentration', [0.1 0.2], ...
+    'Canonical', 'molar', 'Shape', 'old'), struct('molar', {0.1, 0.2}));
 new = did2.build.valueCell('concentration', [0.1 0.2], 'Canonical', 'molar', 'Shape', 'new');
 verifyEqual(testCase, new.molar, [0.1 0.2]);
 r = did2.read.canonical(new, 'Class', 'concentration');
@@ -399,12 +420,34 @@ function testLogicalValueInBothShapes(testCase)
 cache = did2.schema.cache.shared();
 newBlock = did2.build.valueCell('logical', true, 'Shape', 'new');
 verifyEqual(testCase, newBlock, struct('logical', true));
-values = {true, newBlock};
+% a series is ONE block whose `logical` is an array (section 8, answer 4)
+series = did2.build.valueCell('logical', [true false true], 'Shape', 'new');
+verifyEqual(testCase, series, struct('logical', [true false true]));
+statementOf = @(v) did2.build.statement('assertion', did.ido.unique_id(), 'control condition', ...
+    v, 'SessionId', testCase.TestData.sid, 'ValueKind', 'logical');
 docs = cell(1, 2);
-for k = 1:2
-    docs{k} = did2.build.statement('assertion', did.ido.unique_id(), 'control condition', ...
-        values{k}, 'SessionId', testCase.TestData.sid, 'ValueKind', 'logical');
-    cache.validateDocument(docs{k});
+docs{2} = statementOf(newBlock);
+cache.validateDocument(docs{2});
+seriesDoc = statementOf(series);
+cache.validateDocument(seriesDoc);
+verifyEqual(testCase, did2.read.canonical(seriesDoc).numbers, [true false true]);
+if did2.unittest.helpers.logicalBlockDeclared()
+    % did-schema declares the block and no longer the bare true/false
+    % (#346): the builder and the validator refuse the bare value, and the
+    % old document is written by hand for the reader
+    verifyError(testCase, @() did2.build.valueCell('logical', true, 'Shape', 'old'), ...
+        'did2:build:unknownField');
+    verifyError(testCase, @() statementOf(true), 'did2:build:typeMismatch');
+    docs{1} = docs{2};
+    docs{1}.logical.value = true;
+    verifyError(testCase, @() cache.validateDocument(docs{1}), 'did2:validation:typeMismatch');
+    % one block, not one block per reading
+    twoBlocks = docs{2};
+    twoBlocks.logical.value = struct('logical', {true, false});
+    verifyError(testCase, @() cache.validateDocument(twoBlocks), 'did2:validation:typeMismatch');
+else
+    docs{1} = statementOf(true);
+    cache.validateDocument(docs{1});
 end
 verifyEqual(testCase, docs{2}.logical.value, struct('logical', true));
 verifyError(testCase, @() did2.read.canonical(docs{1}), OLD, 'the bare logical is refused');
@@ -485,6 +528,20 @@ if did2.unittest.helpers.oldListShapeDeclared()
     x = build();
 else
     verifyError(testCase, build, refusedAs, 'the schema declares no old list shape');
+    x = byHand;
+end
+end
+
+function x = oldCellBuilt(testCase, build, byHand)
+% A value cell in the old shape: built while the schema declares it; once
+% did-schema removes it from the value cells (#346) the builder must refuse
+% it (did2:build:unknownField), and BYHAND, the same cells written by hand,
+% is used, so a reader's refusal of the old shape is still checked.
+if did2.unittest.helpers.oldValueCellShapeDeclared()
+    x = build();
+else
+    verifyError(testCase, build, 'did2:build:unknownField', ...
+        'the old value-cell shape is not declared, so the builder refuses it');
     x = byHand;
 end
 end

@@ -31,9 +31,9 @@ function r = canonical(x, options)
 %   Options:
 %     'Field'        the canonical field to read, when it is known.
 %     'Class'        the value class (e.g. 'concentration'); its canonical
-%                    fields are then read from its schema: the numeric fields
-%                    its value cell declares first, until the class declares
-%                    its `canonical` (plan section 2).
+%                    fields are then read from its schema: the fields its
+%                    `canonical` list names (plan section 2), else the
+%                    numeric fields its value cell declares first.
 %     'SchemaCache'  a did2.schema.cache for 'Class' and documents; default
 %                    the shared one.
 %   Without 'Field' or 'Class', a cell's canonical field is its first numeric
@@ -180,9 +180,19 @@ end
 end
 
 function names = classCanonical(className, cacheArg)
-% The canonical field(s) of a value class: the fields
-% did2.schema.numericShapeFields marks `series` (bar source_numeric).
+% The canonical field(s) of a value class: those its `canonical` list names
+% (did2.schema.classCanonical, plan section 2), else the fields
+% did2.schema.numericShapeFields marks `series` (bar source_numeric), else
+% its value's first field (logical's block {logical}).
 names = {};
+try
+    names = did2.schema.classCanonical(className, cacheOf(cacheArg));
+catch
+    names = {};
+end
+if ~isempty(names)
+    return;
+end
 try
     cache = cacheOf(cacheArg);
     own = cache.getClass(className).fields;
