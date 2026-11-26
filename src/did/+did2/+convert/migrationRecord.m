@@ -144,9 +144,19 @@ if isempty(anchor)
     anchor = anchors{1};
 end
 
-% the record is migration output: its plain-text parameter labels (source
-% and target format, not decided) are not registry terms, as a migrator's own
-% terms are not (did2.convert.v1_to_v2 disarms the check the same way)
+% The T19 TermRegistry check is OFF while this pass runs and restored after
+% (unregistered terms are still collected when
+% did2.build.unregisteredTerms('-collect') is on). [early migration pieces
+% fixed] item 3 (Jess Haley, 2026-10-26, did-schema
+% did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486) keeps the check on
+% during migration, but this pass still builds terms the registry does not
+% hold, so it cannot be armed until the team registers them or decides
+% otherwise (VH-Lab/DID-matlab#526 measured it). The terms that block it:
+%   - the record's method parameters "source format" and "target format"
+%     (method.parameters(k).variable, by name with no node): "source format"
+%     is refused at its first build (did2:build:unregisteredTerm, every
+%     fromV1Database run and every ndi.migrate.local run); "target format"
+%     is built next and is not in the registry either.
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
 

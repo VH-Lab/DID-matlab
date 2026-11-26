@@ -274,10 +274,19 @@ mintDepth = did2.convert.mintId('-depth');
 did2.convert.mintId('-push', '');
 restoreMint = onCleanup(@() did2.convert.mintId('-popto', mintDepth));
 
-% A batch pass builds documents from the v1 source's own terms, exactly as a
-% migrator does inside v1_to_v2, so the T19 TermRegistry check is off while it
-% runs, as it is there, and restored after (unregistered terms are still
-% collected when did2.build.unregisteredTerms('-collect') is on).
+% The T19 TermRegistry check is OFF while this pass runs and restored after
+% (unregistered terms are still collected when
+% did2.build.unregisteredTerms('-collect') is on). [early migration pieces
+% fixed] item 3 (Jess Haley, 2026-10-26, did-schema
+% did_v2_go_forward_class_audit.md; VH-Lab/DID-matlab#486) keeps the check on
+% during migration, but this pass still builds terms the registry does not
+% hold, so it cannot be armed until the team registers them or decides
+% otherwise (VH-Lab/DID-matlab#526 measured it). The terms that block it:
+%   - the imaging observation's variable "intensity" (statement.variable, by
+%     name with no node; recordingVariable), refused in mkObservation
+%     (testResolveEpochProbemap, testMigratorsJRecordingObservation);
+%   - the opaque body format EDAM:format_2330 "Textual format"
+%     (formatForExtension, for a .txt/.csv/.tsv epoch file).
 prevTermRegistry = did2.schema.cache.strictMode('TermRegistry', false);
 restoreTermRegistry = onCleanup(@() did2.schema.cache.strictMode('TermRegistry', prevTermRegistry)); %#ok<NASGU>
 % [V2 builder refuses retired] holds here too: strictMode 'RetiredClasses' is

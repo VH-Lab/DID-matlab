@@ -20,7 +20,10 @@ function [params, unknown] = jParameterList(s, prefix, nameFn)
 %   through NAMEFN instead: [V2NAME, FOUND] = NAMEFN(V1PATH) (e.g.
 %   @(n) did2.convert.tuningNames('v2', n), [parameter names map by table],
 %   Jess Haley, 2026-10-27). A path NAMEFN does not hold is not written and is
-%   listed in UNKNOWN (the caller carries the document).
+%   listed in UNKNOWN (the caller carries the document). NAMEFN may return a
+%   term ({node, name}) instead of a name: it is the entry's variable as given
+%   (e.g. hartley_calc's frame times, EMPTY:0000368 "onset time"), so the
+%   entry is built with its term rather than relabelled after the build.
 
 if nargin < 2; prefix = ''; end
 if nargin < 3; nameFn = []; end
@@ -53,7 +56,11 @@ for k = 1:numel(fn)
             unknown{end+1} = name; %#ok<AGROW>
             continue;
         end
-        var = jLabel(v2);
+        if isstruct(v2)
+            var = v2;
+        else
+            var = jLabel(v2);
+        end
     end
     if (isnumeric(v) || islogical(v)) && isscalar(v)
         % the source's number, as a number ([numeric shape details] (1),
