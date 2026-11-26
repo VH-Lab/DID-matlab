@@ -149,8 +149,7 @@ anchor = jTreatmentAnchor(preBody, block);   % the recorded onset, else the sess
 hasNumber = ~isempty(numValue) && isnumeric(numValue);
 [kind, unit] = termNumberKind(node, label);
 if ~isempty(kind) && curieValue
-    % carry-register: none (needs_mapping; the register has no row for a
-    %   treatment whose string_value is a term)
+    % carry-register: carry-176
     v2Body = carryAsV1(preBody, curieCarryWhy(strValue));
     return;
 end
@@ -190,8 +189,7 @@ end
 % kind (termNumberKind, above), and a ChEBI substance node, routed by its
 % recorded location ([treatment routes by location], jTreatmentRoute).
 if startsWith(lower(node), 'chebi:') && curieValue
-    % carry-register: none (needs_mapping; the register has no row for a
-    %   treatment whose string_value is a term)
+    % carry-register: carry-176
     v2Body = carryAsV1(preBody, curieCarryWhy(strValue));
     return;
 elseif startsWith(lower(node), 'chebi:')
@@ -246,7 +244,7 @@ function why = curieCarryWhy(strValue)
 % the note of a treatment carried because its string_value is a term (code
 % audit batch 1 (C4)): what the term is -- the site, the substance or food
 % given, a value -- is the dataset's to say
-why = sprintf(['needs_mapping: its string_value %s is a term, which may be ' ...
+why = sprintf(['[carry-176] needs_mapping: its string_value %s is a term, which may be ' ...
     'where the treatment was given, what was given or a value of it; decided ' ...
     'by the dataset (a CURIE-shaped string_value is not read as a location)'], ...
     char(strValue));
