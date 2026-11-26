@@ -3028,6 +3028,33 @@ probesBy = containers.Map('KeyType', 'char', 'ValueType', 'any');  % sid|reader|
 stimsBy = containers.Map('KeyType', 'char', 'ValueType', 'any');    % sid|reader|epoch -> {stimulator ids}
 stimSubjBy = containers.Map('KeyType', 'char', 'ValueType', 'any'); % sid|reader|epoch|stimulator -> {subject strings of its rows}
 carryNotes = struct('class', {}, 'id', {}, 'detail', {});
+% A v1 element still in the batch is one carried as v1: no entity minted,
+% so subjectIdByKey does not hold its probe. [element whose probe maps name
+% another subject is malformed] (Jess Haley, 2026-11-26) carries a
+% stimulator whose rows name another subject (carry-170); its rows still
+% name it, so it is the stimulator here (its v1 id, which a v1
+% presentation's stimulus_element_id names), and the rules below decide
+% what its log becomes. It is never made the instrument of a fallback
+% manipulation (a v2 statement does not point at a v1 element).
+carriedProbeByKey = containers.Map('KeyType', 'char', 'ValueType', 'char');
+carriedStims = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+for k = 1:numel(bodies)
+    b = bodies{k};
+    if isempty(b) || isempty(docIds{k}) || ~strcmp(classOf{k}, 'element') ...
+            || ~isfield(b, 'element') || ~isstruct(b.element) || ~isfield(b.element, 'name')
+        continue;
+    end
+    ref = [];
+    if isfield(b.element, 'reference'); ref = b.element.reference; end
+    try
+        lid = probeLocalIdentifier(b.element.name, ref);
+    catch
+        lid = '';
+    end
+    if isempty(lid); continue; end
+    key = epochKey(char(sessionIds{k}), lid);
+    if ~isKey(carriedProbeByKey, key); carriedProbeByKey(key) = docIds{k}; end
+end
 for k = 1:numel(bodies)
     b = bodies{k};
     if isempty(b) || isempty(docIds{k}); continue; end
@@ -3064,13 +3091,22 @@ for k = 1:numel(bodies)
             if isKey(stimsBy, key); stims = stimsBy(key); end
             for r = 1:numel(rows)
                 pk = epochKey(sid, probeLocalIdentifier(rows(r).name, rows(r).reference));
+                probeId = '';
+                isCarried = false;
                 if isKey(subjectIdByKey, pk)
-                    held{end+1} = subjectIdByKey(pk); %#ok<AGROW>
+                    probeId = subjectIdByKey(pk);
+                elseif isKey(carriedProbeByKey, pk)
+                    probeId = carriedProbeByKey(pk);   % carried as v1 (above)
+                    isCarried = true;
+                end
+                if ~isempty(probeId)
+                    held{end+1} = probeId; %#ok<AGROW>
                     [~, disposition] = localModality(rows(r).type);
                     if strcmp(disposition, 'stimulator')
                         % [stimulus log fallback names the stimulator's
                         % subject]: the subjects of the stimulator's OWN rows
-                        stimId = subjectIdByKey(pk);
+                        stimId = probeId;
+                        if isCarried; carriedStims(stimId) = true; end
                         stims{end+1} = stimId; %#ok<AGROW>
                         ssKey = [key '|' stimId];
                         ss = {};
@@ -3221,6 +3257,14 @@ for i = 1:numel(archiveIdxAll)
             end
             if isempty(subjectId)
                 report.stimulus_log_kept_no_subject = report.stimulus_log_kept_no_subject + 1;
+                continue;
+            end
+            if isKey(carriedStims, stimId)
+                % the stimulator is carried as v1 (above): no v2 entity to be
+                % the manipulation's instrument, so no single v2 stimulator;
+                % kept as v1, counted as before the carry
+                report.stimulus_log_kept_no_stimulator = ...
+                    report.stimulus_log_kept_no_stimulator + 1;
                 continue;
             end
             kind = 'fallback';
