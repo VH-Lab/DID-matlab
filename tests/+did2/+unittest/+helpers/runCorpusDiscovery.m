@@ -626,6 +626,7 @@ result.reference_integrity = ...
 printUnregisteredTerms(corpusName);
 printUnregisteredTermsInFinal(corpusName, result);
 printV1NameCheck(corpusName, result);
+printUnnamedRigs(corpusName, result);
 
 % ENTITY-TYPE `requires` CENSUS -- REPORT-ONLY (Jess Haley, 2026-10-21, "b").
 % Per entity type and required field (binding_registry_meta.json
@@ -829,6 +830,26 @@ if isfield(result.summary, 'migration_notes') ...
     for k = 1:min(20, numel(n.distinct_details))
         fprintf('      %6d  %s\n', n.distinct_detail_counts(k), n.distinct_details{k});
     end
+end
+end
+
+function printUnnamedRigs(corpusName, result)
+% [unnamed rig is malformed] (Jess Haley, 2026-11-26): of the v1 daqsystems
+% pass 1 routed to their migrator (the denominator), those carried as v1
+% because the rig has no name, each named. Printed unconditionally; "not
+% measured" when pass 1 did not report it.
+fprintf('\n--- UNNAMED RIGS (%s) ---\n', corpusName);
+if ~isfield(result, 'summary') || ~isfield(result.summary, 'unnamed_rigs')
+    fprintf('  not measured (pass 1 wrote no unnamed_rigs summary)\n');
+    return;
+end
+R = result.summary.unnamed_rigs;
+fprintf(['  %d v1 daqsystem(s) inspected -> %d converted, %d carried as v1, ' ...
+    '%d quarantined; %d MALFORMED (no name), carried as v1\n'], ...
+    R.daqsystems_inspected, R.converted, R.carried_as_v1, R.quarantined, ...
+    R.unnamed_carried_malformed);
+for j = 1:numel(R.malformed)
+    fprintf('    MALFORMED: %s\n', R.malformed{j});
 end
 end
 

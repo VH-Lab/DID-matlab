@@ -444,6 +444,13 @@ srcOutIds = cell(nBodies, 1);   % the base.id of each document a source became
 % migrator handed back to be carried with their output element
 srcCarryRows = repmat({{}}, nBodies, 1);
 srcWithElement = false(nBodies, 1);
+% [unnamed rig is malformed] (Decided by Jess Haley, 2026-11-26, did-schema
+% docs/plans/did_v2_standing_wiring_plan.md): which sources are v1 daqsystems
+% routed to their migrator (the denominator), and which of them the migrator
+% carried as v1 because the rig has no name (summary.unnamed_rigs).
+srcIsRig = false(nBodies, 1);
+srcRigUnnamed = false(nBodies, 1);
+UNNAMED_RIG_TAG = '[unnamed rig is malformed]';
 
 for k = 1:numel(bodies)
     rawBody = bodies{k};
@@ -912,6 +919,11 @@ for k = 1:numel(bodies)
             && did2.convert.reportNote('pending', 'carried_with_element') > 0;
         srcCarryRows{k} = carryRowsCited( ...
             did2.convert.reportNote('pendingDetails', 'carried_as_v1'));
+        if carried && strcmp(className, 'daqsystem')
+            srcRigUnnamed(k) = any(contains( ...
+                did2.convert.reportNote('pendingDetails', 'carried_as_v1'), ...
+                UNNAMED_RIG_TAG));
+        end
         srcClass{k} = className;
         [srcId{k}, srcDepNames{k}, srcDepIds{k}] = sourceEdges(preBody);
         srcOut{k} = nBefore + 1:numel(migrated);
@@ -939,6 +951,8 @@ for k = 1:numel(bodies)
         [quarNames, quarValues] = bumpClassCounter(quarNames, quarValues, ...
             sprintf('%s|%s', className, err.identifier));
     end
+    % a v1 daqsystem routed to its migrator, whatever became of it
+    srcIsRig(k) = strcmp(className, 'daqsystem') && ~srcTarget(k);
     did2.convert.mintId('-popto', mintDepth);
 end
 
@@ -1062,6 +1076,8 @@ result.summary = struct( ...
         'not_kept_by_class', buildByClassTable(v1NameNotKeptNames, v1NameNotKeptValues)), ...
     'dimension_terms', dimensionTermSummary(numel(migrated), ...
         dimTermClasses, dimTermWritten, dimTermNoNode), ...
+    'unnamed_rigs', unnamedRigSummary(srcIsRig, srcRigUnnamed, srcDone, ...
+        srcCarried, srcId), ...
     'migration_notes', did2.convert.reportNote('collect'));
 % the report of this call's documents (gaps, carries, counts); a run writer
 % collects the whole run's instead (did2.convert.migrationRecord)
@@ -2087,8 +2103,50 @@ printTuningResponseVariable(result);
 printTuningAxisNaming(result);
 printMigrationNotes(result);
 printLegacyNdiDocument(result);
+printUnnamedRigs(result);
 printSilentLoss(result);
 printQuarantine(result);
+end
+
+function s = unnamedRigSummary(isRig, unnamed, done, carried, ids)
+%UNNAMEDRIGSUMMARY [unnamed rig is malformed] (Decided by Jess Haley,
+%   2026-11-26, did-schema docs/plans/did_v2_standing_wiring_plan.md): "a v1
+%   rig with no name is malformed source data: its documents are carried
+%   unchanged as v1 and the migration report names it as malformed". Of the
+%   v1 daqsystems routed to +migrators_j/daqsystem.m (`daqsystems_inspected`,
+%   the denominator, reported first and whatever it is), how many converted,
+%   how many were carried as v1 (for any reason, carryDependents included),
+%   how many quarantined, and how many were carried because the rig has no
+%   name (`unnamed_carried_malformed`), each named in `malformed` as
+%   'rig <id>: <reason>'. Every such rig also has a `carried_as_v1` note, so
+%   the run's migration report lists it with the same reason.
+%   `converted + carried_as_v1 + quarantined == daqsystems_inspected`.
+idx = reshape(find(unnamed & isRig), 1, []);
+malformed = cell(1, numel(idx));
+for j = 1:numel(idx)
+    malformed{j} = sprintf(['rig %s: no name (base.name absent or empty), so ' ...
+        'no device is minted; carried unchanged as v1'], char(ids{idx(j)}));
+end
+s = struct( ...
+    'daqsystems_inspected', sum(isRig), ...
+    'converted', sum(isRig & done & ~carried), ...
+    'carried_as_v1', sum(isRig & done & carried), ...
+    'quarantined', sum(isRig & ~done), ...
+    'unnamed_carried_malformed', numel(idx), ...
+    'malformed', {malformed});
+end
+
+function printUnnamedRigs(result)
+% [unnamed rig is malformed] (Jess Haley, 2026-11-26): denominator first.
+if ~isfield(result.summary, 'unnamed_rigs'); return; end
+R = result.summary.unnamed_rigs;
+fprintf(['  rigs (v1 daqsystem): %d inspected -> %d converted, %d carried as ' ...
+    'v1, %d quarantined; %d MALFORMED (no name), carried as v1\n'], ...
+    R.daqsystems_inspected, R.converted, R.carried_as_v1, R.quarantined, ...
+    R.unnamed_carried_malformed);
+for j = 1:numel(R.malformed)
+    fprintf('    MALFORMED: %s\n', R.malformed{j});
+end
 end
 
 function [n, noNode] = dimensionTermCounts(body)
