@@ -1347,10 +1347,14 @@ result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did
 end
 
 function testAProbeWhoseObservesRelationWasRetiredIsComparedAfterThePass(testCase)
-% resolveEpochProbemap retires the probe's `observes` relation once a recording
-% observation carries the same (instrument, specimen) pair; the element's
-% inverse reads the specimen there, so the probe is compared (not counted
-% CHANGED BY A BATCH PASS) and its subject_id is not lost
+% A recording observation carries the probe's (instrument, specimen) pair;
+% the element's inverse reads the specimen there, so the probe is compared
+% (not counted CHANGED BY A BATCH PASS) and its subject_id is not lost.
+% INVERTED 2026-11-27 for [no observes relation in v2] (Jess Haley,
+% 2026-11-26): pass 1 writes no `observes`, so resolveEpochProbemap retires
+% none (it retired 1) and no document of the probe is removed: it is compared
+% as an ordinary source, not after a batch pass (it was), and its subject is
+% still read from the observation, not deferred.
 prev = did2.schema.cache.strictMode('TermRegistry', false);
 testCase.addTeardown(@() did2.schema.cache.strictMode('TermRegistry', prev));
 sid = '41268b6f5c6a3d4e_00000000000000b3';
@@ -1369,11 +1373,13 @@ result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
-assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
-    'premise: the pass retired the probe''s observes relation');
+assertEqual(testCase, rep.observes_retired, 0, ...
+    'premise: pass 1 wrote no observes relation, so none was retired');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
 verifyFalse(testCase, isfield(r.changed_by_class, 'element'), describe(r));
-verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, 'element'), describe(r));
+verifyFalse(testCase, isfield(r.compared_after_batch_pass_by_class, 'element'), describe(r));
+verifyFalse(testCase, any(strcmp({r.deferred_to_second_pass.fields.class_name}, 'element')), ...
+    'the probe''s subject was deferred though its observation names it');
 for k = 1:numel(r.failures)
     if strcmp(r.failures(k).source_id, 'wb_probe_o')
         verifyFalse(testCase, any(startsWith(r.failures(k).lost, 'depends_on')), describe(r));
@@ -1383,7 +1389,9 @@ end
 end
 
 function testAProbeWithASortedUnitReadsItsSubjectFromItsRecordingOnly(testCase)
-% the probe's `observes` relation is retired by its recording observation; the
+% the probe's recording observation names its specimen (no `observes`
+% relation since [no observes relation in v2], Jess Haley, 2026-11-26; INVERTED
+% 2026-11-27: it was retired, and the probe compared after the pass); the
 % spike train of a unit sorted from it ([spike trains as epoch bodies]) is a
 % second observation with the probe as instrument and the UNIT as entity. The
 % unit (`derived_from` the probe) is not the probe's specimen, so subject_id
@@ -1413,12 +1421,14 @@ result = did2.convert.v1_to_v2(bodies, 'Validate', false, 'TargetVersion', 'did_
 result = did2.convert.epochMint(result, 'Validate', false, 'TargetVersion', 'did_v2');
 [result, rep] = did2.convert.resolveEpochProbemap(result, 'Validate', true, ...
     'TargetVersion', 'did_v2');
-assertGreaterThanOrEqual(testCase, rep.observes_retired, 1, ...
-    'premise: the pass retired the probe''s observes relation');
+assertEqual(testCase, rep.observes_retired, 0, ...
+    'premise: pass 1 wrote no observes relation, so none was retired');
 assertEqual(testCase, rep.spike_trains_emitted, 1, ...
     'premise: the unit has a spike train whose instrument is the probe');
 r = did2.convert.roundtrip.wholeBatch(bodies, result);
-verifyTrue(testCase, isfield(r.compared_after_batch_pass_by_class, 'element'), describe(r));
+verifyGreaterThan(testCase, r.sources_compared, 0, describe(r));
+verifyFalse(testCase, any(strcmp({r.deferred_to_second_pass.fields.class_name}, 'element')), ...
+    'the probe''s subject was deferred though its recording names it');
 for k = 1:numel(r.failures)
     if strcmp(r.failures(k).source_id, 'wb_probe_u')
         verifyFalse(testCase, any(startsWith(r.failures(k).lost, 'depends_on')), describe(r));

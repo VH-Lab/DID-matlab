@@ -1,4 +1,4 @@
-function [pm, why, epochString] = manifestProbemap(manifest, ctx)
+function [pm, why, epochString, deferred] = manifestProbemap(manifest, ctx)
 %MANIFESTPROBEMAP The serialised v1 `epochprobemap` of an ingestion_manifest,
 %   read back from the documents its probe map was decomposed into.
 %
@@ -63,13 +63,19 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 %   instrument of no statement found here is a row too, rebuilt from the
 %   wiring and the element: name, reference and type from the element as
 %   above, devicestring from the rig and the relation's conditions, and
-%   subjectstring the local_identifier of the entity the element `observes`
-%   (or is `derived_from`, an element with no underlying element), the
-%   element's subject; with neither, the v1 subject the run's migration
-%   report carries for the element (carry-172, did2.convert.
-%   carriedElementSubject: NDI-matlab's second pass removes the `observes`
-%   of a stimulator no statement names and holds its subject there,
-%   [one-field carry in the migration report], Jess Haley, 2026-11-19).
+%   subjectstring the local_identifier of the entity the element is
+%   `derived_from` (an element with no underlying element), else of the v1
+%   subject the run's migration report carries for the element (carry-172,
+%   did2.convert.carriedElementSubject: NDI-matlab's second pass holds there
+%   the subject of a stimulator no statement names, [one-field carry in the
+%   migration report], Jess Haley, 2026-11-19). With neither, for a device,
+%   the subjectstring is DEFERRED to that second pass: [no observes
+%   relation in v2] (Jess Haley, 2026-11-26) writes no `observes` relation,
+%   so the batch does not hold a direct element's subject, and "its round
+%   trip defers the element's v1 `subject_id` to the second pass". The row
+%   is written with an empty subjectstring and listed in DEFERRED (a cellstr,
+%   one text per row); the caller compares the map with
+%   private/sameProbemapDeferredSubjects.
 %   These rows follow the statements' rows: the round trip
 %   compares a probe map's rows as an unordered set ([probe map rows compared
 %   as a set], Jess Haley, 2026-11-09; private/sameProbemapSeveralRows), the
@@ -92,6 +98,7 @@ function [pm, why, epochString] = manifestProbemap(manifest, ctx)
 pm = '';
 why = {};
 epochString = '';
+deferred = {};
 if isempty(ctx)
     why{end+1} = 'the probe map is read from the batch, and no batch was given';
     return;
@@ -186,8 +193,11 @@ for i = 1:numel(wirings)
     if any(strcmp(firstEdge(w, 'child_id'), named))
         continue;
     end
-    [rowText, bad] = wiringRowOf(w, ctx, prefixes);
+    [rowText, bad, isDeferred] = wiringRowOf(w, ctx, prefixes);
     why = [why, bad]; %#ok<AGROW>
+    if isDeferred
+        deferred{end+1} = rowText; %#ok<AGROW>
+    end
     rowLines{end+1} = rowText; %#ok<AGROW>
 end
 tab = sprintf('\t');
@@ -223,10 +233,13 @@ tf = strcmp(curieKeyOf(node), curieKeyOf('RO:0002170')) ...
     && any(ismember(edgeIds(b, 'parent_id'), systems));
 end
 
-function [rowText, why] = wiringRowOf(w, ctx, prefixes)
+function [rowText, why, isDeferred] = wiringRowOf(w, ctx, prefixes)
 % the row of a wiring relation no statement names: the element (its child),
 % the rig (its parent) and its conditions, and the element's subject
+% (ISDEFERRED: a device whose subject the batch does not hold, [no observes
+% relation in v2]; its subjectstring is left empty)
 why = {};
+isDeferred = false;
 tab = sprintf('\t');
 instrumentId = firstEdge(w, 'child_id');
 % rowOf reads the instrument, rig and wiring through a statement's edges: a
@@ -245,7 +258,9 @@ why = why(~endsWith(why, 'its entity is not in the batch'));
 subject = '';
 subjectId = elementSubjectId(instrumentId, ctx);
 subj = ctxDoc(ctx, subjectId);
-if isempty(subj)
+if isempty(subjectId) && isDeviceEntity(ctxDoc(ctx, instrumentId))
+    isDeferred = true;   % NDI's second pass reads the v1 subject_id
+elseif isempty(subj)
     why{end+1} = sprintf('wiring %s: its element %s names no subject in the batch', ...
         char(getIn(w, 'base', 'id')), instrumentId);
 else
@@ -257,15 +272,15 @@ rowText = strjoin(cols, tab);
 end
 
 function id = elementSubjectId(elementId, ctx)
-% the entity an element `observes`, else the one it is `derived_from` (the
-% lineage relation +migrators_j/element.m writes; +roundtrip/element.m reads it),
-% else the v1 subject the run's migration report carries for it: NDI-matlab's
-% second pass removes the `observes` of a stimulator no statement names (and
-% of a recording probe with no recording observation) and holds its v1
-% subject there (carry-172; [stimulator subject carried as needing
-% information], [one-field carry in the migration report], [recording probe
-% subject carried the same way], Jess Haley, 2026-11-19), read by
-% did2.convert.carriedElementSubject
+% the entity an element is `derived_from` (the lineage relation
+% +migrators_j/element.m writes; +roundtrip/element.m reads it), else the v1
+% subject the run's migration report carries for it: NDI-matlab's second pass
+% holds there the v1 subject of a stimulator no statement names (and of a
+% recording probe with no recording observation) (carry-172; [stimulator
+% subject carried as needing information], [one-field carry in the migration
+% report], [recording probe subject carried the same way], Jess Haley,
+% 2026-11-19), read by did2.convert.carriedElementSubject. No `observes`
+% relation is read ([no observes relation in v2], Jess Haley, 2026-11-26)
 id = '';
 derived = '';
 for k = ctxReferrers(ctx, elementId)
@@ -277,10 +292,7 @@ for k = ctxReferrers(ctx, elementId)
     parent = edgeIds(b, 'parent_id');
     if ~isscalar(parent); continue; end
     handle = did2.build.vocabularyHandle('relation', getIn(b, 'directed_relation', 'relation'));
-    if strcmp(handle, 'observes')
-        id = parent{1};
-        return;
-    elseif strcmp(handle, 'derived_from') && isempty(derived)
+    if strcmp(handle, 'derived_from') && isempty(derived)
         derived = parent{1};
     end
 end
@@ -563,4 +575,11 @@ ids = edgeIds(body, name);
 if ~isempty(ids)
     id = ids{1};
 end
+end
+
+function tf = isDeviceEntity(b)
+% an `entity` of type device (by node, [vocabulary nodes] L2)
+tf = ~isempty(b) && strcmp(classNameOf(b), 'entity') && isfield(b, 'entity') ...
+    && isstruct(b.entity) && isfield(b.entity, 'type') ...
+    && did2.build.isVocabulary(b.entity.type, 'entity_type', 'device');
 end

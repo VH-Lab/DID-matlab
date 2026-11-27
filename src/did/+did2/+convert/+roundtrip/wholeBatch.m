@@ -34,9 +34,10 @@ function report = wholeBatch(v1Bodies, result)
 %   documents; such a source is compared on the documents of its that remain,
 %   counted in sources_compared and also in sources_compared_after_batch_pass
 %   (by class: compared_after_batch_pass_by_class). Its failures are counted
-%   like any other. Today: `element`, whose `observes` relation
-%   did2.convert.resolveEpochProbemap retires once a recording observation
-%   carries the same pair (did2.convert.roundtrip.element reads it there).
+%   like any other. Today: `element`, whose subject is read from the
+%   recording observations did2.convert.resolveEpochProbemap writes
+%   (did2.convert.roundtrip.element reads it there; no `observes` relation
+%   since [no observes relation in v2], Jess Haley, 2026-11-26).
 %   Test code run 41322059537 counted element CHANGED BY A BATCH PASS in B
 %   (143) and Dab (547). And `daqreader_mfdaq_epochdata_ingested`, the v1
 %   ingested archive did2.convert.resolveEpochProbemap RETIRES once its files
@@ -512,7 +513,7 @@ end
 function c = BATCH_PASS_INVERSES()
 % the classes whose inverse reads, from the whole batch, what a batch pass did
 % to their documents (AN INVERSE FOR A BATCH PASS, above)
-c = {'element', ...   % resolveEpochProbemap retires `observes`; roundtrip.element
+c = {'element', ...   % the subject is on resolveEpochProbemap's observations; roundtrip.element
     'daqreader_mfdaq_epochdata_ingested'};   % resolveEpochProbemap retires the archive
 end
 

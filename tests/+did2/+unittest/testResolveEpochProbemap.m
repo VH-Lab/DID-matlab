@@ -109,7 +109,15 @@ verifyEqual(testCase, rep.epoch_anchors_minted, 1);
 verifyEqual(testCase, rep.session30_observations_retired, 0);   % none emitted by pass 1 now
 verifyEqual(testCase, rep.retire_skipped_ambiguous, 0);
 verifyEqual(testCase, rep.fold_quarantined, 0);
-verifyEqual(testCase, rep.observes_retired, 1);
+% INVERTED 2026-11-27 for [no observes relation in v2] (Jess Haley,
+% 2026-11-26): pass 1 writes no `observes`, so none is retired (it was 1);
+% the specimen is on the observation (control below)
+verifyEqual(testCase, rep.observes_retired, 0);
+verifyEmpty(testCase, relationsNamed(out, 'observes'), 'an `observes` relation is in the batch');
+obsRows = bodiesNamed(out, 'migrated_probemap_observation');
+verifyTrue(testCase, any(cellfun(@(o) strcmp(depVal(o, 'instrument_id'), 'el_1') ...
+    && strcmp(depVal(o, 'entity_id'), 'specimen_1'), obsRows)), ...
+    'no observation names el_1 as instrument and specimen_1 as entity');
 verifyEqual(testCase, rep.epochs_with_observations, 1);
 verifyEqual(testCase, rep.epochs_no_file_named, 1);
 verifyEqual(testCase, rep.bodies_by_location + rep.bodies_from_archive, 0);
@@ -178,9 +186,10 @@ function testABarePatchOrSharpRowIsCarriedNotGuessed(testCase)
 % observations (voltage + current) for one bare `patch` row. Code audit batch
 % 1 (C13) (Jess Haley, 2026-11-26, under [one correct reading]): a recording
 % holds one quantity per channel and the type does not say which is which,
-% so a bare `patch` or `sharp` row is unresolved: it writes nothing, its
-% epoch's v1 epochfiles_ingested is carried whole, untouched, and the
-% element keeps its `observes`.
+% so a bare `patch` or `sharp` row is unresolved: it writes nothing, and its
+% epoch's v1 epochfiles_ingested is carried whole, untouched. (The element
+% kept its `observes` until [no observes relation in v2], Jess Haley,
+% 2026-11-26; pass 1 writes none, so none is retired either way.)
 for ty = {'patch', 'sharp'}
     subj = subjectBody('specimen_2', 'sess_2', 'L');
     el   = elementBody('el_2', 'sess_2', 'pat', '1', ty{1}, 1, 'specimen_2');
@@ -265,7 +274,8 @@ ing  = ingestedWithRows('ing_sp', 'sess_sp', 't00sp', { ...
 [out, rep] = decompose({sessionBody('sd_sp', 'sess_sp', 'ref'), subj, elP, elN, ing});
 verifyEqual(testCase, rep.observations_emitted, 1);
 verifyEqual(testCase, rep.session30_observations_retired, 0);
-verifyEqual(testCase, rep.observes_retired, 1);
+% 0, was 1: no `observes` since [no observes relation in v2] (INVERTED 2026-11-27)
+verifyEqual(testCase, rep.observes_retired, 0);
 verifyEqual(testCase, numel(bodiesNamed(out, 'migrated_recording_observation')), 0);
 obs = bodiesNamed(out, 'migrated_probemap_observation');
 verifyEqual(testCase, depVal(obs{1}, 'instrument_id'), 'el_probe');
@@ -1730,9 +1740,13 @@ function testTheStimulatorRowRebuildsFromTheWiringAndTheElement(testCase)
 % (Jess Haley, 2026-11-09, did-schema did_v2_standing_wiring_plan.md): the
 % pass writes no manipulation for a stimulator row its wiring relation and
 % element hold, and the round trip rebuilds the row from them (name,
-% reference, type, the rig's channels, the subject the element observes),
-% comparing the probe map's rows as an unordered set. The stimulator is the
-% FIRST v1 row; rebuilt from the wiring it comes back last.
+% reference, type, the rig's channels, the element's subject), comparing the
+% probe map's rows as an unordered set. The stimulator is the FIRST v1 row;
+% rebuilt from the wiring it comes back last. Since [no observes relation in
+% v2] (Jess Haley, 2026-11-26) the row's subject is compared with the
+% element's v1 subject_id (result.element_subjects), and the rebuilt row's
+% subjectstring is deferred to NDI's second pass (the batch holds no
+% `observes`).
 subj = subjectBody('spec_w', 'sess_w', 'L');
 stim = elementBody('stim_w', 'sess_w', 'vis', '1', 'stimulator', 1, 'spec_w');
 rec  = elementBody('rec_w', 'sess_w', 'cortex', '1', 'n-trode', 1, 'spec_w');
@@ -1771,10 +1785,17 @@ function testAStimulatorSubjectCarriedInTheReportRoundTripsTheWholeBatch(testCas
 % migration report as a carried field (carry-172,
 % did2.convert.carryElementSubject). The whole-batch round trip reads it
 % there: the stimulator's subject_id and direct, and the subjectstring of
-% the probe-map row rebuilt from its wiring (manifestProbemap). Without the
-% entry (the control) the element and the manifest both fail. The run is
+% the probe-map row rebuilt from its wiring (manifestProbemap). The run is
 % held by a run writer, as NDI-matlab's ndi.migrate.local holds it, so the
 % batch passes' own v1_to_v2 calls do not replace it.
+% INVERTED 2026-11-27 for [no observes relation in v2] (Jess Haley,
+% 2026-11-26): pass 1 writes no `observes` (the premise removed the one it
+% wrote), and "its round trip defers the element's v1 `subject_id` to the
+% second pass". So without the entry the element and the manifest are not
+% failures: their subject is DEFERRED (deferred_to_second_pass), where they
+% were failures before. With the entry nothing of theirs is deferred. The
+% control that a wrong value is still caught: a carried subject other than
+% v1's fails the stimulator.
 for withEntry = [true false]
     did2.convert.migrationReport('begin');
     cleanup = onCleanup(@() did2.convert.migrationReport('end'));
@@ -1795,10 +1816,10 @@ for withEntry = [true false]
     bodies = {sessionBody('sd_c', 'sess_c', 'ref'), subj, stim, rec, daq, ing};
     [out, rep] = decompose(bodies);
     assertEqual(testCase, rep.stimulator_manipulations_not_written, 1, 'premise');
-    % what NDI's second pass does: the stimulator's `observes` goes, and
-    % (with the entry) its v1 subject is carried in the report
+    % pass 1 wrote no `observes` for the stimulator; (with the entry) NDI's
+    % second pass carries its v1 subject in the report
     [out, nRemoved] = withoutObserves(out, 'stim_c');
-    assertEqual(testCase, nRemoved, 1, 'premise: pass 1 wrote one observes for the stimulator');
+    assertEqual(testCase, nRemoved, 0, 'premise: pass 1 wrote no observes for the stimulator');
     label = 'without the entry (control)';
     if withEntry
         label = 'with the entry';
@@ -1807,12 +1828,28 @@ for withEntry = [true false]
     end
     r = did2.convert.roundtrip.wholeBatch(bodies, out);
     verifyGreaterThan(testCase, r.sources_compared, 0, label);
-    verifyEqual(testCase, failedSource(r, 'stim_c'), ~withEntry, ...
+    verifyFalse(testCase, failedSource(r, 'stim_c'), ...
         sprintf('%s: the stimulator: %s', label, failureText(r, 'stim_c')));
-    verifyEqual(testCase, failedSource(r, 'ing_c'), ~withEntry, ...
+    verifyFalse(testCase, failedSource(r, 'ing_c'), ...
         sprintf('%s: the manifest: %s', label, failureText(r, 'ing_c')));
+    deferredFields = r.deferred_to_second_pass.fields;
+    isElement = strcmp({deferredFields.class_name}, 'element');
+    isManifest = strcmp({deferredFields.class_name}, 'epochfiles_ingested');
+    verifyEqual(testCase, any(isElement), ~withEntry, ...
+        sprintf('%s: the stimulator''s subject deferred', label));
+    verifyEqual(testCase, any(isManifest), ~withEntry, ...
+        sprintf('%s: the manifest''s subjectstring deferred', label));
     clear cleanup
 end
+% the control: a carried subject other than v1's is lost, not deferred
+did2.convert.migrationReport('begin');
+cleanup = onCleanup(@() did2.convert.migrationReport('end'));
+[out, ~] = decompose(bodies);
+did2.convert.carryElementSubject('stim_c', 'subj_other', 'a wrong entry');
+r = did2.convert.roundtrip.wholeBatch(bodies, out);
+verifyTrue(testCase, failedSource(r, 'stim_c'), ...
+    'a carried subject other than v1''s did not fail the stimulator');
+clear cleanup
 end
 
 function [result, n] = withoutObserves(result, childId)
@@ -2240,6 +2277,20 @@ function tf = isDirection(key, direction)
 % '<direction>+<kind>'. A joined old name does NOT count, so an emitter that
 % regressed to one fails here.
 tf = strcmp(key, direction) || strncmp(key, [direction '+'], numel(direction) + 1);
+end
+
+function out = relationsNamed(result, handle)
+% the directed_relations of RESULT whose relation is HANDLE (by
+% did2.build.vocabularyHandle)
+out = {};
+for k = 1:numel(result.migrated)
+    d = result.migrated{k};
+    if isa(d, 'did2.document'); d = d.toStruct(); end
+    if strcmp(char(d.document_class.class_name), 'directed_relation') ...
+            && strcmp(did2.build.vocabularyHandle('relation', d.directed_relation.relation), handle)
+        out{end+1} = d; %#ok<AGROW>
+    end
+end
 end
 
 function out = bodiesNamed(result, baseName)

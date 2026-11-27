@@ -550,6 +550,14 @@ verifyNumElements(testCase, allOfClassJ(out.migrated, 'directed_relation'), 1);
 end
 
 function testElementDirectDeviceObservesSpecimen(testCase)
+% INVERTED 2026-11-27 for [no observes relation in v2] (Decided by Jess Haley,
+% 2026-11-26, did-schema docs/plans/did_v2_standing_wiring_plan.md): "v2 has
+% no `observes` relation: DID-matlab's first pass stops turning a v1
+% element's `subject_id` into one". Pass 1 writes no relation for a direct
+% device; NDI's second pass reads its v1 subject_id. Until then this test
+% asserted the `observes` relation; the control below is that a derived
+% element still gets its `derived_from`.
+% The history before that:
 % INVERTED AGAIN 2026-10-21 -- the name is true again. From 2026-08-10 this
 % asserted that pass 1 drops the loose `observes` relation because element.m
 % emitted the replacement: a session-wide voltage_observation carrying the
@@ -563,11 +571,13 @@ function testElementDirectDeviceObservesSpecimen(testCase)
 % testObservesRelationIsGoneForAMappedRecordingElement pins that half).
 out = runJ(elementDoc('probeA', 'n-trode', 'ndi.probe.timeseries', 1, 'subj_007', ''));
 
-rel = firstOfClassJ(out.migrated, 'directed_relation');
-verifyNotEmpty(testCase, rel, 'pass 1 dropped `observes` with nothing in its place');
-verifyEqual(testCase, did2.build.vocabularyHandle('relation', rel.get('directed_relation.relation')), 'observes');
-verifyEqual(testCase, depVal(rel, 'child_id'), 'el_1');
-verifyEqual(testCase, depVal(rel, 'parent_id'), 'subj_007');
+verifyEmpty(testCase, firstOfClassJ(out.migrated, 'directed_relation'), ...
+    'pass 1 wrote a lineage relation for a direct device ([no observes relation in v2])');
+% the control: a derived element keeps its `derived_from` the underlying element
+der = runJUnit(elementDoc('unit3', 'spikes', 'ndi.neuron', 0, 'subj_007', 'probe_1'));
+rel = firstOfClassJ(der.migrated, 'directed_relation');
+verifyNotEmpty(testCase, rel, 'a derived element lost its lineage relation');
+verifyEqual(testCase, did2.build.vocabularyHandle('relation', rel.get('directed_relation.relation')), 'derived_from');
 
 verifyEmpty(testCase, firstOfClassJ(out.migrated, 'observation+voltage'), ...
     'pass 1 emitted a recording observation; it is per epoch, minted by the batch pass');

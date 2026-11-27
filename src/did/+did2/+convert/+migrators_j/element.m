@@ -34,8 +34,7 @@ function v2Body = element(preBody)
 %                         files, so the observation is minted by the batch pass
 %                         did2.convert.resolveEpochProbemap (epochs with a cached
 %                         `epochfiles_ingested`) or the NDI second pass (the file
-%                         navigator); until then `observes` is KEPT. Below is the
-%                         pass-1 shape as it was:
+%                         navigator). Below is the pass-1 shape as it was:
 %                         THE RAW RECORDING (open item #30, SIGNED 2026-08-10).
 %                         For a DIRECT recording element the signal itself is now
 %                         a typed observation OF THE SPECIMEN taken WITH this
@@ -50,9 +49,22 @@ function v2Body = element(preBody)
 %                         * a derived element (has `underlying_element_id`, or
 %                           `direct` = 0) -> `derived_from` its underlying element
 %                           (safe computational lineage);
-%                         * a direct device (`direct` = 1) -> `observes` the
-%                           specimen (the instrument-agent role, J's
-%                           instrument_id->subject).
+%                         * a direct device (`direct` = 1) -> NOTHING. Decided
+%                           by Jess Haley, 2026-11-26 [no observes relation in
+%                           v2] (did-schema docs/plans/
+%                           did_v2_standing_wiring_plan.md): "v2 has no
+%                           `observes` relation: DID-matlab's first pass stops
+%                           turning a v1 element's `subject_id` into one, and
+%                           NDI's second pass reads the v1 `subject_id`
+%                           directly; the animal is the `entity_id` of the
+%                           observations and manipulations made with the
+%                           element, or, where none names it, is carried as
+%                           the element's subject". Until then an `observes`
+%                           relation to the specimen was written here.
+%                           did2.convert.roundtrip.element defers the
+%                           element's `subject_id` (and `direct`) to that
+%                           second pass where no observation in the batch
+%                           names it.
 %                         `part_of` (the anatomical claim) is NOT emitted
 %                         automatically: a sorted neuron is part of the specimen
 %                         but a derived signal is not, and we cannot tell them
@@ -60,28 +72,18 @@ function v2Body = element(preBody)
 %                         promotion is left to curation rather than fabricated.
 %
 %   ---------------------------------------------------------------------
-%   `observes` RETIRES -- BUT ONLY WHERE ITS REPLACEMENT IS PRESENT
+%   NO `observes` RELATION ([no observes relation in v2], 2026-11-26)
 %   ---------------------------------------------------------------------
-%   The signed decision: "the loose `probe observes specimen` relation RETIRES in
-%   favour of the `instrument_id` edge". It does, and it does so exactly where
-%   that edge got written -- jRecordingObservation returns RETIREOBSERVES true
-%   only when it emitted an observation carrying `instrument_id`. Where it did
-%   not (a stimulator-class element, whose delivery is a manipulation and whose
-%   instrument edge arrives with the stimulus model #31/#43; or an element type
-%   Guard A could not resolve) the relation is KEPT, because dropping a link with
-%   nothing standing in its place is data loss, not a retirement. Same shape as
-%   the guarded passthroughs in fitcurve.m / openminds_stimulus.m.
-%
-%   NOTE FOR WHOEVER RUNS THE TEST SUITE NEXT:
-%   tests/+did2/+unittest/testMigratorsJ.m carries
-%   `testElementDirectDeviceObservesSpecimen`, which asserts the `observes`
-%   relation for a direct 'n-trode' element. That type now resolves to a
-%   voltage-valued `observation`, so the relation is gone and THAT TEST WILL FAIL. It
-%   asserts the behaviour this decision retires, so it needs INVERTING, not
-%   patching -- the same call as the three tests that had asserted the `epochid`
-%   bug (CLAUDE.md: "A TEST WRITTEN FROM THE SAME PREMISE AS THE CODE CANNOT
-%   CATCH THE CODE"). It is left alone here only because testMigratorsJ.m is
-%   outside this change's file scope and is being edited concurrently.
+%   The signed decision of #30 was "the loose `probe observes specimen`
+%   relation RETIRES in favour of the `instrument_id` edge", and until
+%   2026-11-26 this migrator wrote the relation wherever no such edge was
+%   written yet (every direct element, since jRecordingObservation emits no
+%   observation in pass 1), for did2.convert.resolveEpochProbemap and NDI's
+%   second pass to retire. [no observes relation in v2] replaces that: the
+%   relation is not written at all. The v1 `subject_id` of a direct element
+%   is read by NDI's second pass from the v1 document
+%   (ndi.migrate.internal.v1ElementSubjects) and by resolveEpochProbemap from
+%   did2.convert.elementSubjects (result.element_subjects).
 
 %   READS RAW v1 (did2.convert.rawV1Classes; Decided by Jess Haley, 2026-10-26
 %   [migrators read raw v1]): v1_to_v2 hands this migrator the document exactly
@@ -128,7 +130,11 @@ function v2Body = element(preBody)
 %                                 rebuilt as 0 (unitFollowsItsProbe)
 %     depends_on subject_id, underlying_element_id -> the lineage relation; a
 %                                 sorted unit's subject_id is not written:
-%                                 rebuilt from its probe's (unitFollowsItsProbe)
+%                                 rebuilt from its probe's (unitFollowsItsProbe);
+%                                 a direct element's subject_id is not written
+%                                 ([no observes relation in v2]): the round
+%                                 trip reads it from the batch's observations,
+%                                 else defers it to NDI's second pass
 %     depends_on jrclust_clusters_id -> a prov:wasDerivedFrom relation
 %
 %   THE ENTITY TYPE (elementEntityType): Decided by Jess Haley, did-schema
@@ -376,14 +382,14 @@ end
 % --- a probe recorded from several subjects ---------------------------------
 % A v1 element names ONE subject. When the batch's epochprobemap rows name this
 % probe with two or more subjectstrings, resolveEpochProbemap would make it the
-% instrument of observations of several specimens and retire its `observes`
-% relation, and its subject link and `direct` flag could not be rebuilt (4
+% instrument of observations of several specimens, and its subject link and
+% `direct` flag could not be rebuilt (4
 % Dab probes, whole-batch round trip). Which subject it has is the dataset's
 % question: [dataset-specific logic leaves the generic migration] (Jess Haley,
 % 2026-10-26) and the lossless rule; the element is carried whole as v1 and
 % the dataset map decides (did-schema docs/V2_PLAN.md G94,
 % did2.convert.probemapSubjects). A stimulator's rows make manipulations,
-% which keep `observes`, so it is not carried for this.
+% not observations, so it is not carried for this.
 if ~strcmp(strtrim(type), 'stimulator')
     rowSubjects = did2.convert.probemapSubjects('get', elementId);
     if numel(rowSubjects) > 1
@@ -510,24 +516,18 @@ end
 % a different one (#118) -- so the branch is opened for the type that has a
 % signature and no wider.
 % 2026-10-21: jRecordingObservation still resolves the modality (and Guard A's
-% worklist label) but EMITS NO OBSERVATION and never retires `observes`; the
-% per-epoch observation with its file bodies is minted by the batch pass /
-% NDI second pass, which also retires `observes` once it has a replacement.
+% worklist label) but EMITS NO OBSERVATION; the per-epoch observation with its
+% file bodies is minted by the batch pass / NDI second pass. Its second
+% output (whether `observes` could retire) is not read: no `observes` is
+% written ([no observes relation in v2], below).
 recordingBodies = {};
-retireObserves = false;
 unresolvedLabel = '';
 if isDirect
-    [recordingBodies, retireObserves, unresolvedLabel] = jRecordingObservation( ...
+    [recordingBodies, ~, unresolvedLabel] = jRecordingObservation( ...
         preBody, elementId, specimenId, type, ndiClass);
 elseif strcmpi(strtrim(type), 'spikes')
     [recordingBodies, ~, unresolvedLabel] = jRecordingObservation( ...
         preBody, underlyingId, elementId, type, ndiClass);
-    % `retireObserves` is deliberately DISCARDED here. It governs whether the
-    % loose `observes` relation may be dropped now that `instrument_id` names
-    % the instrument -- and the lineage branch below never emits `observes` for
-    % a derived element anyway (it emits `derived_from` to the underlying
-    % element). Threading it through would let a spike train silently change a
-    % relation that belongs to a different decision.
 end
 if ~isempty(unresolvedLabel)
     % Guard A's worklist entry. [variable terms batch 1] (Decided by Jess
@@ -543,9 +543,10 @@ end
 if ~isempty(underlyingId)
     bodies{end+1} = lineageRelation(preBody, elementId, underlyingId, 'derived_from');
 elseif isDirect && ~isempty(specimenId)
-    if ~retireObserves
-        bodies{end+1} = lineageRelation(preBody, elementId, specimenId, 'observes');
-    end
+    % [no observes relation in v2] (Decided by Jess Haley, 2026-11-26,
+    % did-schema docs/plans/did_v2_standing_wiring_plan.md): nothing. The v1
+    % subject_id is read from the v1 document by NDI's second pass, and by the
+    % batch passes from did2.convert.elementSubjects.
 elseif ~isempty(specimenId)
     bodies{end+1} = lineageRelation(preBody, elementId, specimenId, 'derived_from');
 end
@@ -568,13 +569,10 @@ end
 % ===================== builders ========================================
 
 function rel = lineageRelation(preBody, childId, parentId, relationName)
-%LINEAGERELATION child --relationName--> parent (both entities).
-%   `observes` is NOT in did-schema #88's relation set (dropped, #73 audit 2
-%   D5). It is still written for the one branch that has no replacement (a
-%   direct stimulator or unresolved element, whose instrument edge arrives with
-%   the stimulus model), because dropping the probe -> specimen link with nothing
-%   standing in its place is data loss. It validates only because the binding
-%   conformance switch is off (#32). A SCHEMA QUESTION, reported with the port.
+%LINEAGERELATION child --relationName--> parent (both entities): `derived_from`.
+%   `observes` is no longer written ([no observes relation in v2], Jess Haley,
+%   2026-11-26); it is not in did-schema #88's relation set either (dropped,
+%   #73 audit 2 D5).
 rel = jEntityRelation(preBody, childId, parentId, relationName);
 end
 

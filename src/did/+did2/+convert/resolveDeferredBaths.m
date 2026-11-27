@@ -37,7 +37,7 @@ function [result, report] = resolveDeferredBaths(result, options)
 %   2026-10-26). Read from this file's code, class by class.
 %   BATCH-PASS-READS: stimulus_bath, element, entity(element),
 %       directed_relation(element lineage), acquisition_epoch, element_epoch,
-%       result.passthrough
+%       result.passthrough, result.element_subjects
 %   BATCH-PASS-ADDS: relative_time_reference(bath anchor),
 %       manipulation(bath), formulation, chemical, observation(bath),
 %       entity(pass-1 region part), assertion(pass-1 region part kind),
@@ -272,6 +272,11 @@ if isempty(result.quarantine)
 end
 
 [byElement, indexStats] = indexElements(result.migrated);
+% each v1 element's subject_id ([no observes relation in v2], Decided by Jess
+% Haley, 2026-11-26, did-schema docs/plans/did_v2_standing_wiring_plan.md):
+% pass 1 writes no `observes`, so a stimulator's subject is its v1 element's,
+% handed on by v1_to_v2 (result.element_subjects)
+byElement.v1Subject = did2.convert.elementSubjects('map', result);
 clockByElementEpoch = indexElementEpochClocks(result.migrated);
 report.elements_indexed = indexStats.elements;
 report.lineage_edges_indexed = indexStats.lineage_edges;
@@ -543,10 +548,24 @@ function subjectId = subjectOfElement(idx, elementId)
 %   directed_relation(s) (child -> parent) up to the specimen. V_zeta fallback:
 %   walk the `element` docs' underlying_element_id chain to a subject_id.
 
-% -- V_eta: walk the directed_relation lineage from the element-subject --------
+% -- V_eta: walk the directed_relation lineage from the element-subject, to
+% the first element whose v1 subject_id the batch handed on ([no observes
+% relation in v2], Jess Haley, 2026-11-26: no `observes` relation states a
+% direct element's subject); else to the lineage's end, as before --------
 cur = char(elementId);
 visited = containers.Map('KeyType', 'char', 'ValueType', 'logical');
-while isKey(idx.relParent, cur) && ~isKey(visited, cur)
+v1Subject = containers.Map('KeyType', 'char', 'ValueType', 'char');
+if isfield(idx, 'v1Subject') && isa(idx.v1Subject, 'containers.Map')
+    v1Subject = idx.v1Subject;
+end
+while ~isKey(visited, cur)
+    if isKey(v1Subject, cur)
+        subjectId = v1Subject(cur);
+        return;
+    end
+    if ~isKey(idx.relParent, cur)
+        break;
+    end
     visited(cur) = true;
     cur = idx.relParent(cur);
 end
