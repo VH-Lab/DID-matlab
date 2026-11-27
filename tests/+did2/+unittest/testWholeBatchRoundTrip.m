@@ -29,6 +29,51 @@ verifyEqual(testCase, r.sources_no_inverse, 0);
 verifyTrue(testCase, r.ok, describe(r));
 end
 
+function testEverySourceNotComparedIsCountedUnderOneReason(testCase)
+% DID-matlab #536: on Soph run 45870909504, shard 2 printed "compared 15868"
+% of 17184 sources and nothing on the line named the other 1,316 (they were
+% NOT MIGRATED BY A DECISION, [orphaned response settings are an accepted
+% loss]; that reason is tested in testRawV1RoundTripStimulusResponse). Every
+% source the loop does not compare is now counted under one reason, and
+% sources_unaccounted closes the sum. Each case breaks the batch ON PURPOSE.
+% CONTROL: a clean batch compares every source and leaves no reason counted.
+[bodies, result] = cleanBatch();
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_compared, 3, describe(r));
+verifyEqual(testCase, r.sources_not_migrated_by_decision, 0);
+verifyEqual(testCase, r.sources_became_nothing, 0);
+verifyEqual(testCase, r.sources_without_row, 0);
+verifyEqual(testCase, r.source_rows_out_of_range, 0);
+verifyEqual(testCase, r.sources_unaccounted, 0);
+% a source its migrator turned into no document
+[bodies, result] = cleanBatch();
+k = find(strcmp({result.source_outputs.id}, 'wb_subj_3'));
+result.source_outputs(k).output_ids = {};
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_compared, 2, describe(r));
+verifyEqual(testCase, r.sources_became_nothing, 1);
+verifyEqual(testCase, r.sources_unaccounted, 0);
+% a source no source_outputs row names
+[bodies, result] = cleanBatch();
+k = find(strcmp({result.source_outputs.id}, 'wb_subj_2'));
+result.source_outputs(k) = [];
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_compared, 2, describe(r));
+verifyEqual(testCase, r.sources_without_row, 1);
+verifyEqual(testCase, r.source_rows_out_of_range, 0);
+verifyEqual(testCase, r.sources_unaccounted, 0);
+% a row whose input_index names no source: the row is counted, and so is
+% the source it no longer names
+[bodies, result] = cleanBatch();
+k = find(strcmp({result.source_outputs.id}, 'wb_subj_1'));
+result.source_outputs(k).input_index = numel(bodies) + 1;
+r = did2.convert.roundtrip.wholeBatch(bodies, result);
+verifyEqual(testCase, r.sources_compared, 2, describe(r));
+verifyEqual(testCase, r.source_rows_out_of_range, 1);
+verifyEqual(testCase, r.sources_without_row, 1);
+verifyEqual(testCase, r.sources_unaccounted, 0);
+end
+
 function testTheResultRecordsWhatEachSourceBecame(testCase)
 [~, result] = cleanBatch();
 rows = result.source_outputs;

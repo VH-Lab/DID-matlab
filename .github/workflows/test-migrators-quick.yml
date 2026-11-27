@@ -285,6 +285,12 @@ jobs:
         # EXISTS cannot notice something that stopped existing.
         run: python3 tools/test_batch_pass_wiring.py
 
+      - name: Every counter the discovery run prints is one its pass writes (python, <1s)
+        # DID-matlab #536: numGet prints NaN for a counter the report does not
+        # hold, and eight printed counters had been renamed or removed in their
+        # passes, so their lines read NaN in every corpus run.
+        run: python3 tools/test_discovery_printer_counters.py
+
       - name: The batch-pass order is derived from declarations and checked (python, <1s)
         # [migration reliability practices] (c) (Jess Haley, 2026-10-26, did-schema
         # docs/plans/did_v2_go_forward_class_audit.md): each whole-dataset pass

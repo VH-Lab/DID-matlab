@@ -196,6 +196,27 @@ function report = wholeBatch(v1Bodies, result)
 %                              that pass (BATCH_PASS_INVERSES)
 %     sources_changed_by_batch_pass, changed_by_class
 %     sources_no_inverse, no_inverse_by_class
+%     NOT COMPARED, AND WHY    every source not handed to the per-class
+%                              check is counted under exactly one reason, so
+%                              that sources_inspected closes (Operating Rule
+%                              5; DID-matlab #536: on Soph run 45870909504,
+%                              shard 2 printed "compared 15868" of 17184
+%                              sources with nothing on the line naming the
+%                              1,316 it did not compare):
+%       sources_not_migrated_by_decision, not_migrated_by_decision_by_class
+%                              NOT MIGRATED BY A DECISION (above): an accepted
+%                              loss of the whole document, so there is no
+%                              document of it to compare
+%       sources_became_nothing a source whose migrator wrote no document
+%       sources_without_row    a source no RESULT.source_outputs row names
+%                              (source_rows_out_of_range: rows whose
+%                              input_index names no source)
+%       sources_unaccounted    sources_inspected minus sources_compared,
+%                              sources_still_quarantined, the three above,
+%                              sources_changed_by_batch_pass and
+%                              sources_no_inverse: 0 when every source is
+%                              accounted for; anything else is a defect of
+%                              this instrument, not of the batch
 %     unattributed_documents   final documents no source became (minted by a
 %                              batch pass)
 %     failures_total, failures_by_class   compared sources that are not
@@ -259,6 +280,9 @@ report = struct('sources_inspected', numel(bodies), 'final_documents', numel(fin
     'sources_compared_after_batch_pass', 0, 'compared_after_batch_pass_by_class', struct(), ...
     'sources_changed_by_batch_pass', 0, 'changed_by_class', struct(), ...
     'sources_no_inverse', 0, 'no_inverse_by_class', struct(), ...
+    'sources_not_migrated_by_decision', 0, 'not_migrated_by_decision_by_class', struct(), ...
+    'sources_became_nothing', 0, 'sources_without_row', 0, ...
+    'source_rows_out_of_range', 0, 'sources_unaccounted', 0, ...
     'unattributed_documents', 0, 'failures_total', 0, 'failures_by_class', struct(), ...
     'failures', struct('source_id', {}, 'class_name', {}, 'lost', {}, ...
         'lost_values', {}, 'invented', {}, 'unplaced', {}, 'deferred', {}), 'ok', false);
@@ -268,11 +292,14 @@ sampled = struct();
 uidIndex = [];   % bodyUidIndex, built on first use (uidIndexBuilt)
 uidIndexBuilt = false;
 attributed = false(1, numel(final));
+hasRow = false(1, numel(bodies));
 for r = 1:numel(rows)
     row = rows(r);
     if row.input_index < 1 || row.input_index > numel(bodies)
+        report.source_rows_out_of_range = report.source_rows_out_of_range + 1;
         continue;
     end
+    hasRow(row.input_index) = true;
     v1 = bodies{row.input_index};
     contextIds = {};
     cls = row.class_name;
@@ -318,7 +345,12 @@ for r = 1:numel(rows)
         report.ids_accepted_lost_by_class = bump(report.ids_accepted_lost_by_class, cls);
         report = noteAccepted(report, a, row.id, cls, '(the v1 id)');
         if a.listed
-            continue;   % NOT MIGRATED BY A DECISION: nothing of it to compare
+            % NOT MIGRATED BY A DECISION: nothing of it to compare
+            report.sources_not_migrated_by_decision = ...
+                report.sources_not_migrated_by_decision + 1;
+            report.not_migrated_by_decision_by_class = ...
+                bump(report.not_migrated_by_decision_by_class, cls);
+            continue;
         end
     else
         report.ids_lost = report.ids_lost + 1;
@@ -348,7 +380,9 @@ for r = 1:numel(rows)
         afterPass = true;   % compared on what remains (AN INVERSE FOR A BATCH PASS)
     end
     if isempty(outs)
-        continue;   % a source that became nothing (its migrator wrote none)
+        % a source that became nothing (its migrator wrote none)
+        report.sources_became_nothing = report.sources_became_nothing + 1;
+        continue;
     end
     docs = finalBodies(where(present));
     if ~isempty(located)
@@ -425,6 +459,11 @@ for r = 1:numel(rows)
     end
 end
 report.unattributed_documents = nnz(~attributed);
+report.sources_without_row = nnz(~hasRow);
+report.sources_unaccounted = report.sources_inspected - report.sources_compared ...
+    - report.sources_still_quarantined - report.sources_not_migrated_by_decision ...
+    - report.sources_became_nothing - report.sources_without_row ...
+    - report.sources_changed_by_batch_pass - report.sources_no_inverse;
 report.deferred_to_second_pass.sources_compared = report.sources_compared;
 report.ok = report.sources_ok == report.sources_compared && report.ids_lost == 0 ...
     && report.sources_changed_by_batch_pass == 0 && report.sources_no_inverse == 0;
