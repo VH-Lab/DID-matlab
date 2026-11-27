@@ -7758,3 +7758,68 @@ if did2.unittest.helpers.schemaDeclares('contrast_sensitivity', {'value', block,
     name = 'half_maximum_below';
 end
 end
+
+% ============ a probe-map row naming another subject =====================
+%
+% Decided by Jess Haley, 2026-11-26 (on VH-Lab/NDI-matlab#1309: "This is
+% malformed v1", then "Yes"): an element whose v1 epoch probe maps name a
+% subject other than its own `subject_id` is malformed v1, carried whole,
+% citing carry-170. The Dab case: the bath stimulator bath_230616_BNSTIII_a,
+% its own rat (OTRCre) named in 7 epochs' rows, another rat (WT) in 6.
+
+function batch = otherSubjectBatch(rowSubjects)
+% the stimulator el_1 ('bath_a', reference 1, session sess_09) of subject
+% subj_007 (local identifier 'rat_own@lab'), the subject subj_008
+% ('rat_other@lab'), and one epochfiles_ingested per entry of ROWSUBJECTS
+% whose epochprobemap names el_1 with that subjectstring
+batch = {elementDoc('bath_a', 'stimulator', 'ndi.probe.timeseries.stimulator', 1, 'subj_007', '')};
+lids = {'subj_007', 'rat_own@lab'; 'subj_008', 'rat_other@lab'};
+for k = 1:size(lids, 1)
+    s = struct();
+    s.document_class = struct('class_name', 'subject', 'class_version', '1.0.0', ...
+        'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    s.depends_on = struct('name', {}, 'value', {});
+    s.base = struct('id', lids{k, 1}, 'session_id', 'sess_09', ...
+        'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+    s.subject = struct('local_identifier', lids{k, 2}, 'description', '');
+    batch{end+1} = s; %#ok<AGROW>
+end
+for k = 1:numel(rowSubjects)
+    efi = struct();
+    efi.document_class = struct('class_name', 'epochfiles_ingested', 'class_version', '1.0.0', ...
+        'superclasses', struct('class_name', 'base', 'class_version', '1.0.0'));
+    efi.depends_on = struct('name', {'filenavigator_id'}, 'value', {'fn_1'});
+    efi.base = struct('id', sprintf('efi_%d', k), 'session_id', 'sess_09', ...
+        'name', '', 'datestamp', '2024-06-01T12:00:00.000Z');
+    efi.epochfiles_ingested = struct('epoch_id', sprintf('t%05d', k), ...
+        'files', {{sprintf('t%05d.abf', k)}}, ...
+        'epochprobemap', sprintf(['name\treference\ttype\tdevicestring\tsubjectstring\n' ...
+        'bath_a\t1\tstimulator\tdab_ephys:ao1\t%s\n'], rowSubjects{k}));
+    batch{end+1} = efi; %#ok<AGROW>
+end
+batch = cellfun(@(b) jsondecode(jsonencode(b)), batch, 'UniformOutput', false);
+end
+
+function testAStimulatorWhoseRowsNameAnotherSubjectIsCarried(testCase)
+% the carried case: rows name its own rat and another
+batch = otherSubjectBatch({'rat_own@lab', 'rat_other@lab', 'rat_own@lab'});
+[carried, notes] = did2.unittest.helpers.carryNote(batch);
+verifyTrue(testCase, carried, 'the stimulator is carried as its untouched v1 source');
+verifyTrue(testCase, contains(notes, ['[carry-170] malformed: its epochprobemap rows ' ...
+    'name a subject other than its own (rat_other@lab)']), notes);
+% one row naming only the other subject is the same case
+[carried, notes] = did2.unittest.helpers.carryNote(otherSubjectBatch({'rat_other@lab'}));
+verifyTrue(testCase, carried, notes);
+end
+
+function testAStimulatorWhoseRowsNameOnlyItsOwnSubjectConverts(testCase)
+% the control: every row names its own subject (by local identifier), so it
+% converts, as do the n-trode fixtures above whose rows hold the subject id
+batch = otherSubjectBatch({'rat_own@lab', 'rat_own@lab'});
+[carried, notes, out] = did2.unittest.helpers.carryNote(batch);
+verifyFalse(testCase, carried, notes);
+verifyFalse(testCase, contains(notes, 'carry-170'), notes);
+verifyNotEmpty(testCase, firstOfClassJ(out.migrated, 'device'), 'the stimulator must convert');
+verifyEmpty(testCase, did2.convert.probemapSubjects('others', 'el_1'), ...
+    'its own subject is not "another"');
+end

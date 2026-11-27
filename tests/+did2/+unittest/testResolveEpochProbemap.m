@@ -1686,11 +1686,19 @@ verifyEqual(testCase, double(ch(1).numeric(:))', [1 2 3]);
 verifyEqual(testCase, numel(bodiesOfClass(out, 'ingestion_manifest')), 1);
 end
 
-function testAStimulatorRowNamingAnotherSubjectKeepsItsManipulation(testCase)
-% [stimulator manipulation dropped]: "except for a row that carries something
-% the wiring and the element do not, such as the 12 Dab epochs whose bath rows
-% name another subject". The element's subject is spec_m1; the row names
-% spec_m2, which only the manipulation says.
+function testAStimulatorRowNamingAnotherSubjectIsCarriedWhole(testCase)
+% Decided by Jess Haley, 2026-11-26 [element whose probe maps name another
+% subject is malformed] (did-schema did_v2_go_forward_class_audit.md; built
+% in migrators_j.element, carry-170): the stimulator's subject is spec_m1 and
+% its row names spec_m2, so it is malformed v1 and carried whole. As for a
+% probe recorded from two subjects (testAProbeRecordedFromTwoSubjectsIsCarriedWhole),
+% its row then has no probe entity to wire: no wiring relation, and the v1
+% epochfiles_ingested is carried whole beside the row's statement
+% (rows_unwirable), which names the subject the row names and, with its
+% element carried, no instrument. INVERTED 2026-11-26: until then the row
+% kept a wired Stimulator manipulation under the [stimulator manipulation
+% dropped] exception for "a row whose subject is not its element's" (the 12
+% Dab epochs whose bath rows name another subject, which are this case).
 subjA = subjectBody('spec_m1', 'sess_m', 'L');
 subjB = subjectBody('spec_m2', 'sess_m', 'R');
 stim = elementBody('stim_m', 'sess_m', 'vis', '1', 'stimulator', 1, 'spec_m1');
@@ -1698,15 +1706,23 @@ daq  = daqsystemBody('acqsys_m', 'sess_m', 'vis');
 ing  = ingestedWithDeviceRows('ing_m', 'sess_m', 't0m', { ...
     {'vis', '1', 'stimulator', 'vis:mk1', 'R'}});
 [out, rep] = decompose({sessionBody('sd_m', 'sess_m', 'ref'), subjA, subjB, stim, daq, ing});
+verifyTrue(testCase, any(strcmp(carriedIds(out), 'stim_m')), 'the stimulator is carried whole');
 verifyEqual(testCase, rep.rows_stimulator, 1);
-verifyEqual(testCase, rep.stimulator_manipulations_kept_other_subject, 1);
+verifyEqual(testCase, rep.rows_unwirable, 1);
+verifyEqual(testCase, rep.instrument_omitted, 1);
+verifyEqual(testCase, rep.stimulator_manipulations_kept_other_subject, 0);
 verifyEqual(testCase, rep.stimulator_manipulations_not_written, 0);
+verifyEqual(testCase, rep.wiring_relations_minted, 0);
+verifyEmpty(testCase, wiringsOfChild(out, 'stim_m'));
+verifyEmpty(testCase, bodiesOfClass(out, 'ingestion_manifest'));
+src = bodiesOfClass(out, 'epochfiles_ingested');
+assertEqual(testCase, numel(src), 1, 'the v1 epochfiles_ingested is carried whole');
+verifyEqual(testCase, src{1}.epochfiles_ingested.epochprobemap, ing.epochfiles_ingested.epochprobemap);
 verifyEqual(testCase, rep.manipulations_emitted, 1);
 m = bodiesNamed(out, 'migrated_probemap_manipulation');
 assertEqual(testCase, numel(m), 1);
 verifyEqual(testCase, depVal(m{1}, 'entity_id'), 'spec_m2');
-verifyEqual(testCase, depVal(m{1}, 'instrument_id'), 'stim_m');
-verifyNotEmpty(testCase, wiringOf(out, m{1}));
+verifyEmpty(testCase, depVal(m{1}, 'instrument_id'));
 end
 
 function testTheStimulatorRowRebuildsFromTheWiringAndTheElement(testCase)
@@ -1883,17 +1899,24 @@ end
 
 function testSeveralRowsThatDisagreeKeepTheirV1Document(testCase)
 % Guard (3): rows of one probe that disagree on anything but the devicestring
-% (here the subject column of a stimulator's rows) do not merge. They keep
+% (here the type column of a stimulator's rows) do not merge. They keep
 % their statements, no relation is minted for them, the v1 document is
 % carried whole, and the rows are counted (wiring_several_rows_disagree).
+% CHANGED 2026-11-26: the rows disagreed on the subject column; under
+% [element whose probe maps name another subject is malformed] (Jess Haley,
+% 2026-11-26) such a stimulator is carried whole before this guard is
+% reached (testAStimulatorRowNamingAnotherSubjectIsCarriedWhole, and
+% testMigratorsJ for two rows naming two subjects), so the guard is checked
+% on rows that disagree on their type, both naming the stimulator's subject.
 subjL = subjectBody('spec_d1', 'sess_q', 'L');
-subjR = subjectBody('spec_d2', 'sess_q', 'R');
 stim = elementBody('stim_q', 'sess_q', 'vis', '1', 'stimulator', 1, 'spec_d1');
 daq  = daqsystemBody('acqsys_q', 'sess_q', 'vis');
 ing  = ingestedWithDeviceRows('ing_q', 'sess_q', 't0q', { ...
     {'vis', '1', 'stimulator', 'vis:mk1', 'L'}, ...
-    {'vis', '1', 'stimulator', 'vis:mk2', 'R'}});
-[out, rep] = decompose({sessionBody('sd_q', 'sess_q', 'ref'), subjL, subjR, stim, daq, ing});
+    {'vis', '1', 'display', 'vis:mk2', 'L'}});
+[out, rep] = decompose({sessionBody('sd_q', 'sess_q', 'ref'), subjL, stim, daq, ing});
+verifyFalse(testCase, any(strcmp(carriedIds(out), 'stim_q')), ...
+    'premise: the stimulator, its rows naming only its own subject, converts');
 verifyEqual(testCase, rep.wiring_several_rows_disagree, 2);
 verifyEqual(testCase, rep.wiring_several_rows_merged, 0);
 verifyEqual(testCase, rep.wiring_several_rows_folded, 0);
