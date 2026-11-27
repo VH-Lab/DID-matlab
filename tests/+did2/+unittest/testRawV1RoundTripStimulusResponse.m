@@ -384,6 +384,14 @@ verifyEqual(testCase, wb.accepted_losses_by_name.(matlab.lang.makeValidName( ...
 verifyEqual(testCase, wb.accepted_losses(end).source_id, 'par_o');
 verifyEqual(testCase, wb.sources_changed_by_batch_pass, 0, describeBatch(wb));
 verifyEqual(testCase, wb.sources_compared, 2, 'the response and the used method');
+% ... and NOT COMPARED for that reason, counted (DID-matlab #536: Soph run
+% 45870909504 shard 2 compared 15868 of 17184 with the 1,316 named nowhere
+% on the line)
+verifyEqual(testCase, wb.sources_inspected, 3);
+verifyEqual(testCase, wb.sources_not_migrated_by_decision, 1, describeBatch(wb));
+verifyEqual(testCase, wb.not_migrated_by_decision_by_class ...
+    .stimulus_response_scalar_parameters_basic, 1);
+verifyEqual(testCase, wb.sources_unaccounted, 0, describeBatch(wb));
 verifyTrue(testCase, wb.ok, describeBatch(wb));
 end
 
@@ -417,6 +425,10 @@ for c = 1:size(cases, 1)
     wb = did2.convert.roundtrip.wholeBatch(bodies, out);
     verifyEqual(testCase, wb.ids_accepted_lost, 0, label);
     verifyEqual(testCase, wb.ids_lost, 0, label);
+    % CONTROL for the count above: converted, so compared, not set aside
+    verifyEqual(testCase, wb.sources_not_migrated_by_decision, 0, label);
+    verifyEqual(testCase, wb.sources_compared, 3, label);
+    verifyEqual(testCase, wb.sources_unaccounted, 0, label);
     did2.convert.migrationReport('end');
 end
 end
