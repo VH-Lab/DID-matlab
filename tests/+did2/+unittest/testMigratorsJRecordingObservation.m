@@ -21,8 +21,9 @@ function tests = testMigratorsJRecordingObservation
 %   recording tests below therefore drive the DID chain over an element PLUS
 %   one epoch's cache (`runEpoch`), and assert the per-epoch observation with
 %   its file bodies; the pass-1-only assertions (`runJ`) now say what pass 1
-%   leaves: the element-subject, its kind assertions, and the `observes`
-%   relation, KEPT until the batch pass emits its replacement.
+%   leaves: the element-subject and its kind assertions (no `observes`
+%   relation since [no observes relation in v2], Jess Haley, 2026-11-26:
+%   until then it was KEPT until the batch pass emitted its replacement).
 %
 %   The tests that asserted "no body" (testNoBodyIsEmittedBecauseTheElement-
 %   CarriesNoBytes and the body-count lines of several others) are INVERTED,
@@ -256,18 +257,21 @@ end
 % ===================== the retired `observes` relation =====================
 
 function testObservesRelationIsGoneForAMappedRecordingElement(testCase)
-% THE RETIREMENT, now in two steps. Pass 1 KEEPS `observes` (it emits no
-% observation, so nothing replaces it yet); the batch pass retires it when a
-% surviving observation carries the same probe as instrument_id and the same
-% specimen as entity_id.
+% INVERTED 2026-11-27 for [no observes relation in v2] (Decided by Jess Haley,
+% 2026-11-26, did-schema docs/plans/did_v2_standing_wiring_plan.md): pass 1
+% writes no `observes` relation at all; until then it KEPT one here (it emits
+% no observation) for the batch pass to retire. The specimen is on the
+% batch pass's observation (instrument_id the probe, entity_id the specimen).
 el = elementDoc('ctx_probe', 'n-trode', 'ndi.probe.timeseries.mfdaq', 1, 'specimen_1', '');
-verifyTrue(testCase, hasRelation(runJ(el), 'observes'), ...
-    'pass 1 dropped `observes` with nothing in its place');
+verifyFalse(testCase, hasRelation(runJ(el), 'observes'), ...
+    'pass 1 wrote an `observes` relation ([no observes relation in v2])');
 out = runEpoch(el, {'/data/t00001/t00001.rhd'});
 verifyFalse(testCase, hasRelation(out, 'observes'), ...
     'the loose `probe observes specimen` relation survived the instrument_id edge');
 obs = firstOfClass(out, 'observation+voltage');
 verifyEqual(testCase, depValue(obs, 'instrument_id'), 'el_1');
+verifyEqual(testCase, depValue(obs, 'entity_id'), 'specimen_1', ...
+    'the specimen is not on the observation');
 end
 
 function testDerivedElementKeepsItsDerivedFromLineage(testCase)
@@ -459,9 +463,12 @@ end
 function testUnmappedTypeIsFlaggedQueryablyAndKeepsObserves(testCase)
 % GUARD A, AS BUILT. 'lick-spout' is registered in probetype2object.json but has
 % ZERO occurrences in any .m file on NDI origin/main, so nothing states what its
-% channel measures. The build refuses to guess a dimensioned quantity, records
-% the unresolved state where a query can find it, and keeps `observes` so the
-% probe -> specimen link is not lost in the meantime.
+% channel measures. The build refuses to guess a dimensioned quantity and
+% records the unresolved state where a query can find it. INVERTED 2026-11-27
+% for [no observes relation in v2] (Jess Haley, 2026-11-26): it kept
+% `observes` so the probe -> specimen link was not lost; pass 1 now writes
+% none, and NDI's second pass reads the v1 subject_id (and carries it, as no
+% statement names it).
 %
 % WHEN THE SCHEMA HALF LANDS (a concrete undimensioned observation leaf + a
 % `modality_unresolved` field) this test must be rewritten to assert a VALUED
@@ -483,7 +490,7 @@ verifyEqual(testCase, n.modality_unresolved.details, {'lick-spout'});
 % nothing was invented, and nothing was lost
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-verifyTrue(testCase, hasRelation(out, 'observes'));
+verifyFalse(testCase, hasRelation(out, 'observes'));
 end
 
 function testAMappedTypeIsNotFlaggedUnresolved(testCase)
@@ -536,8 +543,9 @@ function testStimulatorElementIsADeviceWithNoObservation(testCase)
 % item: a v1 `stimulator` element (vhlab's visual-stimulus computer, Marder's
 % electrical stimulator) is a device of kind SNOMEDCT:36645008 "Stimulator".
 % A stimulator ACTS ON the specimen, so pass 1 mints no observation (the
-% wrong direction, T3); its delivery is the probe map's manipulation, and
-% until an `instrument_id` edge replaces it `observes` is KEPT. Not flagged
+% wrong direction, T3); its delivery is the probe map's manipulation. It
+% kept `observes` until [no observes relation in v2] (Jess Haley,
+% 2026-11-26); pass 1 now writes none (INVERTED 2026-11-27). Not flagged
 % unresolved: the modality is not unknown, the direction is different.
 out = runJ(elementDoc('stim', 'stimulator', 'ndi.probe.timeseries.stimulator', 1, 'specimen_1', ''));
 verifyEqual(testCase, numel(out.passthrough), 0, 'the stimulator element was carried');
@@ -552,7 +560,7 @@ if ~isempty(kind)
 end
 verifyFalse(testCase, anyObservationEmitted(out));
 verifyEqual(testCase, countOfClass(out, 'sampled_body'), 0);
-verifyTrue(testCase, hasRelation(out, 'observes'));
+verifyFalse(testCase, hasRelation(out, 'observes'));
 verifyEmpty(testCase, assertionWithVariable(out, 'modality unresolved'));
 end
 

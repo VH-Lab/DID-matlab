@@ -91,11 +91,26 @@ blk.cost = cost;
 blk.mapping = reshape(double(coeffs), [], 1);   % jsondecode's column
 ends = {'input_id', 'epochnode_a'; 'output_id', 'epochnode_b'};
 for e = 1:size(ends, 1)
-    [node, used, why] = endpoint(bodies, used, firstId(ca, ends{e, 1}), base.session_id, ctx);
+    [node, used, why, nDeferred] = endpoint(bodies, used, firstId(ca, ends{e, 1}), base.session_id, ctx);
     if ~isempty(why)
         spec.unplaced{end+1} = sprintf('%s: %s', ends{e, 2}, why);
     end
     blk.(ends{e, 2}) = node;
+    % [no observes relation in v2] (Jess Haley, 2026-11-26): the rows whose
+    % element's subject NDI's second pass reads (private/manifestProbemap)
+    if nDeferred > 0
+        d = struct('path', ['syncrule_mapping.' ends{e, 2} '.epochprobemap'], ...
+            'pass', 'second_pass', 'fn', @sameProbemapDeferredSubjects, ...
+            'why', sprintf(['%d probe-map row(s) rebuilt from a wiring relation take ' ...
+            'their subjectstring from the element''s v1 subject_id, which NDI''s ' ...
+            'second pass reads ([no observes relation in v2], Jess Haley, ' ...
+            '2026-11-26)'], nDeferred));
+        if isfield(spec, 'deferred')
+            spec.deferred(end+1) = d;
+        else
+            spec.deferred = d;
+        end
+    end
 end
 % a probe the v1 map lists in several rows comes back as one row per system
 % (manifestProbemap), compared as the same probe and the same ordered channel
@@ -124,12 +139,15 @@ end
 
 % ===================== helpers =========================================
 
-function [node, used, why] = endpoint(bodies, used, refId, sessionId, ctx)
+function [node, used, why, nDeferred] = endpoint(bodies, used, refId, sessionId, ctx)
 %ENDPOINT One epochnode, read back from the reference REFID and the documents
 %   it is tied to; WHY says what could not be read ('' when all of it was).
+%   NDEFERRED is the number of its probe map's rows whose subjectstring is
+%   deferred to NDI's second pass (private/manifestProbemap).
 node = struct('epoch_id', '', 'epoch_session_id', '', 'epochprobemap', '', ...
     'epoch_clock', '', 't0_t1', [], 'objectname', '', 'objectclass', '');
 why = '';
+nDeferred = 0;
 [ref, i] = withId(bodies, refId);
 if isempty(ref)
     why = 'its relative_time_reference is not among the documents';
@@ -210,8 +228,9 @@ for k = 1:numel(bodies)
         case 'ingestion_manifest'
             if ~isempty(epoch) && any(strcmp(edgeIds(b, 'epoch_id'), char(epoch.base.id))) ...
                     && any(strcmp(edgeIds(b, 'epoch_file_pattern_id'), navIds{1}))
-                [pm, bad] = manifestProbemap(b, ctx);
+                [pm, bad, ~, deferredRows] = manifestProbemap(b, ctx);
                 node.epochprobemap = pm;
+                nDeferred = numel(deferredRows);
                 if ~isempty(bad)
                     why = strjoin(bad, '; ');
                 end

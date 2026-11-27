@@ -27,6 +27,17 @@ function [subjectId, found] = elementSubjects(action, arg)
 %       no element of that id is in the batch. An id two elements in the batch
 %       share with different subjects also reads FOUND false: the probe's
 %       subject is then not one value.
+%   S = did2.convert.elementSubjects('snapshot')  every element held with a
+%       subject, as a struct array {element_id, subject_id} (an id two
+%       elements share with different subjects is left out). did2.convert.
+%       v1_to_v2 hands it on in its result (`element_subjects`), because a
+%       later did2.convert.v1_to_v2 call (a batch pass re-folding minted
+%       bodies) resets this index to its own input: Decided by Jess Haley,
+%       2026-11-26 [no observes relation in v2] (did-schema
+%       docs/plans/did_v2_standing_wiring_plan.md), no `observes` relation
+%       carries a direct element's subject past pass 1, and
+%       did2.convert.resolveEpochProbemap compares a stimulator row's subject
+%       with it.
 %
 %   An element not in the batch is NOT a pass: migrators_j.element does not
 %   drop a unit's subject_id it cannot check.
@@ -35,7 +46,7 @@ function [subjectId, found] = elementSubjects(action, arg)
 %            did2.convert.unitQualityLabels.
 
 arguments
-    action (1,:) char {mustBeMember(action, {'reset', 'load', 'get'})}
+    action (1,:) char {mustBeMember(action, {'reset', 'load', 'get', 'snapshot'})}
     arg = []
 end
 
@@ -80,6 +91,13 @@ switch action
             subjectId = index(id);
             found = true;
         end
+    case 'snapshot'
+        ids = keys(index);
+        keep = cellfun(@(i) ~isKey(conflicted, i) && ~isempty(index(i)), ids);
+        ids = ids(keep);
+        subjects = cellfun(@(i) index(i), ids, 'UniformOutput', false);
+        subjectId = struct('element_id', ids, 'subject_id', subjects);
+        found = true;
 end
 end
 

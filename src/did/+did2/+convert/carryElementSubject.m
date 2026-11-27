@@ -24,13 +24,15 @@ function carryElementSubject(elementId, subjectId, reason)
 %                          NDI's second pass when no presentation, bath
 %                          manipulation or Stimulator manipulation names the
 %                          v1 subject; a DID-only run, with no second pass,
-%                          keeps `observes`;
+%                          keeps `observes` (superseded by [no observes
+%                          relation in v2], 2026-11-26: no run writes one,
+%                          and DID's round trip defers the subject);
 %     [recording probe subject carried the same way]  a migrated recording
 %                          probe with no recording observation, likewise.
 %
 %   The caller is NDI-matlab's second pass (`observesRetirement`), which
-%   removes the element's `observes` relation in the same step. DID-matlab's
-%   own pass 1 never calls this (it keeps `observes`). The round trip reads
+%   reads the element's v1 `subject_id` directly ([no observes relation in
+%   v2], Jess Haley, 2026-11-26). DID-matlab's own pass 1 never calls this. The round trip reads
 %   the entry back (did2.convert.carriedElementSubject; roundtrip.element,
 %   roundtrip/private/manifestProbemap.m), so the v1 `subject_id` and
 %   `direct` (true) are rebuilt and the probe map row keeps its subject.

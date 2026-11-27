@@ -69,8 +69,20 @@ if isscalar(bodies) && strcmp(classNameOf(bodies{1}), 'ingestion_manifest')
         end
         files = reshape(cellstr(files), [], 1);   % jsondecode's column
     end
-    [pm, why, epochString] = manifestProbemap(m, ctx);
+    [pm, why, epochString, deferredRows] = manifestProbemap(m, ctx);
     spec.unplaced = [spec.unplaced, why];
+    % [no observes relation in v2] (Jess Haley, 2026-11-26): a wiring row of
+    % a device whose subject the batch does not hold has its subjectstring
+    % written by NDI's second pass (private/manifestProbemap); the map is
+    % DEFERRED when it is the v1 one but for those subjectstrings
+    if ~isempty(deferredRows)
+        spec.deferred = struct('path', 'epochfiles_ingested.epochprobemap', ...
+            'pass', 'second_pass', 'fn', @sameProbemapDeferredSubjects, ...
+            'why', sprintf(['%d probe-map row(s) rebuilt from a wiring relation take ' ...
+            'their subjectstring from the element''s v1 subject_id, which NDI''s ' ...
+            'second pass reads ([no observes relation in v2], Jess Haley, ' ...
+            '2026-11-26)'], numel(deferredRows)));
+    end
     % a probe listed in several rows comes back as one row per system, the
     % NDI-equivalent form; compared as the same probe and the same ordered
     % channel list, for those rows only (private/sameProbemapSeveralRows)

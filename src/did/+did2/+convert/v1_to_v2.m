@@ -273,6 +273,7 @@ did2.convert.unitQualityLabels('add', options.UnitQualityLabels);
 % from the probe], Jess Haley, 2026-10-27).
 did2.convert.elementSubjects('reset');
 did2.convert.elementSubjects('load', bodies);
+batchElementSubjects = did2.convert.elementSubjects('snapshot');   % result.element_subjects
 % Every v1 document of this batch, read by jModelFit and migrators_j.
 % hartley_calc for a fit that names no subject of its own: it is about what its
 % input is about (Decided by Jess Haley, 2026-11-10 [a fit is about its input's
@@ -1082,6 +1083,13 @@ result.summary = struct( ...
 % the report of this call's documents (gaps, carries, counts); a run writer
 % collects the whole run's instead (did2.convert.migrationRecord)
 result.migration_report = did2.convert.migrationReport('collect', migrated);
+% The subject_id of every v1 element of this batch, handed on to the batch
+% passes (did2.convert.resolveEpochProbemap): Decided by Jess Haley,
+% 2026-11-26 [no observes relation in v2] (did-schema
+% docs/plans/did_v2_standing_wiring_plan.md), pass 1 writes no `observes`
+% relation, and a later v1_to_v2 call resets did2.convert.elementSubjects
+% (see its 'snapshot').
+result.element_subjects = batchElementSubjects;
 
 % PHASE 1, REPORT-ONLY (V_eta_ground_truth_plan.md). Count the data that
 % migrates away without a trace: required depends_on edges left empty, and

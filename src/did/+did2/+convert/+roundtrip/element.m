@@ -95,7 +95,7 @@ function [v1, spec] = element(bodies, ctx)
 %                                      template lists the edges
 %                                      (underlying_element_id, subject_id) and
 %                                      any other edge after them:
-%         observes X          direct true, subject_id X (a direct element)
+%         (no `observes`: [no observes relation in v2], below)
 %         derived_from X      underlying_element_id X (the migrator's first
 %                             branch). An element with no underlying element
 %                             that derives from its subject writes the same
@@ -115,14 +115,19 @@ function [v1, spec] = element(bodies, ctx)
 %   `subject_id`. A 'modality unresolved' assertion is a worklist label made
 %   from `type` and states nothing more; it is placed.
 %
-%   THE `observes` RELATION A BATCH PASS RETIRED. [V1, SPEC] =
-%   did2.convert.roundtrip.element(BODIES, CTX), in the whole-batch round trip
-%   (did2.convert.roundtrip.wholeBatch; [whole-batch round trip], Jess Haley,
-%   2026-10-27): did2.convert.resolveEpochProbemap retires a probe's loose
-%   `observes` relation once a recording observation carries the same
-%   (instrument, specimen) pair as its `instrument_id` / `entity_id` edges
-%   (`observes_retired`; [epoch files as data bodies], Jess Haley,
-%   2026-10-21). When BODIES holds no lineage relation, the observations in
+%   A DIRECT ELEMENT'S SUBJECT. Decided by Jess Haley, 2026-11-26 [no
+%   observes relation in v2] (did-schema docs/plans/
+%   did_v2_standing_wiring_plan.md): pass 1 writes no `observes` relation
+%   (until then `observes X` rebuilt direct true and subject_id X), and "its
+%   round trip defers the element's v1 `subject_id` to the second pass". So
+%   it is read from the batch where the batch holds it, and DEFERRED where it
+%   does not:
+%   [V1, SPEC] = did2.convert.roundtrip.element(BODIES, CTX), in the
+%   whole-batch round trip (did2.convert.roundtrip.wholeBatch; [whole-batch
+%   round trip], Jess Haley, 2026-10-27): a recording observation carries
+%   the (instrument, specimen) pair as its `instrument_id` / `entity_id`
+%   edges ([epoch files as data bodies], Jess Haley, 2026-10-21). When
+%   BODIES holds no lineage relation, the observations in
 %   CTX (the index of the final batch) whose `instrument_id` is this entity
 %   are read: one specimen among them is `subject_id`, with `direct` true, as
 %   the retired relation stated. Several specimens are reported, not chosen.
@@ -140,14 +145,18 @@ function [v1, spec] = element(bodies, ctx)
 %   2026-11-19 (did-schema docs/plans/did_v2_standing_wiring_plan.md)
 %   [stimulator subject carried as needing information], [one-field carry in
 %   the migration report], [recording probe subject carried the same way]:
-%   NDI-matlab's second pass removes the `observes` of a stimulator no
+%   NDI-matlab's second pass carries the v1 subject of a stimulator no
 %   statement names, and of a recording probe with no recording observation,
 %   and holds its v1 subject in the run's migration report as a carried field
 %   (carry-172, did2.convert.carryElementSubject). When BODIES holds no
 %   lineage relation and no observation in CTX names this entity as its
 %   instrument, that entry (did2.convert.carriedElementSubject, for the
-%   entity's base.id) is `subject_id`, with `direct` true. With no entry,
-%   both are lost and the check reports them.
+%   entity's base.id) is `subject_id`, with `direct` true. With no entry, a
+%   device's `subject_id` (depends_on(2).value) and `direct` are DEFERRED to
+%   the second pass (spec.deferred, pass 'second_pass'): NDI's second pass
+%   reads them from the v1 element ([no observes relation in v2]). A device
+%   is a probe, which NDI's writer makes direct (ndi.probe); any other
+%   entity is not deferred, and the check reports what it lost.
 %
 %   See also did2.convert.roundtrip.check, did2.convert.migrators_j.element.
 
@@ -232,11 +241,7 @@ for k = 1:numel(bodies)
             rel = getIn(b, 'directed_relation', 'relation');
             [node, ~] = termParts(rel);
             handle = did2.build.vocabularyHandle('relation', rel);
-            if strcmp(handle, 'observes') && isempty(subject) && isempty(direct)
-                subject = parent{1};
-                direct = true;
-                used(k) = true;
-            elseif strcmp(handle, 'derived_from') && isempty(underlying) && isempty(direct)
+            if strcmp(handle, 'derived_from') && isempty(underlying) && isempty(direct)
                 underlying = parent{1};
                 used(k) = true;
             elseif sameCurie(node, 'prov:wasDerivedFrom') && isempty(sortingRun)
@@ -249,8 +254,8 @@ for k = find(~used)
     spec.unplaced{end+1} = sprintf('emitted document %d (%s) has no role in an element', ...
         k, classNameOf(bodies{k}));
 end
-% the `observes` relation resolveEpochProbemap retired: read from the
-% observations that carry its pair (see THE `observes` RELATION above)
+% a direct element's subject: read from the observations that carry its pair
+% (see A DIRECT ELEMENT'S SUBJECT above)
 specimens = {};
 if isempty(subject) && isempty(underlying) && isempty(direct) && ~isempty(ctx)
     for k = ctxReferrers(ctx, base.id)
@@ -271,13 +276,25 @@ if isempty(subject) && isempty(underlying) && isempty(direct) && ~isempty(ctx)
     end
 end
 % the subject NDI's second pass carried in the migration report when it
-% removed the `observes` (see THE SUBJECT CARRIED IN THE MIGRATION REPORT)
+% found no statement naming it (see THE SUBJECT CARRIED IN THE MIGRATION REPORT)
 if isempty(subject) && isempty(underlying) && isempty(direct) && isempty(specimens)
     [carriedSubject, found] = did2.convert.carriedElementSubject(base.id);
     if found
         subject = carriedSubject;
         direct = true;
     end
+end
+% neither: a device's subject and `direct` are written by NDI's second pass
+% ([no observes relation in v2], Jess Haley, 2026-11-26: "its round trip
+% defers the element's v1 `subject_id` to the second pass")
+if isempty(subject) && isempty(underlying) && isempty(direct) && isempty(specimens) ...
+        && isstruct(entity) && isfield(entity, 'type') ...
+        && did2.build.isVocabulary(entity.type, 'entity_type', 'device')
+    why = ['v2 has no `observes` relation; NDI''s second pass reads a direct ' ...
+        'element''s v1 subject_id, and carries it where no statement names it ' ...
+        '([no observes relation in v2], Jess Haley, 2026-11-26)'];
+    spec.deferred = struct('path', {'depends_on(2).value', 'element.direct'}, ...
+        'pass', 'second_pass', 'why', why);
 end
 % no 'element type' assertion: the type is the one its device kind names
 if ~hasType && isscalar(kindNodes)

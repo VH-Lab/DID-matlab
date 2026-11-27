@@ -59,7 +59,15 @@ function report = check(v1Body, v2Docs, ctx)
 %                           with another value is still lost. First case:
 %                           an ingested archive's two segment lengths
 %                           ([archive segment lengths measured after the
-%                           second pass], Jess Haley, 2026-11-12)
+%                           second pass], Jess Haley, 2026-11-12). A
+%                           rebuilt EMPTY value ('' or []) is not holding
+%                           it. An entry may carry `fn`: FN(v1Value,
+%                           rebuiltValue) true when the rebuilt value is the
+%                           v1 one except for the part the later pass
+%                           writes (a probe map whose rows lack only the
+%                           subjectstring of an element whose subject is
+%                           deferred, [no observes relation in v2], Jess
+%                           Haley, 2026-11-26); the leaf is then DEFERRED
 %         spec.unplaced     cellstr: emitted content the inverse could not
 %                           place (an unexpected document, a wrong type)
 %         spec.spellings    struct array {paths, why} (optional): a v1 field
@@ -212,7 +220,9 @@ for k = 1:numel(origLeaves)
         report.restated{end+1} = lf.path;
     elseif found && isSame(same, lf.path, lf.value, rv)
         report.equivalent{end+1} = lf.path;
-    elseif ~found && any(strcmp(lf.path, {deferred.path}))
+    elseif any(strcmp(lf.path, {deferred.path})) ...
+            && (~found || isEmptyValue(rv) || deferredFnSays( ...
+            deferred(strcmp(lf.path, {deferred.path})), lf.value, rv))
         d = deferred(strcmp(lf.path, {deferred.path}));
         report.deferred(end+1) = struct('path', lf.path, 'pass', d(1).pass, ...
             'why', d(1).why);
@@ -250,6 +260,22 @@ report.ok = isempty(report.lost) && isempty(report.invented) ...
 end
 
 % ===================== helpers =========================================
+
+function tf = deferredFnSays(d, value, rebuilt)
+%DEFERREDFNSAYS True when a spec.deferred entry D for this path has an `fn`
+%   and FN(VALUE, REBUILT) says the rebuilt value is the v1 one but for what
+%   the later pass writes.
+tf = false;
+if ~isfield(d, 'fn')
+    return;
+end
+for k = 1:numel(d)
+    if isa(d(k).fn, 'function_handle') && d(k).fn(value, rebuilt)
+        tf = true;
+        return;
+    end
+end
+end
 
 function rebuilt = respell(rebuilt, v1Body, spellings)
 %RESPELL Move each field of SPELLINGS the rebuilt document holds under one
