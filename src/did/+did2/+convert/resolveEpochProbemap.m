@@ -571,7 +571,7 @@ derivedParent = containers.Map('KeyType', 'char', 'ValueType', 'char');
 % the v1 element's): handed on by did2.convert.v1_to_v2 (`element_subjects`),
 % else read from did2.convert.elementSubjects as this pass starts (before
 % any v1_to_v2 call of its own resets it)
-elementSubjectOf = v1ElementSubjects(result);
+elementSubjectOf = did2.convert.elementSubjects('map', result);
 % An element's slice of an epoch is a v1 `element_epoch` pass 1 handed on
 % ([retired classes leave V2], Decided by Jess Haley, 2026-10-25, step (1):
 % v1_to_v2 HAND_ON_CLASSES), or, in a batch written before, the
@@ -4446,22 +4446,4 @@ function tf = isElementEpochSlice(className, docId, passOneCarried)
 % 1 handed on, not one it carried
 tf = strcmp(className, 'acquisition_epoch') || (strcmp(className, 'element_epoch') ...
     && ~(~isempty(docId) && isKey(passOneCarried, char(docId))));
-end
-
-function m = v1ElementSubjects(result)
-%V1ELEMENTSUBJECTS element id -> its v1 subject_id: RESULT.element_subjects
-%   (did2.convert.v1_to_v2), else did2.convert.elementSubjects' index now
-%   ([no observes relation in v2], Jess Haley, 2026-11-26).
-m = containers.Map('KeyType', 'char', 'ValueType', 'char');
-if isfield(result, 'element_subjects') && isstruct(result.element_subjects)
-    es = result.element_subjects;
-else
-    es = did2.convert.elementSubjects('snapshot');
-end
-for k = 1:numel(es)
-    id = char(es(k).element_id);
-    if ~isempty(id) && ~isempty(es(k).subject_id)
-        m(id) = char(es(k).subject_id);
-    end
-end
 end

@@ -38,6 +38,10 @@ function [subjectId, found] = elementSubjects(action, arg)
 %       carries a direct element's subject past pass 1, and
 %       did2.convert.resolveEpochProbemap compares a stimulator row's subject
 %       with it.
+%   M = did2.convert.elementSubjects('map', RESULT)  the same as a
+%       containers.Map (element id -> subject id): RESULT.element_subjects
+%       when a v1_to_v2 RESULT holds it, else the index now. Read by
+%       did2.convert.resolveEpochProbemap and resolveDeferredBaths.
 %
 %   An element not in the batch is NOT a pass: migrators_j.element does not
 %   drop a unit's subject_id it cannot check.
@@ -46,7 +50,7 @@ function [subjectId, found] = elementSubjects(action, arg)
 %            did2.convert.unitQualityLabels.
 
 arguments
-    action (1,:) char {mustBeMember(action, {'reset', 'load', 'get', 'snapshot'})}
+    action (1,:) char {mustBeMember(action, {'reset', 'load', 'get', 'snapshot', 'map'})}
     arg = []
 end
 
@@ -97,6 +101,20 @@ switch action
         ids = ids(keep);
         subjects = cellfun(@(i) index(i), ids, 'UniformOutput', false);
         subjectId = struct('element_id', ids, 'subject_id', subjects);
+        found = true;
+    case 'map'
+        if isstruct(arg) && isfield(arg, 'element_subjects') && isstruct(arg.element_subjects)
+            es = arg.element_subjects;
+        else
+            es = did2.convert.elementSubjects('snapshot');
+        end
+        subjectId = containers.Map('KeyType', 'char', 'ValueType', 'char');
+        for k = 1:numel(es)
+            id = char(es(k).element_id);
+            if ~isempty(id) && ~isempty(es(k).subject_id)
+                subjectId(id) = char(es(k).subject_id);
+            end
+        end
         found = true;
 end
 end

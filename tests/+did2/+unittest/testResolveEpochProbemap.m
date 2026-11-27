@@ -2279,6 +2279,20 @@ function tf = isDirection(key, direction)
 tf = strcmp(key, direction) || strncmp(key, [direction '+'], numel(direction) + 1);
 end
 
+function out = relationsNamed(result, handle)
+% the directed_relations of RESULT whose relation is HANDLE (by
+% did2.build.vocabularyHandle)
+out = {};
+for k = 1:numel(result.migrated)
+    d = result.migrated{k};
+    if isa(d, 'did2.document'); d = d.toStruct(); end
+    if strcmp(char(d.document_class.class_name), 'directed_relation') ...
+            && strcmp(did2.build.vocabularyHandle('relation', d.directed_relation.relation), handle)
+        out{end+1} = d; %#ok<AGROW>
+    end
+end
+end
+
 function out = bodiesNamed(result, baseName)
 %BODIESNAMED The bodies a role marker used to tag on base.name.
 %   UPDATED for did-schema #88: V_eta documents write no base.name (#73 item 54),

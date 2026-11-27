@@ -802,7 +802,9 @@ for k = 1:size(cases, 1)
     verifyEmpty(testCase, r.lost, sprintf('%s: lost: %s', label, describeLost(r)));
     verifyEmpty(testCase, r.deferred, sprintf('%s: deferred with the entry', label));
     verifyEmpty(testCase, r.unplaced, sprintf('%s: unplaced: %s', label, strjoin(r.unplaced, '; ')));
-    % without it (the control): a fresh run, no carried field
+    % without it (the control): a fresh run, no carried field (the report
+    % ended first, so the fresh run begins its own)
+    did2.convert.migrationReport('end');
     out = runRaw(v1);
     docs = elementOutputs(out, id);
     assertEmpty(testCase, did2.convert.migrationReport('carriedFields', id), ...
